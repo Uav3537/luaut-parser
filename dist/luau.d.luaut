@@ -111,6 +111,7 @@ declare function error(message: unknown, level?: number): never
 --     const part = workspace:FindFirstChild("Part")  -- Instance | nil
 --     assert(part)
 --     part.Name                                      -- Instance, no `?`
+
 declare function assert<T>(value: T, message?: string): asserts value
 
 declare function pcall<T>(fn: (...unknown) -> T, ...: unknown): (boolean, T)

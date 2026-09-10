@@ -2007,23 +2007,92 @@
           "start": 1,
           "end": 77
         }
+      },
+      {
+        "type": "VariableDeclaration",
+        "kind": "const",
+        "names": [
+          {
+            "type": "IdentifierPattern",
+            "name": "obj",
+            "line": {
+              "start": 33,
+              "end": 33
+            },
+            "column": {
+              "start": 7,
+              "end": 10
+            }
+          }
+        ],
+        "init": [
+          {
+            "type": "TableExpression",
+            "fields": [
+              {
+                "type": "TableFieldNamed",
+                "key": {
+                  "type": "Identifier",
+                  "name": "a",
+                  "line": {
+                    "start": 34,
+                    "end": 34
+                  },
+                  "column": {
+                    "start": 5,
+                    "end": 6
+                  }
+                },
+                "value": {
+                  "type": "NumberLiteral",
+                  "value": 1,
+                  "raw": "1",
+                  "line": {
+                    "start": 34,
+                    "end": 34
+                  },
+                  "column": {
+                    "start": 8,
+                    "end": 9
+                  }
+                }
+              }
+            ],
+            "line": {
+              "start": 33,
+              "end": 35
+            },
+            "column": {
+              "start": 13,
+              "end": 2
+            }
+          }
+        ],
+        "line": {
+          "start": 33,
+          "end": 35
+        },
+        "column": {
+          "start": 1,
+          "end": 2
+        }
       }
     ],
     "line": {
       "start": 3,
-      "end": 31
+      "end": 35
     },
     "column": {
       "start": 1,
-      "end": 77
+      "end": 2
     }
   },
   "line": {
     "start": 3,
-    "end": 31
+    "end": 35
   },
   "column": {
     "start": 1,
-    "end": 77
+    "end": 2
   }
 }

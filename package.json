@@ -1,7 +1,7 @@
 {
   "name": "luaut-parser",
-  "version": "1.0.0",
-  "description": "luau parser for roblox",
+  "version": "1.1.0",
+  "description": "luaut parser for roblox",
   "main": "./dist/index.js",
   "module": "./dist/index.js",
   "types": "./dist/index.d.ts",
@@ -36,5 +36,8 @@
     "tsup": "^8.5.1",
     "tsx": "^4.19.0",
     "typescript": "^5.0.4"
+  },
+  "dependencies": {
+    "luaut-parser": "^1.0.0"
   }
 }

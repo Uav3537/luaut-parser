@@ -54,6 +54,7 @@ __export(index_exports, {
   luauLib: () => luauLib,
   luautparser: () => luautparser,
   matchInfer: () => matchInfer,
+  moduleExports: () => moduleExports,
   narrowExclude: () => narrowExclude,
   narrowFalsy: () => narrowFalsy,
   narrowTo: () => narrowTo,
@@ -634,6 +635,17 @@ function spanFrom(start, end) {
     column: { start: start.column.start, end: end.column.end }
   };
 }
+function tokenIdentifier(t) {
+  return { type: "Identifier", name: t.value, ...spanFrom(t, t) };
+}
+function nameIdentifier(name, at) {
+  return {
+    type: "Identifier",
+    name,
+    line: { start: at.line.start, end: at.line.start },
+    column: { start: at.column.start, end: at.column.start + name.length }
+  };
+}
 var BINARY_PRECEDENCE = {
   "or": 1,
   "and": 2,
@@ -952,9 +964,11 @@ var Parser = class {
       const params = head.params.map((p) => ({
         type: "FunctionTypeParameter",
         name: p.name || void 0,
+        id: p.name ? nameIdentifier(p.name, p) : void 0,
         optional: p.optional,
-        typeAnnotation: p.typeAnnotation ?? { type: "TypeReference", base: "any", typeArguments: [], ...spanFrom(start, start) },
-        ...spanFrom(start, this.previous())
+        typeAnnotation: p.typeAnnotation ?? { type: "TypeReference", base: "any", typeArguments: [], line: p.line, column: p.column },
+        line: p.line,
+        column: p.column
       }));
       const valueType2 = {
         type: "FunctionTypeNode",
@@ -966,12 +980,12 @@ var Parser = class {
         predicate: head.predicate,
         ...spanFrom(start, this.previous())
       };
-      return { type: "DeclareStatement", name: nameTok2.value, valueType: valueType2, ...spanFrom(start, this.previous()) };
+      return { type: "DeclareStatement", name: nameTok2.value, id: tokenIdentifier(nameTok2), valueType: valueType2, ...spanFrom(start, this.previous()) };
     }
     const nameTok = this.expectIdentifier();
     this.expectPunctuator(":");
     const valueType = this.parseType();
-    return { type: "DeclareStatement", name: nameTok.value, valueType, ...spanFrom(start, this.previous()) };
+    return { type: "DeclareStatement", name: nameTok.value, id: tokenIdentifier(nameTok), valueType, ...spanFrom(start, this.previous()) };
   }
   // `import { a, b as c } from '...'` / `import Default from '...'` /
   // `import Default, { a } from '...'`. Compiled away entirely by the
@@ -1030,6 +1044,21 @@ var Parser = class {
     }
     return { type: "ImportSpecifier", imported, local, ...spanFrom(imported, local) };
   }
+  /** `from "<path>"`: consumes `from` and the module string. */
+  parseModuleSource() {
+    this.advance();
+    const sourceTok = this.current();
+    if (sourceTok.type !== "Literal" || sourceTok.kind !== "string") {
+      this.error("Expected string literal module path after 'from'");
+    }
+    this.advance();
+    return {
+      type: "StringLiteral",
+      value: sourceTok.value,
+      raw: sourceTok.raw,
+      ...spanFrom(sourceTok, sourceTok)
+    };
+  }
   // `export const ...` / `export let ...` / `export const function ...` /
   // `export type ...` / `export default <expr>`
   parseExportStatement() {
@@ -1048,7 +1077,30 @@ var Parser = class {
       const declaration = this.parseVariableDeclaration();
       return { type: "ExportStatement", declaration, ...spanFrom(start, this.previous()) };
     }
-    this.error("Expected 'const', 'let', 'type', or 'default' after 'export'");
+    if (this.checkPunctuator("{")) {
+      this.advance();
+      const specifiers = [];
+      while (!this.checkPunctuator("}")) {
+        const local = this.parseIdentifier();
+        let exported = local;
+        if (this.checkKeyword("as")) {
+          this.advance();
+          exported = this.parseIdentifier();
+        }
+        specifiers.push({ type: "ExportSpecifier", local, exported, ...spanFrom(local, exported) });
+        if (!this.matchPunctuator(",")) break;
+      }
+      this.expectPunctuator("}");
+      const source = this.checkKeyword("from") ? this.parseModuleSource() : void 0;
+      return { type: "ExportNamedStatement", specifiers, source, ...spanFrom(start, this.previous()) };
+    }
+    if (this.checkOperator("*")) {
+      this.advance();
+      if (!this.checkKeyword("from")) this.error("Expected 'from' after 'export *'");
+      const source = this.parseModuleSource();
+      return { type: "ExportAllStatement", source, ...spanFrom(start, this.previous()) };
+    }
+    this.error("Expected 'const', 'let', 'type', 'default', '{' or '*' after 'export'");
   }
   // `const x = ...` / `let x, y = ...` / `const function f() ... end`.
   // luaut has no `local` — `const` bindings are immutable, `let` mutable.
@@ -2082,8 +2134,9 @@ var Parser = class {
     }
     if (this.checkIdentifierValue("infer") && this.peek(1).type === "Identifier") {
       this.advance();
-      const name = this.expectIdentifier().value;
-      return { type: "InferTypeNode", name, ...spanFrom(t, this.previous()) };
+      const nameTok = this.expectIdentifier();
+      const name = nameTok.value;
+      return { type: "InferTypeNode", name, id: tokenIdentifier(nameTok), ...spanFrom(t, this.previous()) };
     }
     if (t.type === "Operator" && t.value === "<") {
       const generics = this.parseGenericTypeParameterList();
@@ -2118,6 +2171,16 @@ var Parser = class {
       this.advance();
       const expression = this.parseExpression();
       this.expectPunctuator(")");
+      return { type: "TypeofTypeNode", expression, ...spanFrom(t, this.previous()) };
+    }
+    if (t.type === "Identifier" && t.value === "typeof" && this.peek(1).type === "Identifier") {
+      this.advance();
+      let expression = this.parseIdentifier();
+      while (this.checkPunctuator(".") && this.peek(1).type === "Identifier") {
+        this.advance();
+        const property = this.parseIdentifier();
+        expression = { type: "MemberExpression", object: expression, property, ...spanFrom(expression, property) };
+      }
       return { type: "TypeofTypeNode", expression, ...spanFrom(t, this.previous()) };
     }
     if (t.type === "Literal" && t.kind === "string") {
@@ -2182,17 +2245,21 @@ var Parser = class {
         let name;
         let optional2 = false;
         const named = this.checkType("Identifier") && this.peek(1).type === "Punctuator" && (this.peek(1).value === ":" || this.peek(1).value === "?" && this.peek(2).type === "Punctuator" && this.peek(2).value === ":");
+        let nameTok;
         if (named) {
-          name = this.expectIdentifier().value;
+          const tok = this.expectIdentifier();
+          nameTok = tok;
+          name = tok.value;
           optional2 = this.matchPunctuator("?");
           this.advance();
         }
-        const paramStart = this.current();
+        const paramStart = nameTok ?? this.current();
         const typeAnnotation = this.parseType();
         params.push({
           type: "FunctionTypeParameter",
           name,
           typeAnnotation,
+          id: nameTok && tokenIdentifier(nameTok),
           optional: optional2 || void 0,
           ...spanFrom(paramStart, this.previous())
         });
@@ -2254,7 +2321,8 @@ var Parser = class {
       readonly = false;
     }
     this.expectPunctuator("[");
-    const parameter = this.expectIdentifier().value;
+    const parameterTok = this.expectIdentifier();
+    const parameter = parameterTok.value;
     this.advance();
     const constraint = this.parseType();
     let nameType;
@@ -2278,6 +2346,7 @@ var Parser = class {
     return {
       type: "MappedTypeNode",
       parameter,
+      parameterId: tokenIdentifier(parameterTok),
       constraint,
       nameType,
       template,
@@ -2304,30 +2373,43 @@ var Parser = class {
     this.expectPunctuator("{");
     const properties = [];
     while (!this.checkPunctuator("}")) {
+      const propStart = this.current();
       if (this.checkPunctuator("[")) {
         this.advance();
         const keyType = this.parseType();
         this.expectPunctuator("]");
         this.expectPunctuator(":");
         const valueType = this.parseType();
-        properties.push({ type: "TableTypeIndexer", keyType, valueType });
+        properties.push({ type: "TableTypeIndexer", keyType, valueType, ...spanFrom(propStart, this.previous()) });
       } else if (this.checkIdentifierValue("readonly") && this.peek(1).type === "Identifier") {
         this.advance();
-        const name = this.expectIdentifier().value;
-        const optional2 = this.matchPunctuator("?");
-        this.expectPunctuator(":");
-        const valueType = this.parseType();
-        properties.push({ type: "TableTypeProperty", name, valueType, optional: optional2, readonly: true });
-      } else if (this.checkType("Identifier") && (this.peek(1).type === "Punctuator" && this.peek(1).value === ":" || this.peek(1).type === "Punctuator" && this.peek(1).value === "?" && this.peek(2).type === "Punctuator" && this.peek(2).value === ":")) {
-        const name = this.expectIdentifier().value;
+        const keyTok = this.expectIdentifier();
+        const name = keyTok.value;
         const optional2 = this.matchPunctuator("?");
         this.expectPunctuator(":");
         const valueType = this.parseType();
         properties.push({
           type: "TableTypeProperty",
           name,
+          key: tokenIdentifier(keyTok),
           valueType,
-          optional: optional2
+          optional: optional2,
+          readonly: true,
+          ...spanFrom(propStart, this.previous())
+        });
+      } else if (this.checkType("Identifier") && (this.peek(1).type === "Punctuator" && this.peek(1).value === ":" || this.peek(1).type === "Punctuator" && this.peek(1).value === "?" && this.peek(2).type === "Punctuator" && this.peek(2).value === ":")) {
+        const keyTok = this.expectIdentifier();
+        const name = keyTok.value;
+        const optional2 = this.matchPunctuator("?");
+        this.expectPunctuator(":");
+        const valueType = this.parseType();
+        properties.push({
+          type: "TableTypeProperty",
+          name,
+          key: tokenIdentifier(keyTok),
+          valueType,
+          optional: optional2,
+          ...spanFrom(propStart, this.previous())
         });
       } else {
         this.error("Expected object type property ('name: T' or '[K]: V'); use 'T[]' for arrays and '[T, U]' for tuples");
@@ -2389,6 +2471,7 @@ var Parser = class {
       list.push({
         type: "GenericTypeParameter",
         name: nameTok.value,
+        id: tokenIdentifier(nameTok),
         isPack,
         isConst: isConst || void 0,
         constraint,
@@ -2518,6 +2601,15 @@ var Analyzer = class {
     }
     return this.getOrCreateGlobalBinding(name);
   }
+  /** Like `resolve`, but never creates a global: `undefined` when no
+   *  enclosing scope declares the name. */
+  lookup(scope, name) {
+    for (let s = scope; s; s = s.parent) {
+      const id = s.declarations.get(name);
+      if (id !== void 0) return id;
+    }
+    return void 0;
+  }
   getOrCreateGlobalBinding(name) {
     const existing = this.globalScope.declarations.get(name);
     if (existing !== void 0) return existing;
@@ -2633,12 +2725,14 @@ var Analyzer = class {
     switch (stmt.type) {
       case "VariableDeclaration": {
         for (const init of stmt.init) this.visitExpression(init, scope);
+        for (const name of stmt.names) this.visitType(name.typeAnnotation, scope);
         const isConst = stmt.kind === "const";
         for (const name of stmt.names) this.declarePattern(scope, name, "local", scope, isConst);
         return;
       }
       case "FunctionDeclaration": {
         this.declare(scope, stmt.name.name, "local", stmt.name, stmt.kind === "const");
+        for (const signature of stmt.signatures ?? []) this.visitSignature(signature, scope);
         this.visitFunctionBody(stmt.func, scope);
         return;
       }
@@ -2648,6 +2742,7 @@ var Analyzer = class {
         } else {
           this.reference(scope, stmt.target.base);
         }
+        for (const signature of stmt.signatures ?? []) this.visitSignature(signature, scope);
         this.visitFunctionBody(stmt.func, scope, stmt.isMethod);
         return;
       }
@@ -2721,10 +2816,13 @@ var Analyzer = class {
       case "BreakStatement":
       case "ContinueStatement":
       case "ErrorStatement":
+        return;
       case "DeclareStatement":
+        this.visitType(stmt.valueType, scope);
         return;
       case "TypeAliasStatement":
       case "ExportTypeAliasStatement":
+        this.visitType(stmt.definition, scope);
         return;
       case "ImportStatement": {
         if (stmt.defaultImport) {
@@ -2741,6 +2839,18 @@ var Analyzer = class {
       case "ExportDefaultStatement":
         this.visitExpression(stmt.declaration, scope);
         return;
+      case "ExportNamedStatement":
+        if (!stmt.source) {
+          for (const specifier of stmt.specifiers) {
+            const id = this.lookup(scope, specifier.local.name);
+            if (id === void 0) continue;
+            this.bindingOf.set(specifier.local, id);
+            this.bindings.get(id).references.push(specifier.local);
+          }
+        }
+        return;
+      case "ExportAllStatement":
+        return;
     }
   }
   // ---------------- functions ----------------
@@ -2748,6 +2858,7 @@ var Analyzer = class {
     const fnScope = childScope(outerScope);
     func.params.forEach((param, i) => {
       const kind = isMethod && i === 0 ? "self" : "param";
+      this.visitType(param.typeAnnotation, fnScope);
       if (param.default) this.visitExpression(param.default, fnScope);
       if (param.pattern) {
         this.declarePattern(fnScope, param.pattern, kind, fnScope);
@@ -2755,7 +2866,36 @@ var Analyzer = class {
         this.declare(fnScope, param.name, kind, param);
       }
     });
+    this.visitType(func.varargTypeAnnotation, fnScope);
+    this.visitType(func.returnType, fnScope);
     this.visitBlock(func.body, fnScope);
+  }
+  /** An overload signature: no body and no bindings, but its types can hold
+   *  a `typeof x`. */
+  visitSignature(signature, scope) {
+    for (const param of signature.params) this.visitType(param.typeAnnotation, scope);
+    this.visitType(signature.returnType, scope);
+  }
+  /** Resolve the value references inside a type. Only `typeof x` has any —
+   *  everything else in a type names types, which live in their own
+   *  namespace and are not this pass's business. */
+  visitType(node, scope) {
+    if (!node) return;
+    const walk = (value) => {
+      if (!value || typeof value !== "object") return;
+      if (Array.isArray(value)) {
+        for (const item of value) walk(item);
+        return;
+      }
+      if (value.type === "TypeofTypeNode") {
+        this.visitExpression(value.expression, scope);
+        return;
+      }
+      for (const key of Object.keys(value)) {
+        if (key !== "line" && key !== "column") walk(value[key]);
+      }
+    };
+    walk(node);
   }
   // ---------------- expressions ----------------
   visitExpression(expr, scope) {
@@ -2815,6 +2955,11 @@ var Analyzer = class {
         return;
       case "TypeAssertionExpression":
         this.visitExpression(expr.expression, scope);
+        this.visitType(expr.typeAnnotation, scope);
+        return;
+      case "SatisfiesExpression":
+        this.visitExpression(expr.expression, scope);
+        this.visitType(expr.typeAnnotation, scope);
         return;
       case "IfElseExpression":
         for (const clause of expr.clauses) {
@@ -3485,6 +3630,94 @@ function formatKey(k) {
 function analyzeTypes(program, scopes, options = {}) {
   return new TypeAnalyzer(program, scopes, options).run();
 }
+function moduleExports(program, scopes, types, resolveModule) {
+  const byDeclaration = /* @__PURE__ */ new Map();
+  for (const binding of scopes.bindings.values()) {
+    if (binding.declarationNode) byDeclaration.set(binding.declarationNode, binding.id);
+  }
+  const values = /* @__PURE__ */ new Map();
+  const exportedTypes = /* @__PURE__ */ new Map();
+  let defaultType;
+  const stars = [];
+  const setValue = (name, type) => {
+    if (name === "default") defaultType = type;
+    else values.set(name, type);
+  };
+  const reexport = (from, name, as) => {
+    if (!from || from.partial) {
+      setValue(as, anyType);
+      return;
+    }
+    if (name === "default") {
+      if (from.default) setValue(as, from.default);
+      return;
+    }
+    const value = from.values.get(name);
+    if (value) setValue(as, value);
+    const type = from.types.get(name);
+    if (type) exportedTypes.set(as, type);
+  };
+  const aliasParams = (name) => {
+    for (const s of program.body.statements) {
+      const alias = s.type === "TypeAliasStatement" ? s : s.type === "ExportTypeAliasStatement" ? s.alias : void 0;
+      if (alias?.name.name === name) return alias.generics.map((g) => g.name);
+    }
+    return [];
+  };
+  const exportName = (declaration, name) => {
+    const id = byDeclaration.get(declaration);
+    values.set(name, (id !== void 0 ? types.bindingType.get(id) : void 0) ?? anyType);
+  };
+  const exportPattern = (target) => {
+    switch (target.type) {
+      case "IdentifierPattern":
+        exportName(target, target.name);
+        return;
+      case "ObjectPattern":
+        for (const p of target.properties) exportPattern(p.value);
+        if (target.rest) exportPattern(target.rest);
+        return;
+      case "ArrayPattern":
+        for (const el of target.elements) if (el) exportPattern(el.value);
+        if (target.rest) exportPattern(target.rest);
+        return;
+    }
+  };
+  for (const stmt of program.body.statements) {
+    if (stmt.type === "ExportStatement") {
+      const declaration = stmt.declaration;
+      if (declaration.type === "FunctionDeclaration") exportName(declaration.name, declaration.name.name);
+      else for (const target of declaration.names) exportPattern(target);
+    } else if (stmt.type === "ExportTypeAliasStatement") {
+      const name = stmt.alias.name.name;
+      const type = types.aliases.get(name);
+      if (type) exportedTypes.set(name, { type, params: stmt.alias.generics.map((g) => g.name) });
+    } else if (stmt.type === "ExportDefaultStatement") {
+      defaultType = types.typeOf.get(stmt.declaration) ?? anyType;
+    } else if (stmt.type === "ExportNamedStatement") {
+      if (stmt.source) {
+        const from = resolveModule?.(stmt.source.value);
+        for (const s of stmt.specifiers) reexport(from, s.local.name, s.exported.name);
+      } else {
+        for (const s of stmt.specifiers) {
+          const id = scopes.bindingOf.get(s.local);
+          if (id !== void 0) setValue(s.exported.name, types.bindingType.get(id) ?? anyType);
+          const alias = types.aliases.get(s.local.name);
+          if (alias) exportedTypes.set(s.exported.name, { type: alias, params: aliasParams(s.local.name) });
+        }
+      }
+    } else if (stmt.type === "ExportAllStatement") {
+      stars.push(stmt.source.value);
+    }
+  }
+  for (const specifier of stars) {
+    const from = resolveModule?.(specifier);
+    if (!from || from.partial) continue;
+    for (const [name, type] of from.values) if (!values.has(name)) values.set(name, type);
+    for (const [name, type] of from.types) if (!exportedTypes.has(name)) exportedTypes.set(name, type);
+  }
+  return { values, types: exportedTypes, default: defaultType };
+}
 function bindKey(id) {
   return `$${id}`;
 }
@@ -3598,6 +3831,7 @@ var TypeAnalyzer = class {
   typeOf = /* @__PURE__ */ new Map();
   bindingType = /* @__PURE__ */ new Map();
   narrowedTypeOf = /* @__PURE__ */ new Map();
+  typeOfTypeNode = /* @__PURE__ */ new Map();
   /** Public: each alias resolved once (generic aliases keep their params as
    *  `typeParam` nodes in the body). */
   aliases = /* @__PURE__ */ new Map();
@@ -3632,6 +3866,10 @@ var TypeAnalyzer = class {
    *  (`type Tree = { children: Tree[] }`); it resolves to a nominal ref. */
   resolvingAliases = /* @__PURE__ */ new Set();
   diagnostics = [];
+  /** `import`ed type names, from `resolveModule`. */
+  importedTypes = /* @__PURE__ */ new Map();
+  /** `resolveModule` results, one lookup per module path. */
+  resolvedModules = /* @__PURE__ */ new Map();
   emitDiagnostics;
   /** Recursion guard for `preVisitBody`. */
   preVisitDepth = 0;
@@ -3640,6 +3878,7 @@ var TypeAnalyzer = class {
     this.registerAliasDefs(this.program.body);
     for (const lib of this.options.libs ?? []) this.harvestDeclares(lib.body);
     this.harvestDeclares(this.program.body);
+    this.registerImportedTypes();
     this.resolveAllAliases();
     this.indexDeclarations();
     for (const [name, id] of this.scopes.globalsByName) {
@@ -3657,13 +3896,51 @@ var TypeAnalyzer = class {
       typeOf: this.typeOf,
       bindingType: this.bindingType,
       narrowedTypeOf: this.narrowedTypeOf,
-      aliases: this.aliases,
+      typeOfTypeNode: this.typeOfTypeNode,
+      aliases: this.resolveDeferredAliases(),
       diagnostics: this.diagnostics
     };
   }
   // --------------------------------------------------------
   // Aliases
   // --------------------------------------------------------
+  moduleFor(specifier) {
+    if (!this.resolvedModules.has(specifier)) {
+      this.resolvedModules.set(specifier, this.options.resolveModule?.(specifier));
+    }
+    return this.resolvedModules.get(specifier);
+  }
+  /** `export ... from "./x"`: the module must exist, and so must each name. */
+  checkReexport(source, names) {
+    if (!this.options.resolveModule || !this.emitDiagnostics) return;
+    const exports2 = this.moduleFor(source.value);
+    if (!exports2) {
+      this.diagnostics.push({ node: source, message: `Cannot find module '${source.value}'` });
+      return;
+    }
+    if (exports2.partial) return;
+    for (const name of names) {
+      const found = name.name === "default" ? exports2.default !== void 0 : exports2.values.has(name.name) || exports2.types.has(name.name);
+      if (!found) {
+        this.diagnostics.push({ node: name, message: `Module '${source.value}' has no exported member '${name.name}'` });
+      }
+    }
+  }
+  registerImportedTypes() {
+    if (!this.options.resolveModule) return;
+    for (const stmt of this.program.body.statements) {
+      if (stmt.type !== "ImportStatement") continue;
+      const exports2 = this.moduleFor(stmt.source.value);
+      if (!exports2) continue;
+      for (const s of stmt.specifiers) {
+        const exported = exports2.types.get(s.imported.name);
+        if (exported) {
+          this.importedTypes.set(s.local.name, exported);
+          this.aliases.set(s.local.name, exported.type);
+        }
+      }
+    }
+  }
   registerAliasDefs(block) {
     for (const stmt of block.statements) {
       const alias = stmt.type === "TypeAliasStatement" ? stmt : stmt.type === "ExportTypeAliasStatement" ? stmt.alias : void 0;
@@ -3683,10 +3960,22 @@ var TypeAnalyzer = class {
   }
   resolveAllAliases() {
     for (const [name, def] of this.aliasDefs) {
+      if (containsTypeQuery(def.node)) continue;
       this.withTypeParams(def.params, () => {
         this.aliases.set(name, this.resolveType(def.node));
       });
     }
+  }
+  /** The aliases `resolveAllAliases` left for later, now that every binding
+   *  has its type. */
+  resolveDeferredAliases() {
+    for (const [name, def] of this.aliasDefs) {
+      if (this.aliases.has(name)) continue;
+      this.withTypeParams(def.params, () => {
+        this.aliases.set(name, this.resolveType(def.node));
+      });
+    }
+    return this.aliases;
   }
   withTypeParams(params, fn2) {
     const start = this.typeParamScope.length;
@@ -3727,6 +4016,11 @@ var TypeAnalyzer = class {
   // TypeNode -> Type
   // --------------------------------------------------------
   resolveType(node) {
+    const type = this.resolveTypeNode(node);
+    if (this.instantiationDepth === 0) this.typeOfTypeNode.set(node, type);
+    return type;
+  }
+  resolveTypeNode(node) {
     switch (node.type) {
       case "TypeReference": {
         const name = node.namespace ? `${node.namespace}.${node.base}` : node.base;
@@ -3766,6 +4060,16 @@ var TypeAnalyzer = class {
               name: node.base,
               typeArguments: node.typeArguments.map((a) => this.resolveType(a))
             });
+          }
+          const imported = this.importedTypes.get(node.base);
+          if (imported) {
+            if (!imported.params.length) return imported.type;
+            const subst = /* @__PURE__ */ new Map();
+            imported.params.forEach((name2, i) => {
+              const arg = node.typeArguments[i];
+              subst.set(name2, arg ? this.resolveType(arg) : unknownType);
+            });
+            return this.reduceType(substitute(imported.type, subst));
           }
           const lib = this.options.libTypes?.[node.base];
           if (lib) return lib;
@@ -4319,11 +4623,49 @@ var TypeAnalyzer = class {
       case "ExportDefaultStatement":
         this.infer(stmt.declaration, env);
         return;
+      case "ExportNamedStatement": {
+        if (stmt.source) {
+          this.checkReexport(stmt.source, stmt.specifiers.map((s) => s.local));
+          return;
+        }
+        for (const s of stmt.specifiers) {
+          if (this.bindingIdOf(s.local) !== void 0) {
+            this.infer(s.local, env);
+          } else if (!this.aliasDefs.has(s.local.name) && !this.importedTypes.has(s.local.name)) {
+            if (this.emitDiagnostics) {
+              this.diagnostics.push({ node: s.local, message: `Cannot find name '${s.local.name}' to export` });
+            }
+          }
+        }
+        return;
+      }
+      case "ExportAllStatement":
+        this.checkReexport(stmt.source, []);
+        return;
       case "ImportStatement": {
-        const ids = [];
-        if (stmt.defaultImport) ids.push(this.bindingIdOf(stmt.defaultImport));
-        for (const s of stmt.specifiers) ids.push(this.bindingIdOf(s.local));
-        for (const id of ids) if (id !== void 0) this.bindingType.set(id, anyType);
+        const resolving = this.options.resolveModule !== void 0;
+        const exports2 = resolving ? this.moduleFor(stmt.source.value) : void 0;
+        const specifier = stmt.source.value;
+        const report = (node, message) => {
+          if (this.emitDiagnostics) this.diagnostics.push({ node, message });
+        };
+        if (resolving && !exports2) report(stmt.source, `Cannot find module '${specifier}'`);
+        const usable = exports2 && !exports2.partial ? exports2 : void 0;
+        if (stmt.defaultImport) {
+          if (usable && usable.default === void 0) {
+            report(stmt.defaultImport, `Module '${specifier}' has no default export`);
+          }
+          const id = this.bindingIdByName(stmt.defaultImport.name, stmt.defaultImport);
+          if (id !== void 0) this.bindingType.set(id, usable?.default ?? anyType);
+        }
+        for (const s of stmt.specifiers) {
+          const value = usable?.values.get(s.imported.name);
+          if (usable && !value && !usable.types.has(s.imported.name)) {
+            report(s.imported, `Module '${specifier}' has no exported member '${s.imported.name}'`);
+          }
+          const id = this.bindingIdByName(s.local.name, s.local);
+          if (id !== void 0) this.bindingType.set(id, value ?? anyType);
+        }
         return;
       }
       case "BreakStatement":
@@ -4626,11 +4968,18 @@ var TypeAnalyzer = class {
   inferFunctionBody(func, env) {
     const names = func.generics.map((g) => g.name);
     return this.withTypeParams(func.generics, () => {
-      const params = func.params.map((p) => ({
-        name: p.pattern ? void 0 : p.name,
-        type: this.paramType(p, env),
-        optional: p.optional || p.default !== void 0
-      }));
+      const params = func.params.map((p) => {
+        const type = this.paramType(p, env);
+        if (!p.pattern) {
+          const id = this.bindingIdByName(p.name, p);
+          if (id !== void 0 && !this.bindingType.has(id)) this.bindingType.set(id, type);
+        }
+        return {
+          name: p.pattern ? void 0 : p.name,
+          type,
+          optional: p.optional || p.default !== void 0
+        };
+      });
       const bodyEnv = forkEnv(env);
       for (const p of func.params) {
         if (p.pattern) this.bindPattern(p.pattern, this.paramType(p, bodyEnv), bodyEnv, "widen");
@@ -5484,6 +5833,12 @@ var TypeAnalyzer = class {
     return this.bindingByDecl.get(node) ?? this.bindingByPos.get(posKey(name, node.line.start, node.column.start));
   }
 };
+function containsTypeQuery(node) {
+  if (!node || typeof node !== "object") return false;
+  if (Array.isArray(node)) return node.some(containsTypeQuery);
+  if (node.type === "TypeofTypeNode") return true;
+  return Object.values(node).some(containsTypeQuery);
+}
 
 // src/lib/luau.ts
 var import_node_fs = require("fs");
@@ -5549,6 +5904,7 @@ var index_default = luautparser;
   luauLib,
   luautparser,
   matchInfer,
+  moduleExports,
   narrowExclude,
   narrowFalsy,
   narrowTo,

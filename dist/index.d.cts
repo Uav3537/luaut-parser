@@ -115,13 +115,35 @@ interface ExportDefaultStatement extends BaseNode {
     type: "ExportDefaultStatement";
     declaration: Expression;
 }
-type Statement = VariableDeclaration | FunctionDeclaration | FunctionDeclarationStatement | AssignmentStatement | CompoundAssignmentStatement | CallStatement | DoStatement | WhileStatement | RepeatStatement | IfStatement | NumericForStatement | GenericForStatement | ReturnStatement | BreakStatement | ContinueStatement | TypeAliasStatement | ExportTypeAliasStatement | ImportStatement | ExportStatement | ExportDefaultStatement | DeclareStatement | ErrorStatement;
+interface ExportSpecifier extends BaseNode {
+    type: "ExportSpecifier";
+    /** The name in this module — or, with `from`, in the other module. */
+    local: Identifier;
+    /** The name it is exported as — same as `local` unless renamed with `as`. */
+    exported: Identifier;
+}
+/** `export { a, b as c }` exports names declared elsewhere in the module;
+ *  `export { a, b as c } from "./x"` re-exports another module's names. */
+interface ExportNamedStatement extends BaseNode {
+    type: "ExportNamedStatement";
+    specifiers: ExportSpecifier[];
+    source?: StringLiteral;
+}
+/** `export * from "./x"` — every named export of another module (not its
+ *  default), except names this module exports itself. */
+interface ExportAllStatement extends BaseNode {
+    type: "ExportAllStatement";
+    source: StringLiteral;
+}
+type Statement = VariableDeclaration | FunctionDeclaration | FunctionDeclarationStatement | AssignmentStatement | CompoundAssignmentStatement | CallStatement | DoStatement | WhileStatement | RepeatStatement | IfStatement | NumericForStatement | GenericForStatement | ReturnStatement | BreakStatement | ContinueStatement | TypeAliasStatement | ExportTypeAliasStatement | ImportStatement | ExportStatement | ExportDefaultStatement | ExportNamedStatement | ExportAllStatement | DeclareStatement | ErrorStatement;
 /** `declare game: DataModel` / `declare function require(m: string): unknown`
  *  — an ambient value/function declaration for a definitions file (`.d.luaut`).
  *  Contributes a global type; emits no runtime code. */
 interface DeclareStatement extends BaseNode {
     type: "DeclareStatement";
     name: string;
+    /** The name as a node, so tools can point at it — `name` has no span. */
+    id: Identifier;
     /** the declared value's type (function form is lowered to a FunctionTypeNode) */
     valueType: TypeNode;
 }
@@ -295,6 +317,8 @@ interface ExportTypeAliasStatement extends BaseNode {
 interface GenericTypeParameter extends BaseNode {
     type: "GenericTypeParameter";
     name: string;
+    /** The name as a node. Absent on parameters the analyzer synthesizes. */
+    id?: Identifier;
     isPack?: boolean;
     /** `<const T>` — infer the argument at its narrowest instead of widening
      *  it: literals stay literal and array literals become tuples. */
@@ -532,6 +556,8 @@ interface ConditionalTypeNode extends BaseNode {
 interface InferTypeNode extends BaseNode {
     type: "InferTypeNode";
     name: string;
+    /** The bound name as a node. */
+    id?: Identifier;
 }
 /** `{ [K in C]: V }` — a mapped type. `optional` / `readonly` carry the
  *  modifier as written: `true` adds it (`?`), `false` removes it (`-?`),
@@ -540,6 +566,8 @@ interface MappedTypeNode extends BaseNode {
     type: "MappedTypeNode";
     /** The name bound to each key in turn (`K`). */
     parameter: string;
+    /** `parameter` as a node. */
+    parameterId?: Identifier;
     /** The union of keys to map over (`C`). */
     constraint: TypeNode;
     /** `[K in C as R]` — remaps each key through `R`. */
@@ -592,21 +620,22 @@ interface TypeLiteralNumber extends BaseNode {
     type: "TypeLiteralNumber";
     value: number;
 }
-type TableTypeProperty = {
+type TableTypeProperty = ({
     type: "TableTypeIndexer";
     keyType: TypeNode;
     valueType: TypeNode;
-}
+} & BaseNode)
 /** `name: T` (required) or `name?: T` (optional — TS style, the property
  *  may be absent). `optional` reflects the `?` after the name only;
  *  `name: T | nil` is a required property whose value may be nil. */
- | {
+ | ({
     type: "TableTypeProperty";
     name: string;
+    key: Identifier;
     valueType: TypeNode;
     optional: boolean;
     readonly?: boolean;
-};
+} & BaseNode);
 interface TableTypeNode extends BaseNode {
     type: "TableTypeNode";
     properties: TableTypeProperty[];
@@ -626,6 +655,8 @@ interface FunctionTypeParameter extends BaseNode {
     /** `name?: T` — the argument may be omitted, and its type admits `nil`. */
     optional?: boolean;
     name?: string;
+    /** The name as a node (absent for an unnamed parameter). */
+    id?: Identifier;
     typeAnnotation: TypeNode;
 }
 interface FunctionTypeNode extends BaseNode {
@@ -650,6 +681,8 @@ interface ParenthesizedTypeNode extends BaseNode {
     type: "ParenthesizedTypeNode";
     typeAnnotation: TypeNode;
 }
+/** `typeof x` / `typeof x.y` (TypeScript's type query) or `typeof(expr)`
+ *  (Luau's spelling): the type of a value. */
 interface TypeofTypeNode extends BaseNode {
     type: "TypeofTypeNode";
     expression: Expression;
@@ -1043,9 +1076,32 @@ interface TypeAnalysis {
     /** Type of a specific variable *reference*, after flow narrowing at that
      *  point. For an un-narrowed reference this equals `bindingType`. */
     readonly narrowedTypeOf: Map<Identifier, Type>;
-    /** Top-level type aliases, resolved. */
+    /** What every type annotation node resolves to — `number`, `Shape`,
+     *  `typeof x`, a property's type inside `{ ... }`. Inside a generic alias or
+     *  function its parameters stay unresolved (`T`). */
+    readonly typeOfTypeNode: Map<TypeNode | TypePackNode, Type>;
+    /** Top-level type aliases, resolved — and the type names this module
+     *  imports, so tooling treats both alike. */
     readonly aliases: Map<string, Type>;
     readonly diagnostics: TypeDiagnostic[];
+}
+/** A type a module exports: the resolved type, plus the parameter names of a
+ *  generic alias so an importer can instantiate it (`Box<number>`). */
+interface ExportedType {
+    readonly type: Type;
+    readonly params: readonly string[];
+}
+/** What a module makes available to `import`. See `moduleExports`. */
+interface ModuleExports {
+    /** `export const` / `export let` / `export const function` names. */
+    readonly values: ReadonlyMap<string, Type>;
+    /** `export type` names. */
+    readonly types: ReadonlyMap<string, ExportedType>;
+    /** `export default <expr>`. */
+    readonly default?: Type;
+    /** The module is still being analyzed further up an import cycle. Its
+     *  names read as `any`, and nothing about them is reported. */
+    readonly partial?: boolean;
 }
 interface AnalyzeTypesOptions {
     /** Types for pre-registered globals (`analyzeScopes`'s `builtinGlobals`).
@@ -1057,10 +1113,20 @@ interface AnalyzeTypesOptions {
      *  available to annotations and their `declare` statements seed global
      *  types. See `robloxLib`. */
     libs?: readonly Program[];
+    /** Resolve an `import`'s module path to what that module exports. Called
+     *  once per distinct path. Return `undefined` when there is no such module:
+     *  the import is reported and its names are `any`. Without this option
+     *  every import is `any` — a single file cannot know better. */
+    resolveModule?: (specifier: string) => ModuleExports | undefined;
     /** Emit assignability diagnostics (default: true). */
     diagnostics?: boolean;
 }
 declare function analyzeTypes(program: Program, scopes: ScopeAnalysis, options?: AnalyzeTypesOptions): TypeAnalysis;
+/** The exports of an analyzed module, in the shape another module's
+ *  `resolveModule` returns. */
+declare function moduleExports(program: Program, scopes: ScopeAnalysis, types: TypeAnalysis, 
+/** For `export ... from`: the same resolver the module was analyzed with. */
+resolveModule?: (specifier: string) => ModuleExports | undefined): ModuleExports;
 
 /** Absolute path to the shipped `luau.d.luaut`. */
 declare const luauDefsPath: string;
@@ -1099,4 +1165,4 @@ declare const luautparser: {
     readonly analyzeTypes: typeof analyzeTypes;
 };
 
-export { type AnalyzeTypesOptions, type AnyType, type ArrayExpression, type ArrayPattern, type ArrayPatternElement, type ArrayType, type ArrayTypeNode, type AsConstExpression, type AssignmentStatement, type BaseNode, type BaseToken, type BinaryExpression, BinaryOperators, type Binding, type BindingId, type BindingKind, type BindingTarget, type Block, type BooleanLiteral, type BreakStatement, type CallExpression, type CallStatement, type CompoundAssignmentStatement, type ConditionalType, type ConditionalTypeNode, type ContinueStatement, type DeclareStatement, type DifferenceType, type DifferenceTypeNode, type DoStatement, type EOFToken, type ErrorStatement, type ExportDefaultStatement, type ExportStatement, type ExportTypeAliasStatement, type Expression, type FunctionBody, type FunctionDeclaration, type FunctionDeclarationStatement, type FunctionExpression, type FunctionName, type FunctionParam, type FunctionParameter, type FunctionSignature, type FunctionType, type FunctionTypeNode, type FunctionTypeParameter, type GenericForStatement, type GenericRefType, type GenericTypeParameter, type Identifier, type IdentifierPattern, type IdentifierToken, type IfClause, type IfElseExpression, type IfStatement, type ImportSpecifier, type ImportStatement, type IndexExpression, type IndexedAccessType, type IndexedAccessTypeNode, type InferType, type InferTypeNode, type InterpolatedStringExpression, type InterpolatedStringPart, type InterpolatedStringPart_Expression, type InterpolatedStringPart_String, type InterpolatedStringToken, type IntersectionType, type IntersectionTypeNode, type KeyofType, type KeyofTypeNode, type KeywordToken, Keywords, LexError, type LiteralToken, type LiteralType, type MappedType, type MappedTypeNode, type MemberExpression, type MethodCallExpression, type NeverType, type NilLiteral, type Node, type NumberLiteral, type NumericForStatement, type ObjectPattern, type ObjectPatternProperty, type ObjectProperty, type ObjectType, type OperatorToken, Operators, type ParenthesizedExpression, type ParenthesizedTypeNode, ParseError, type ParserOptions, type PrimitiveName, type PrimitiveType, type Program, type PunctuatorToken, Punctuators, type RecoverResult, type RepeatStatement, type ReturnStatement, type SatisfiesExpression, type ScopeAnalysis, type ScopeDiagnostic, type SpreadElement, type Statement, type StringLiteral, type TableExpression, type TableField, type TableTypeNode, type TableTypeProperty, type TemplateLiteralType, type TemplateLiteralTypeNode, type Token, type TupleType, type TupleTypeNode, type Type, type TypeAliasStatement, type TypeAnalysis, type TypeAssertionExpression, type TypeDiagnostic, type TypeLiteralBoolean, type TypeLiteralNumber, type TypeLiteralString, type TypeNode, type TypePackNode, type TypeParamType, type TypePredicate, type TypePredicateNode, type TypeReference, type TypedIdentifier, type TypeofTypeNode, type UnaryExpression, UnaryOperators, type UnionType, type UnionTypeNode, type UnknownType, type VarargExpression, type VariableDeclaration, type VariadicTypeNode, type WhileStatement, analyzeScopes, analyzeTypes, anyType, arrayOf, booleanType, bufferType, containsTypeParam, luautparser as default, defaultLibs, difference, equalTypes, falsyType, fn, formatType, getBinding, intersection, isAssignable, isGlobal, isPossiblyFalsy, isPossiblyTruthy, isUnassignedGlobal, literal, luauDefs, luauDefsPath, luauLib, luautparser, matchInfer, narrowExclude, narrowFalsy, narrowTo, narrowTruthy, neverType, nilType, numberType, objectType, optional, overlaps, parse, parseExpressionFromSource, parseTokens, parseWithRecovery, primitive, robloxDefs, robloxDefsPath, robloxLib, setAliasExpander, stringType, substitute, templateMatches, threadType, tokenize, tuple, typeParam, unify, union, unknownType, widen };
+export { type AnalyzeTypesOptions, type AnyType, type ArrayExpression, type ArrayPattern, type ArrayPatternElement, type ArrayType, type ArrayTypeNode, type AsConstExpression, type AssignmentStatement, type BaseNode, type BaseToken, type BinaryExpression, BinaryOperators, type Binding, type BindingId, type BindingKind, type BindingTarget, type Block, type BooleanLiteral, type BreakStatement, type CallExpression, type CallStatement, type CompoundAssignmentStatement, type ConditionalType, type ConditionalTypeNode, type ContinueStatement, type DeclareStatement, type DifferenceType, type DifferenceTypeNode, type DoStatement, type EOFToken, type ErrorStatement, type ExportAllStatement, type ExportDefaultStatement, type ExportNamedStatement, type ExportSpecifier, type ExportStatement, type ExportTypeAliasStatement, type ExportedType, type Expression, type FunctionBody, type FunctionDeclaration, type FunctionDeclarationStatement, type FunctionExpression, type FunctionName, type FunctionParam, type FunctionParameter, type FunctionSignature, type FunctionType, type FunctionTypeNode, type FunctionTypeParameter, type GenericForStatement, type GenericRefType, type GenericTypeParameter, type Identifier, type IdentifierPattern, type IdentifierToken, type IfClause, type IfElseExpression, type IfStatement, type ImportSpecifier, type ImportStatement, type IndexExpression, type IndexedAccessType, type IndexedAccessTypeNode, type InferType, type InferTypeNode, type InterpolatedStringExpression, type InterpolatedStringPart, type InterpolatedStringPart_Expression, type InterpolatedStringPart_String, type InterpolatedStringToken, type IntersectionType, type IntersectionTypeNode, type KeyofType, type KeyofTypeNode, type KeywordToken, Keywords, LexError, type LiteralToken, type LiteralType, type MappedType, type MappedTypeNode, type MemberExpression, type MethodCallExpression, type ModuleExports, type NeverType, type NilLiteral, type Node, type NumberLiteral, type NumericForStatement, type ObjectPattern, type ObjectPatternProperty, type ObjectProperty, type ObjectType, type OperatorToken, Operators, type ParenthesizedExpression, type ParenthesizedTypeNode, ParseError, type ParserOptions, type PrimitiveName, type PrimitiveType, type Program, type PunctuatorToken, Punctuators, type RecoverResult, type RepeatStatement, type ReturnStatement, type SatisfiesExpression, type ScopeAnalysis, type ScopeDiagnostic, type SpreadElement, type Statement, type StringLiteral, type TableExpression, type TableField, type TableTypeNode, type TableTypeProperty, type TemplateLiteralType, type TemplateLiteralTypeNode, type Token, type TupleType, type TupleTypeNode, type Type, type TypeAliasStatement, type TypeAnalysis, type TypeAssertionExpression, type TypeDiagnostic, type TypeLiteralBoolean, type TypeLiteralNumber, type TypeLiteralString, type TypeNode, type TypePackNode, type TypeParamType, type TypePredicate, type TypePredicateNode, type TypeReference, type TypedIdentifier, type TypeofTypeNode, type UnaryExpression, UnaryOperators, type UnionType, type UnionTypeNode, type UnknownType, type VarargExpression, type VariableDeclaration, type VariadicTypeNode, type WhileStatement, analyzeScopes, analyzeTypes, anyType, arrayOf, booleanType, bufferType, containsTypeParam, luautparser as default, defaultLibs, difference, equalTypes, falsyType, fn, formatType, getBinding, intersection, isAssignable, isGlobal, isPossiblyFalsy, isPossiblyTruthy, isUnassignedGlobal, literal, luauDefs, luauDefsPath, luauLib, luautparser, matchInfer, moduleExports, narrowExclude, narrowFalsy, narrowTo, narrowTruthy, neverType, nilType, numberType, objectType, optional, overlaps, parse, parseExpressionFromSource, parseTokens, parseWithRecovery, primitive, robloxDefs, robloxDefsPath, robloxLib, setAliasExpander, stringType, substitute, templateMatches, threadType, tokenize, tuple, typeParam, unify, union, unknownType, widen };

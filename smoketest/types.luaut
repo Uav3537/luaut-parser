@@ -29,3 +29,7 @@ const litNum = 5 as const
 const widened = origin as Vec2
 
 print(origin, path, entry, grid, maybe, frozen, frozenList, litNum, widened)
+
+const obj = {
+    a: 1
+}

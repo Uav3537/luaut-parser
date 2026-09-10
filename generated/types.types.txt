@@ -4,6 +4,7 @@ frozenList: [10, 20, 30]
 grid: number[][]
 litNum: 5
 maybe: number | nil
+obj: { a: number }
 origin: Vec2
 path: Vec2[]
 widened: Vec2
