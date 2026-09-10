@@ -1,0 +1,14 @@
+alsoNumber: number
+args: [number]
+clampTo: (limit: number, value: number) -> number
+copy: { muted: boolean, volume: number }
+count: number
+defaults: { muted: boolean, volume: number }
+doubled: number
+limit: number
+n: number
+other: Settings
+paren: number
+scale: (n: number) -> number
+value: number
+volume: number

@@ -27,6 +27,18 @@
                 {
                   "type": "TableTypeProperty",
                   "name": "kind",
+                  "key": {
+                    "type": "Identifier",
+                    "name": "kind",
+                    "line": {
+                      "start": 11,
+                      "end": 11
+                    },
+                    "column": {
+                      "start": 9,
+                      "end": 13
+                    }
+                  },
                   "valueType": {
                     "type": "TypeLiteralString",
                     "value": "circle",
@@ -39,11 +51,31 @@
                       "end": 23
                     }
                   },
-                  "optional": false
+                  "optional": false,
+                  "line": {
+                    "start": 11,
+                    "end": 11
+                  },
+                  "column": {
+                    "start": 9,
+                    "end": 23
+                  }
                 },
                 {
                   "type": "TableTypeProperty",
                   "name": "radius",
+                  "key": {
+                    "type": "Identifier",
+                    "name": "radius",
+                    "line": {
+                      "start": 11,
+                      "end": 11
+                    },
+                    "column": {
+                      "start": 25,
+                      "end": 31
+                    }
+                  },
                   "valueType": {
                     "type": "TypeReference",
                     "base": "number",
@@ -57,7 +89,15 @@
                       "end": 39
                     }
                   },
-                  "optional": false
+                  "optional": false,
+                  "line": {
+                    "start": 11,
+                    "end": 11
+                  },
+                  "column": {
+                    "start": 25,
+                    "end": 39
+                  }
                 }
               ],
               "line": {
@@ -75,6 +115,18 @@
                 {
                   "type": "TableTypeProperty",
                   "name": "kind",
+                  "key": {
+                    "type": "Identifier",
+                    "name": "kind",
+                    "line": {
+                      "start": 12,
+                      "end": 12
+                    },
+                    "column": {
+                      "start": 9,
+                      "end": 13
+                    }
+                  },
                   "valueType": {
                     "type": "TypeLiteralString",
                     "value": "rect",
@@ -87,11 +139,31 @@
                       "end": 21
                     }
                   },
-                  "optional": false
+                  "optional": false,
+                  "line": {
+                    "start": 12,
+                    "end": 12
+                  },
+                  "column": {
+                    "start": 9,
+                    "end": 21
+                  }
                 },
                 {
                   "type": "TableTypeProperty",
                   "name": "w",
+                  "key": {
+                    "type": "Identifier",
+                    "name": "w",
+                    "line": {
+                      "start": 12,
+                      "end": 12
+                    },
+                    "column": {
+                      "start": 23,
+                      "end": 24
+                    }
+                  },
                   "valueType": {
                     "type": "TypeReference",
                     "base": "number",
@@ -105,11 +177,31 @@
                       "end": 32
                     }
                   },
-                  "optional": false
+                  "optional": false,
+                  "line": {
+                    "start": 12,
+                    "end": 12
+                  },
+                  "column": {
+                    "start": 23,
+                    "end": 32
+                  }
                 },
                 {
                   "type": "TableTypeProperty",
                   "name": "h",
+                  "key": {
+                    "type": "Identifier",
+                    "name": "h",
+                    "line": {
+                      "start": 12,
+                      "end": 12
+                    },
+                    "column": {
+                      "start": 34,
+                      "end": 35
+                    }
+                  },
                   "valueType": {
                     "type": "TypeReference",
                     "base": "number",
@@ -123,7 +215,15 @@
                       "end": 43
                     }
                   },
-                  "optional": false
+                  "optional": false,
+                  "line": {
+                    "start": 12,
+                    "end": 12
+                  },
+                  "column": {
+                    "start": 34,
+                    "end": 43
+                  }
                 }
               ],
               "line": {
@@ -175,6 +275,18 @@
             {
               "type": "TableTypeProperty",
               "name": "shape",
+              "key": {
+                "type": "Identifier",
+                "name": "shape",
+                "line": {
+                  "start": 14,
+                  "end": 14
+                },
+                "column": {
+                  "start": 18,
+                  "end": 23
+                }
+              },
               "valueType": {
                 "type": "TypeReference",
                 "base": "Shape",
@@ -188,11 +300,31 @@
                   "end": 30
                 }
               },
-              "optional": false
+              "optional": false,
+              "line": {
+                "start": 14,
+                "end": 14
+              },
+              "column": {
+                "start": 18,
+                "end": 30
+              }
             },
             {
               "type": "TableTypeProperty",
               "name": "label",
+              "key": {
+                "type": "Identifier",
+                "name": "label",
+                "line": {
+                  "start": 14,
+                  "end": 14
+                },
+                "column": {
+                  "start": 32,
+                  "end": 37
+                }
+              },
               "valueType": {
                 "type": "UnionTypeNode",
                 "types": [
@@ -232,7 +364,15 @@
                   "end": 51
                 }
               },
-              "optional": false
+              "optional": false,
+              "line": {
+                "start": 14,
+                "end": 14
+              },
+              "column": {
+                "start": 32,
+                "end": 51
+              }
             }
           ],
           "line": {
@@ -2117,6 +2257,18 @@
                 {
                   "type": "TableTypeProperty",
                   "name": "kind",
+                  "key": {
+                    "type": "Identifier",
+                    "name": "kind",
+                    "line": {
+                      "start": 60,
+                      "end": 60
+                    },
+                    "column": {
+                      "start": 43,
+                      "end": 47
+                    }
+                  },
                   "valueType": {
                     "type": "TypeLiteralString",
                     "value": "circle",
@@ -2129,11 +2281,31 @@
                       "end": 57
                     }
                   },
-                  "optional": false
+                  "optional": false,
+                  "line": {
+                    "start": 60,
+                    "end": 60
+                  },
+                  "column": {
+                    "start": 43,
+                    "end": 57
+                  }
                 },
                 {
                   "type": "TableTypeProperty",
                   "name": "radius",
+                  "key": {
+                    "type": "Identifier",
+                    "name": "radius",
+                    "line": {
+                      "start": 60,
+                      "end": 60
+                    },
+                    "column": {
+                      "start": 59,
+                      "end": 65
+                    }
+                  },
                   "valueType": {
                     "type": "TypeReference",
                     "base": "number",
@@ -2147,7 +2319,15 @@
                       "end": 73
                     }
                   },
-                  "optional": false
+                  "optional": false,
+                  "line": {
+                    "start": 60,
+                    "end": 60
+                  },
+                  "column": {
+                    "start": 59,
+                    "end": 73
+                  }
                 }
               ],
               "line": {

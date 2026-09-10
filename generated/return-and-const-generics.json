@@ -6,6 +6,18 @@
       {
         "type": "DeclareStatement",
         "name": "cond",
+        "id": {
+          "type": "Identifier",
+          "name": "cond",
+          "line": {
+            "start": 12,
+            "end": 12
+          },
+          "column": {
+            "start": 9,
+            "end": 13
+          }
+        },
         "valueType": {
           "type": "TypeReference",
           "base": "number",
@@ -1392,12 +1404,36 @@
       {
         "type": "DeclareStatement",
         "name": "plain",
+        "id": {
+          "type": "Identifier",
+          "name": "plain",
+          "line": {
+            "start": 57,
+            "end": 57
+          },
+          "column": {
+            "start": 18,
+            "end": 23
+          }
+        },
         "valueType": {
           "type": "FunctionTypeNode",
           "generics": [
             {
               "type": "GenericTypeParameter",
               "name": "T",
+              "id": {
+                "type": "Identifier",
+                "name": "T",
+                "line": {
+                  "start": 57,
+                  "end": 57
+                },
+                "column": {
+                  "start": 24,
+                  "end": 25
+                }
+              },
               "isPack": false,
               "line": {
                 "start": 57,
@@ -1413,6 +1449,18 @@
             {
               "type": "FunctionTypeParameter",
               "name": "v",
+              "id": {
+                "type": "Identifier",
+                "name": "v",
+                "line": {
+                  "start": 57,
+                  "end": 57
+                },
+                "column": {
+                  "start": 27,
+                  "end": 28
+                }
+              },
               "typeAnnotation": {
                 "type": "TypeReference",
                 "base": "T",
@@ -1431,8 +1479,8 @@
                 "end": 57
               },
               "column": {
-                "start": 1,
-                "end": 35
+                "start": 27,
+                "end": 31
               }
             }
           ],
@@ -1471,12 +1519,36 @@
       {
         "type": "DeclareStatement",
         "name": "narrow",
+        "id": {
+          "type": "Identifier",
+          "name": "narrow",
+          "line": {
+            "start": 58,
+            "end": 58
+          },
+          "column": {
+            "start": 18,
+            "end": 24
+          }
+        },
         "valueType": {
           "type": "FunctionTypeNode",
           "generics": [
             {
               "type": "GenericTypeParameter",
               "name": "T",
+              "id": {
+                "type": "Identifier",
+                "name": "T",
+                "line": {
+                  "start": 58,
+                  "end": 58
+                },
+                "column": {
+                  "start": 31,
+                  "end": 32
+                }
+              },
               "isPack": false,
               "isConst": true,
               "line": {
@@ -1493,6 +1565,18 @@
             {
               "type": "FunctionTypeParameter",
               "name": "v",
+              "id": {
+                "type": "Identifier",
+                "name": "v",
+                "line": {
+                  "start": 58,
+                  "end": 58
+                },
+                "column": {
+                  "start": 34,
+                  "end": 35
+                }
+              },
               "typeAnnotation": {
                 "type": "TypeReference",
                 "base": "T",
@@ -1511,8 +1595,8 @@
                 "end": 58
               },
               "column": {
-                "start": 1,
-                "end": 42
+                "start": 34,
+                "end": 38
               }
             }
           ],
@@ -1764,6 +1848,18 @@
                 {
                   "type": "TableTypeProperty",
                   "name": "k",
+                  "key": {
+                    "type": "Identifier",
+                    "name": "k",
+                    "line": {
+                      "start": 62,
+                      "end": 62
+                    },
+                    "column": {
+                      "start": 23,
+                      "end": 24
+                    }
+                  },
                   "valueType": {
                     "type": "TypeReference",
                     "base": "number",
@@ -1777,7 +1873,15 @@
                       "end": 32
                     }
                   },
-                  "optional": false
+                  "optional": false,
+                  "line": {
+                    "start": 62,
+                    "end": 62
+                  },
+                  "column": {
+                    "start": 23,
+                    "end": 32
+                  }
                 }
               ],
               "line": {
@@ -2174,6 +2278,18 @@
                 {
                   "type": "TableTypeProperty",
                   "name": "k",
+                  "key": {
+                    "type": "Identifier",
+                    "name": "k",
+                    "line": {
+                      "start": 67,
+                      "end": 67
+                    },
+                    "column": {
+                      "start": 29,
+                      "end": 30
+                    }
+                  },
                   "valueType": {
                     "type": "TypeLiteralNumber",
                     "value": 1,
@@ -2187,7 +2303,15 @@
                     }
                   },
                   "optional": false,
-                  "readonly": true
+                  "readonly": true,
+                  "line": {
+                    "start": 67,
+                    "end": 67
+                  },
+                  "column": {
+                    "start": 20,
+                    "end": 33
+                  }
                 }
               ],
               "line": {
@@ -2281,12 +2405,36 @@
       {
         "type": "DeclareStatement",
         "name": "keyed",
+        "id": {
+          "type": "Identifier",
+          "name": "keyed",
+          "line": {
+            "start": 70,
+            "end": 70
+          },
+          "column": {
+            "start": 18,
+            "end": 23
+          }
+        },
         "valueType": {
           "type": "FunctionTypeNode",
           "generics": [
             {
               "type": "GenericTypeParameter",
               "name": "K",
+              "id": {
+                "type": "Identifier",
+                "name": "K",
+                "line": {
+                  "start": 70,
+                  "end": 70
+                },
+                "column": {
+                  "start": 30,
+                  "end": 31
+                }
+              },
               "isPack": false,
               "isConst": true,
               "constraint": {
@@ -2316,6 +2464,18 @@
             {
               "type": "FunctionTypeParameter",
               "name": "k",
+              "id": {
+                "type": "Identifier",
+                "name": "k",
+                "line": {
+                  "start": 70,
+                  "end": 70
+                },
+                "column": {
+                  "start": 48,
+                  "end": 49
+                }
+              },
               "typeAnnotation": {
                 "type": "TypeReference",
                 "base": "K",
@@ -2334,8 +2494,8 @@
                 "end": 70
               },
               "column": {
-                "start": 1,
-                "end": 56
+                "start": 48,
+                "end": 52
               }
             }
           ],
@@ -2470,12 +2630,36 @@
             {
               "type": "TableTypeProperty",
               "name": "of",
+              "key": {
+                "type": "Identifier",
+                "name": "of",
+                "line": {
+                  "start": 74,
+                  "end": 74
+                },
+                "column": {
+                  "start": 14,
+                  "end": 16
+                }
+              },
               "valueType": {
                 "type": "FunctionTypeNode",
                 "generics": [
                   {
                     "type": "GenericTypeParameter",
                     "name": "T",
+                    "id": {
+                      "type": "Identifier",
+                      "name": "T",
+                      "line": {
+                        "start": 74,
+                        "end": 74
+                      },
+                      "column": {
+                        "start": 25,
+                        "end": 26
+                      }
+                    },
                     "isPack": false,
                     "isConst": true,
                     "line": {
@@ -2505,12 +2689,24 @@
                         "end": 37
                       }
                     },
+                    "id": {
+                      "type": "Identifier",
+                      "name": "self",
+                      "line": {
+                        "start": 74,
+                        "end": 74
+                      },
+                      "column": {
+                        "start": 28,
+                        "end": 32
+                      }
+                    },
                     "line": {
                       "start": 74,
                       "end": 74
                     },
                     "column": {
-                      "start": 34,
+                      "start": 28,
                       "end": 37
                     }
                   },
@@ -2530,12 +2726,24 @@
                         "end": 43
                       }
                     },
+                    "id": {
+                      "type": "Identifier",
+                      "name": "v",
+                      "line": {
+                        "start": 74,
+                        "end": 74
+                      },
+                      "column": {
+                        "start": 39,
+                        "end": 40
+                      }
+                    },
                     "line": {
                       "start": 74,
                       "end": 74
                     },
                     "column": {
-                      "start": 42,
+                      "start": 39,
                       "end": 43
                     }
                   }
@@ -2547,6 +2755,18 @@
                     {
                       "type": "TableTypeProperty",
                       "name": "value",
+                      "key": {
+                        "type": "Identifier",
+                        "name": "value",
+                        "line": {
+                          "start": 74,
+                          "end": 74
+                        },
+                        "column": {
+                          "start": 50,
+                          "end": 55
+                        }
+                      },
                       "valueType": {
                         "type": "TypeReference",
                         "base": "T",
@@ -2560,7 +2780,15 @@
                           "end": 58
                         }
                       },
-                      "optional": false
+                      "optional": false,
+                      "line": {
+                        "start": 74,
+                        "end": 74
+                      },
+                      "column": {
+                        "start": 50,
+                        "end": 58
+                      }
                     }
                   ],
                   "line": {
@@ -2581,7 +2809,15 @@
                   "end": 60
                 }
               },
-              "optional": false
+              "optional": false,
+              "line": {
+                "start": 74,
+                "end": 74
+              },
+              "column": {
+                "start": 14,
+                "end": 60
+              }
             }
           ],
           "line": {
@@ -2605,6 +2841,18 @@
       {
         "type": "DeclareStatement",
         "name": "box",
+        "id": {
+          "type": "Identifier",
+          "name": "box",
+          "line": {
+            "start": 75,
+            "end": 75
+          },
+          "column": {
+            "start": 9,
+            "end": 12
+          }
+        },
         "valueType": {
           "type": "TypeReference",
           "base": "Box",
@@ -2648,6 +2896,18 @@
                 {
                   "type": "TableTypeProperty",
                   "name": "value",
+                  "key": {
+                    "type": "Identifier",
+                    "name": "value",
+                    "line": {
+                      "start": 76,
+                      "end": 76
+                    },
+                    "column": {
+                      "start": 16,
+                      "end": 21
+                    }
+                  },
                   "valueType": {
                     "type": "TupleTypeNode",
                     "elements": [
@@ -2685,7 +2945,15 @@
                       "end": 33
                     }
                   },
-                  "optional": false
+                  "optional": false,
+                  "line": {
+                    "start": 76,
+                    "end": 76
+                  },
+                  "column": {
+                    "start": 16,
+                    "end": 33
+                  }
                 }
               ],
               "line": {

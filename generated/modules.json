@@ -267,6 +267,18 @@
               {
                 "type": "TableTypeProperty",
                 "name": "x",
+                "key": {
+                  "type": "Identifier",
+                  "name": "x",
+                  "line": {
+                    "start": 7,
+                    "end": 7
+                  },
+                  "column": {
+                    "start": 23,
+                    "end": 24
+                  }
+                },
                 "valueType": {
                   "type": "TypeReference",
                   "base": "number",
@@ -280,11 +292,31 @@
                     "end": 32
                   }
                 },
-                "optional": false
+                "optional": false,
+                "line": {
+                  "start": 7,
+                  "end": 7
+                },
+                "column": {
+                  "start": 23,
+                  "end": 32
+                }
               },
               {
                 "type": "TableTypeProperty",
                 "name": "y",
+                "key": {
+                  "type": "Identifier",
+                  "name": "y",
+                  "line": {
+                    "start": 7,
+                    "end": 7
+                  },
+                  "column": {
+                    "start": 34,
+                    "end": 35
+                  }
+                },
                 "valueType": {
                   "type": "TypeReference",
                   "base": "number",
@@ -298,7 +330,15 @@
                     "end": 43
                   }
                 },
-                "optional": false
+                "optional": false,
+                "line": {
+                  "start": 7,
+                  "end": 7
+                },
+                "column": {
+                  "start": 34,
+                  "end": 43
+                }
               }
             ],
             "line": {

@@ -21,6 +21,18 @@
           {
             "type": "GenericTypeParameter",
             "name": "T",
+            "id": {
+              "type": "Identifier",
+              "name": "T",
+              "line": {
+                "start": 3,
+                "end": 3
+              },
+              "column": {
+                "start": 10,
+                "end": 11
+              }
+            },
             "isPack": false,
             "line": {
               "start": 3,
@@ -38,6 +50,18 @@
             {
               "type": "TableTypeProperty",
               "name": "value",
+              "key": {
+                "type": "Identifier",
+                "name": "value",
+                "line": {
+                  "start": 3,
+                  "end": 3
+                },
+                "column": {
+                  "start": 17,
+                  "end": 22
+                }
+              },
               "valueType": {
                 "type": "TypeReference",
                 "base": "T",
@@ -51,7 +75,15 @@
                   "end": 25
                 }
               },
-              "optional": false
+              "optional": false,
+              "line": {
+                "start": 3,
+                "end": 3
+              },
+              "column": {
+                "start": 17,
+                "end": 25
+              }
             }
           ],
           "line": {
@@ -90,6 +122,18 @@
           {
             "type": "GenericTypeParameter",
             "name": "A",
+            "id": {
+              "type": "Identifier",
+              "name": "A",
+              "line": {
+                "start": 4,
+                "end": 4
+              },
+              "column": {
+                "start": 11,
+                "end": 12
+              }
+            },
             "isPack": false,
             "line": {
               "start": 4,
@@ -103,6 +147,18 @@
           {
             "type": "GenericTypeParameter",
             "name": "B",
+            "id": {
+              "type": "Identifier",
+              "name": "B",
+              "line": {
+                "start": 4,
+                "end": 4
+              },
+              "column": {
+                "start": 14,
+                "end": 15
+              }
+            },
             "isPack": false,
             "line": {
               "start": 4,
@@ -120,6 +176,18 @@
             {
               "type": "TableTypeProperty",
               "name": "first",
+              "key": {
+                "type": "Identifier",
+                "name": "first",
+                "line": {
+                  "start": 4,
+                  "end": 4
+                },
+                "column": {
+                  "start": 21,
+                  "end": 26
+                }
+              },
               "valueType": {
                 "type": "TypeReference",
                 "base": "A",
@@ -133,11 +201,31 @@
                   "end": 29
                 }
               },
-              "optional": false
+              "optional": false,
+              "line": {
+                "start": 4,
+                "end": 4
+              },
+              "column": {
+                "start": 21,
+                "end": 29
+              }
             },
             {
               "type": "TableTypeProperty",
               "name": "second",
+              "key": {
+                "type": "Identifier",
+                "name": "second",
+                "line": {
+                  "start": 4,
+                  "end": 4
+                },
+                "column": {
+                  "start": 31,
+                  "end": 37
+                }
+              },
               "valueType": {
                 "type": "TypeReference",
                 "base": "B",
@@ -151,7 +239,15 @@
                   "end": 40
                 }
               },
-              "optional": false
+              "optional": false,
+              "line": {
+                "start": 4,
+                "end": 4
+              },
+              "column": {
+                "start": 31,
+                "end": 40
+              }
             }
           ],
           "line": {
@@ -190,6 +286,18 @@
           {
             "type": "GenericTypeParameter",
             "name": "V",
+            "id": {
+              "type": "Identifier",
+              "name": "V",
+              "line": {
+                "start": 5,
+                "end": 5
+              },
+              "column": {
+                "start": 11,
+                "end": 12
+              }
+            },
             "isPack": false,
             "line": {
               "start": 5,
@@ -231,6 +339,14 @@
                   "start": 28,
                   "end": 29
                 }
+              },
+              "line": {
+                "start": 5,
+                "end": 5
+              },
+              "column": {
+                "start": 18,
+                "end": 29
               }
             }
           ],
@@ -270,6 +386,18 @@
           {
             "type": "GenericTypeParameter",
             "name": "T",
+            "id": {
+              "type": "Identifier",
+              "name": "T",
+              "line": {
+                "start": 6,
+                "end": 6
+              },
+              "column": {
+                "start": 13,
+                "end": 14
+              }
+            },
             "isPack": false,
             "line": {
               "start": 6,
@@ -283,6 +411,18 @@
           {
             "type": "GenericTypeParameter",
             "name": "E",
+            "id": {
+              "type": "Identifier",
+              "name": "E",
+              "line": {
+                "start": 6,
+                "end": 6
+              },
+              "column": {
+                "start": 16,
+                "end": 17
+              }
+            },
             "isPack": false,
             "default": {
               "type": "TypeReference",
@@ -316,6 +456,18 @@
                 {
                   "type": "TableTypeProperty",
                   "name": "ok",
+                  "key": {
+                    "type": "Identifier",
+                    "name": "ok",
+                    "line": {
+                      "start": 6,
+                      "end": 6
+                    },
+                    "column": {
+                      "start": 32,
+                      "end": 34
+                    }
+                  },
                   "valueType": {
                     "type": "TypeLiteralBoolean",
                     "value": true,
@@ -328,11 +480,31 @@
                       "end": 40
                     }
                   },
-                  "optional": false
+                  "optional": false,
+                  "line": {
+                    "start": 6,
+                    "end": 6
+                  },
+                  "column": {
+                    "start": 32,
+                    "end": 40
+                  }
                 },
                 {
                   "type": "TableTypeProperty",
                   "name": "value",
+                  "key": {
+                    "type": "Identifier",
+                    "name": "value",
+                    "line": {
+                      "start": 6,
+                      "end": 6
+                    },
+                    "column": {
+                      "start": 42,
+                      "end": 47
+                    }
+                  },
                   "valueType": {
                     "type": "TypeReference",
                     "base": "T",
@@ -346,7 +518,15 @@
                       "end": 50
                     }
                   },
-                  "optional": false
+                  "optional": false,
+                  "line": {
+                    "start": 6,
+                    "end": 6
+                  },
+                  "column": {
+                    "start": 42,
+                    "end": 50
+                  }
                 }
               ],
               "line": {
@@ -364,6 +544,18 @@
                 {
                   "type": "TableTypeProperty",
                   "name": "ok",
+                  "key": {
+                    "type": "Identifier",
+                    "name": "ok",
+                    "line": {
+                      "start": 6,
+                      "end": 6
+                    },
+                    "column": {
+                      "start": 57,
+                      "end": 59
+                    }
+                  },
                   "valueType": {
                     "type": "TypeLiteralBoolean",
                     "value": false,
@@ -376,11 +568,31 @@
                       "end": 66
                     }
                   },
-                  "optional": false
+                  "optional": false,
+                  "line": {
+                    "start": 6,
+                    "end": 6
+                  },
+                  "column": {
+                    "start": 57,
+                    "end": 66
+                  }
                 },
                 {
                   "type": "TableTypeProperty",
                   "name": "error",
+                  "key": {
+                    "type": "Identifier",
+                    "name": "error",
+                    "line": {
+                      "start": 6,
+                      "end": 6
+                    },
+                    "column": {
+                      "start": 68,
+                      "end": 73
+                    }
+                  },
                   "valueType": {
                     "type": "TypeReference",
                     "base": "E",
@@ -394,7 +606,15 @@
                       "end": 76
                     }
                   },
-                  "optional": false
+                  "optional": false,
+                  "line": {
+                    "start": 6,
+                    "end": 6
+                  },
+                  "column": {
+                    "start": 68,
+                    "end": 76
+                  }
                 }
               ],
               "line": {
@@ -926,6 +1146,18 @@
             {
               "type": "GenericTypeParameter",
               "name": "T",
+              "id": {
+                "type": "Identifier",
+                "name": "T",
+                "line": {
+                  "start": 14,
+                  "end": 14
+                },
+                "column": {
+                  "start": 25,
+                  "end": 26
+                }
+              },
               "isPack": false,
               "line": {
                 "start": 14,
@@ -1055,6 +1287,18 @@
             {
               "type": "GenericTypeParameter",
               "name": "T",
+              "id": {
+                "type": "Identifier",
+                "name": "T",
+                "line": {
+                  "start": 18,
+                  "end": 18
+                },
+                "column": {
+                  "start": 22,
+                  "end": 23
+                }
+              },
               "isPack": false,
               "line": {
                 "start": 18,
@@ -1219,6 +1463,18 @@
             {
               "type": "GenericTypeParameter",
               "name": "A",
+              "id": {
+                "type": "Identifier",
+                "name": "A",
+                "line": {
+                  "start": 22,
+                  "end": 22
+                },
+                "column": {
+                  "start": 21,
+                  "end": 22
+                }
+              },
               "isPack": false,
               "line": {
                 "start": 22,
@@ -1232,6 +1488,18 @@
             {
               "type": "GenericTypeParameter",
               "name": "B",
+              "id": {
+                "type": "Identifier",
+                "name": "B",
+                "line": {
+                  "start": 22,
+                  "end": 22
+                },
+                "column": {
+                  "start": 24,
+                  "end": 25
+                }
+              },
               "isPack": false,
               "line": {
                 "start": 22,

@@ -1,3 +1,4 @@
+import type { TypeNode, TypePackNode, TypeofTypeNode } from "./nodes"
 // ============================================================
 // Scope / binding analysis
 // ------------------------------------------------------------
@@ -312,6 +313,7 @@ class Analyzer {
                 // Initializers see the *old* bindings — `const x = x` reads
                 // the outer `x`, not the one being declared.
                 for (const init of stmt.init) this.visitExpression(init, scope)
+                for (const name of stmt.names) this.visitType(name.typeAnnotation, scope)
                 const isConst = stmt.kind === "const"
                 for (const name of stmt.names) this.declarePattern(scope, name, "local", scope, isConst)
                 return
@@ -321,6 +323,7 @@ class Analyzer {
                 // Declared *before* visiting the body so recursive calls
                 // resolve to itself.
                 this.declare(scope, stmt.name.name, "local", stmt.name, stmt.kind === "const")
+                for (const signature of stmt.signatures ?? []) this.visitSignature(signature, scope)
                 this.visitFunctionBody(stmt.func, scope)
                 return
             }
@@ -334,6 +337,7 @@ class Analyzer {
                 } else {
                     this.reference(scope, stmt.target.base)
                 }
+                for (const signature of stmt.signatures ?? []) this.visitSignature(signature, scope)
                 this.visitFunctionBody(stmt.func, scope, stmt.isMethod)
                 return
             }
@@ -423,13 +427,18 @@ class Analyzer {
             case "BreakStatement":
             case "ContinueStatement":
             case "ErrorStatement":
+                return
+
             case "DeclareStatement":
+                this.visitType(stmt.valueType, scope)
                 return
 
             case "TypeAliasStatement":
             case "ExportTypeAliasStatement":
                 // Type-level names live in a separate namespace from value
-                // bindings; out of scope for this pass by design.
+                // bindings, but a `typeof x` inside the definition reads a
+                // value.
+                this.visitType((stmt as { definition?: TypeNode }).definition, scope)
                 return
 
             case "ImportStatement": {
@@ -469,6 +478,9 @@ class Analyzer {
         // passes can special-case it (e.g. "never rename self").
         func.params.forEach((param, i) => {
             const kind: BindingKind = isMethod && i === 0 ? "self" : "param"
+            // Before declaring it: `(a: number, b: typeof a)` sees the earlier
+            // parameters, as in TypeScript.
+            this.visitType(param.typeAnnotation, fnScope)
             if (param.default) this.visitExpression(param.default, fnScope)
             if (param.pattern) {
                 this.declarePattern(fnScope, param.pattern, kind, fnScope)
@@ -476,7 +488,41 @@ class Analyzer {
                 this.declare(fnScope, param.name, kind, param)
             }
         })
+        this.visitType(func.varargTypeAnnotation, fnScope)
+        this.visitType(func.returnType, fnScope)
         this.visitBlock(func.body, fnScope)
+    }
+
+    /** An overload signature: no body and no bindings, but its types can hold
+     *  a `typeof x`. */
+    private visitSignature(
+        signature: { params: { typeAnnotation?: TypeNode }[]; returnType?: TypeNode | TypePackNode },
+        scope: Scope,
+    ): void {
+        for (const param of signature.params) this.visitType(param.typeAnnotation, scope)
+        this.visitType(signature.returnType, scope)
+    }
+
+    /** Resolve the value references inside a type. Only `typeof x` has any —
+     *  everything else in a type names types, which live in their own
+     *  namespace and are not this pass's business. */
+    private visitType(node: TypeNode | TypePackNode | undefined, scope: Scope): void {
+        if (!node) return
+        const walk = (value: unknown): void => {
+            if (!value || typeof value !== "object") return
+            if (Array.isArray(value)) {
+                for (const item of value) walk(item)
+                return
+            }
+            if ((value as { type?: unknown }).type === "TypeofTypeNode") {
+                this.visitExpression((value as TypeofTypeNode).expression, scope)
+                return
+            }
+            for (const key of Object.keys(value)) {
+                if (key !== "line" && key !== "column") walk((value as Record<string, unknown>)[key])
+            }
+        }
+        walk(node)
     }
 
     // ---------------- expressions ----------------
@@ -553,8 +599,15 @@ class Analyzer {
                 return
 
             case "TypeAssertionExpression":
-                // `:: T` — the type side is out of scope for this pass.
                 this.visitExpression(expr.expression, scope)
+                this.visitType((expr as { typeAnnotation?: TypeNode }).typeAnnotation, scope)
+                return
+
+            case "SatisfiesExpression":
+                // Was missing entirely: nothing inside `x satisfies T` was
+                // resolved, so `x` had no binding there.
+                this.visitExpression(expr.expression, scope)
+                this.visitType(expr.typeAnnotation, scope)
                 return
 
             case "IfElseExpression":

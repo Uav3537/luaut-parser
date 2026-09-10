@@ -92,6 +92,8 @@ export type Statement =
 export interface DeclareStatement extends BaseNode {
     type: "DeclareStatement"
     name: string
+    /** The name as a node, so tools can point at it — `name` has no span. */
+    id: Identifier
     /** the declared value's type (function form is lowered to a FunctionTypeNode) */
     valueType: TypeNode
 }
@@ -302,6 +304,8 @@ export interface ExportTypeAliasStatement extends BaseNode {
 export interface GenericTypeParameter extends BaseNode {
     type: "GenericTypeParameter"
     name: string
+    /** The name as a node. Absent on parameters the analyzer synthesizes. */
+    id?: Identifier
     isPack?: boolean
     /** `<const T>` — infer the argument at its narrowest instead of widening
      *  it: literals stay literal and array literals become tuples. */
@@ -608,6 +612,8 @@ export interface ConditionalTypeNode extends BaseNode {
 export interface InferTypeNode extends BaseNode {
     type: "InferTypeNode"
     name: string
+    /** The bound name as a node. */
+    id?: Identifier
 }
 
 /** `{ [K in C]: V }` — a mapped type. `optional` / `readonly` carry the
@@ -617,6 +623,8 @@ export interface MappedTypeNode extends BaseNode {
     type: "MappedTypeNode"
     /** The name bound to each key in turn (`K`). */
     parameter: string
+    /** `parameter` as a node. */
+    parameterId?: Identifier
     /** The union of keys to map over (`C`). */
     constraint: TypeNode
     /** `[K in C as R]` — remaps each key through `R`. */
@@ -677,11 +685,11 @@ export interface TypeLiteralNumber extends BaseNode {
 }
 
 export type TableTypeProperty =
-    | { type: "TableTypeIndexer"; keyType: TypeNode; valueType: TypeNode }
+    | ({ type: "TableTypeIndexer"; keyType: TypeNode; valueType: TypeNode } & BaseNode)
     /** `name: T` (required) or `name?: T` (optional — TS style, the property
      *  may be absent). `optional` reflects the `?` after the name only;
      *  `name: T | nil` is a required property whose value may be nil. */
-    | { type: "TableTypeProperty"; name: string; valueType: TypeNode; optional: boolean; readonly?: boolean }
+    | ({ type: "TableTypeProperty"; name: string; key: Identifier; valueType: TypeNode; optional: boolean; readonly?: boolean } & BaseNode)
 
 export interface TableTypeNode extends BaseNode {
     type: "TableTypeNode"
@@ -705,6 +713,8 @@ export interface FunctionTypeParameter extends BaseNode {
     /** `name?: T` — the argument may be omitted, and its type admits `nil`. */
     optional?: boolean
     name?: string
+    /** The name as a node (absent for an unnamed parameter). */
+    id?: Identifier
     typeAnnotation: TypeNode
 }
 
@@ -734,6 +744,8 @@ export interface ParenthesizedTypeNode extends BaseNode {
     typeAnnotation: TypeNode
 }
 
+/** `typeof x` / `typeof x.y` (TypeScript's type query) or `typeof(expr)`
+ *  (Luau's spelling): the type of a value. */
 export interface TypeofTypeNode extends BaseNode {
     type: "TypeofTypeNode"
     expression: Expression

@@ -51,6 +51,21 @@ function spanFrom(start: Span, end: Span): Span {
     }
 }
 
+/** An Identifier node for a name token. */
+function tokenIdentifier(t: Span & { value?: unknown }): Identifier {
+    return { type: "Identifier", name: t.value as string, ...spanFrom(t, t) }
+}
+
+/** An Identifier for a name that starts the node at `at` — for nodes built
+ *  after the name token is gone, which still know where they begin. */
+function nameIdentifier(name: string, at: Span): Identifier {
+    return {
+        type: "Identifier", name,
+        line: { start: at.line.start, end: at.line.start },
+        column: { start: at.column.start, end: at.column.start + name.length },
+    }
+}
+
 // ------------------------------------------------------------
 // Operator precedence
 // ------------------------------------------------------------
@@ -386,12 +401,17 @@ export class Parser {
         if (this.matchKeyword("function")) {
             const nameTok = this.expectIdentifier()
             const head = this.parseFunctionHead()
+            // Each parameter keeps its own span (and its name's), so tools can
+            // point at `name` in `declare function f(name: string)` rather than
+            // at the whole statement.
             const params: FunctionTypeParameter[] = head.params.map(p => ({
                 type: "FunctionTypeParameter",
                 name: p.name || undefined,
+                id: p.name ? nameIdentifier(p.name, p) : undefined,
                 optional: p.optional,
-                typeAnnotation: p.typeAnnotation ?? { type: "TypeReference", base: "any", typeArguments: [], ...spanFrom(start, start) },
-                ...spanFrom(start, this.previous()),
+                typeAnnotation: p.typeAnnotation ?? { type: "TypeReference", base: "any", typeArguments: [], line: p.line, column: p.column },
+                line: p.line,
+                column: p.column,
             }))
             const valueType: FunctionTypeNode = {
                 type: "FunctionTypeNode",
@@ -404,13 +424,13 @@ export class Parser {
                 predicate: head.predicate,
                 ...spanFrom(start, this.previous()),
             }
-            return { type: "DeclareStatement", name: nameTok.value as string, valueType, ...spanFrom(start, this.previous()) }
+            return { type: "DeclareStatement", name: nameTok.value as string, id: tokenIdentifier(nameTok), valueType, ...spanFrom(start, this.previous()) }
         }
 
         const nameTok = this.expectIdentifier()
         this.expectPunctuator(":")
         const valueType = this.parseType()
-        return { type: "DeclareStatement", name: nameTok.value as string, valueType, ...spanFrom(start, this.previous()) }
+        return { type: "DeclareStatement", name: nameTok.value as string, id: tokenIdentifier(nameTok), valueType, ...spanFrom(start, this.previous()) }
     }
 
     // `import { a, b as c } from '...'` / `import Default from '...'` /
@@ -1650,8 +1670,9 @@ export class Parser {
         }
         if (this.checkIdentifierValue("infer") && this.peek(1).type === "Identifier") {
             this.advance()
-            const name = this.expectIdentifier().value as string
-            return { type: "InferTypeNode", name, ...spanFrom(t, this.previous()) }
+            const nameTok = this.expectIdentifier()
+            const name = nameTok.value as string
+            return { type: "InferTypeNode", name, id: tokenIdentifier(nameTok), ...spanFrom(t, this.previous()) }
         }
 
         if (t.type === "Operator" && (t as any).value === "<") {
@@ -1693,6 +1714,20 @@ export class Parser {
             this.advance()
             const expression = this.parseExpression()
             this.expectPunctuator(")")
+            return { type: "TypeofTypeNode", expression, ...spanFrom(t, this.previous()) } as TypeofTypeNode
+        }
+
+        // `typeof x` / `typeof x.y.z` — TypeScript's type query: the type of a
+        // value, without parentheses. (`typeof(expr)` above is Luau's
+        // spelling.) Only a name path is allowed, as in TypeScript.
+        if (t.type === "Identifier" && (t as any).value === "typeof" && this.peek(1).type === "Identifier") {
+            this.advance()
+            let expression: Expression = this.parseIdentifier()
+            while (this.checkPunctuator(".") && this.peek(1).type === "Identifier") {
+                this.advance()
+                const property = this.parseIdentifier()
+                expression = { type: "MemberExpression", object: expression, property, ...spanFrom(expression, property) }
+            }
             return { type: "TypeofTypeNode", expression, ...spanFrom(t, this.previous()) } as TypeofTypeNode
         }
 
@@ -1770,16 +1805,20 @@ export class Parser {
                     ((this.peek(1) as any).value === ":" ||
                      ((this.peek(1) as any).value === "?" && this.peek(2).type === "Punctuator" &&
                       (this.peek(2) as any).value === ":"))
+                let nameTok: Token | undefined
                 if (named) {
-                    name = this.expectIdentifier().value as string
+                    const tok = this.expectIdentifier()
+                    nameTok = tok
+                    name = tok.value as string
                     optional = this.matchPunctuator("?")
                     this.advance() // ':'
                 }
-                const paramStart = this.current()
+                const paramStart = nameTok ?? this.current()
                 const typeAnnotation = this.parseType()
                 params.push({
                     type: "FunctionTypeParameter",
                     name, typeAnnotation,
+                    id: nameTok && tokenIdentifier(nameTok),
                     optional: optional || undefined,
                     ...spanFrom(paramStart, this.previous()),
                 })
@@ -1846,7 +1885,8 @@ export class Parser {
         }
 
         this.expectPunctuator("[")
-        const parameter = this.expectIdentifier().value as string
+        const parameterTok = this.expectIdentifier()
+        const parameter = parameterTok.value as string
         this.advance() // 'in'
         const constraint = this.parseType()
         let nameType: TypeNode | undefined
@@ -1872,7 +1912,7 @@ export class Parser {
         this.expectPunctuator("}")
         return {
             type: "MappedTypeNode",
-            parameter, constraint, nameType, template, optional, readonly,
+            parameter, parameterId: tokenIdentifier(parameterTok), constraint, nameType, template, optional, readonly,
             ...spanFrom(start, this.previous()),
         }
     }
@@ -1900,23 +1940,28 @@ export class Parser {
         const properties: TableTypeProperty[] = []
 
         while (!this.checkPunctuator("}")) {
+            const propStart = this.current()
             if (this.checkPunctuator("[")) {
                 this.advance()
                 const keyType = this.parseType()
                 this.expectPunctuator("]")
                 this.expectPunctuator(":")
                 const valueType = this.parseType()
-                properties.push({ type: "TableTypeIndexer", keyType, valueType })
+                properties.push({ type: "TableTypeIndexer", keyType, valueType, ...spanFrom(propStart, this.previous()) })
             } else if (this.checkIdentifierValue("readonly") && this.peek(1).type === "Identifier") {
                 // `readonly name: T` — the property may not be assigned to.
                 // Still a soft keyword: a property actually named `readonly`
                 // is followed by `:` or `?`, not by another identifier.
                 this.advance()
-                const name = this.expectIdentifier().value as string
+                const keyTok = this.expectIdentifier()
+                const name = keyTok.value as string
                 const optional = this.matchPunctuator("?")
                 this.expectPunctuator(":")
                 const valueType = this.parseType()
-                properties.push({ type: "TableTypeProperty", name, valueType, optional, readonly: true })
+                properties.push({
+                    type: "TableTypeProperty", name, key: tokenIdentifier(keyTok), valueType, optional, readonly: true,
+                    ...spanFrom(propStart, this.previous()),
+                })
             } else if (this.checkType("Identifier") &&
                 ((this.peek(1).type === "Punctuator" && (this.peek(1) as any).value === ":") ||
                  (this.peek(1).type === "Punctuator" && (this.peek(1) as any).value === "?" &&
@@ -1924,13 +1969,15 @@ export class Parser {
                 // luaut uses TS-style `name?: T` for an optional property
                 // (it may be absent). A required property whose value may be
                 // nil is written `name: T | nil`.
-                const name = this.expectIdentifier().value as string
+                const keyTok = this.expectIdentifier()
+                const name = keyTok.value as string
                 const optional = this.matchPunctuator("?")
                 this.expectPunctuator(":")
                 const valueType = this.parseType()
                 properties.push({
                     type: "TableTypeProperty",
-                    name, valueType, optional,
+                    name, key: tokenIdentifier(keyTok), valueType, optional,
+                    ...spanFrom(propStart, this.previous()),
                 })
             } else {
                 this.error("Expected object type property ('name: T' or '[K]: V'); use 'T[]' for arrays and '[T, U]' for tuples")
@@ -1998,6 +2045,7 @@ export class Parser {
             list.push({
                 type: "GenericTypeParameter",
                 name: nameTok.value as string,
+                id: tokenIdentifier(nameTok),
                 isPack,
                 isConst: isConst || undefined,
                 constraint,

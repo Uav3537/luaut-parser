@@ -1028,6 +1028,18 @@
                 {
                   "type": "TableTypeProperty",
                   "name": "a",
+                  "key": {
+                    "type": "Identifier",
+                    "name": "a",
+                    "line": {
+                      "start": 14,
+                      "end": 14
+                    },
+                    "column": {
+                      "start": 20,
+                      "end": 21
+                    }
+                  },
                   "valueType": {
                     "type": "TypeReference",
                     "base": "number",
@@ -1041,11 +1053,31 @@
                       "end": 29
                     }
                   },
-                  "optional": false
+                  "optional": false,
+                  "line": {
+                    "start": 14,
+                    "end": 14
+                  },
+                  "column": {
+                    "start": 20,
+                    "end": 29
+                  }
                 },
                 {
                   "type": "TableTypeProperty",
                   "name": "b",
+                  "key": {
+                    "type": "Identifier",
+                    "name": "b",
+                    "line": {
+                      "start": 14,
+                      "end": 14
+                    },
+                    "column": {
+                      "start": 31,
+                      "end": 32
+                    }
+                  },
                   "valueType": {
                     "type": "TypeReference",
                     "base": "number",
@@ -1059,11 +1091,31 @@
                       "end": 40
                     }
                   },
-                  "optional": false
+                  "optional": false,
+                  "line": {
+                    "start": 14,
+                    "end": 14
+                  },
+                  "column": {
+                    "start": 31,
+                    "end": 40
+                  }
                 },
                 {
                   "type": "TableTypeProperty",
                   "name": "c",
+                  "key": {
+                    "type": "Identifier",
+                    "name": "c",
+                    "line": {
+                      "start": 14,
+                      "end": 14
+                    },
+                    "column": {
+                      "start": 42,
+                      "end": 43
+                    }
+                  },
                   "valueType": {
                     "type": "TypeReference",
                     "base": "number",
@@ -1077,7 +1129,15 @@
                       "end": 51
                     }
                   },
-                  "optional": false
+                  "optional": false,
+                  "line": {
+                    "start": 14,
+                    "end": 14
+                  },
+                  "column": {
+                    "start": 42,
+                    "end": 51
+                  }
                 }
               ],
               "line": {

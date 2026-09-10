@@ -1,0 +1,37 @@
+-- `typeof x` in a type position: the type of a value (TypeScript's type
+-- query). Distinct from the `typeof(v)` *function*, which returns a string at
+-- runtime; this is compile-time only.
+
+const defaults = { volume: 1, muted: false }
+
+-- A binding's type, reused.
+const copy: typeof defaults = { volume: 2, muted: true }
+
+-- Through an alias. The alias depends on `defaults` having a type, so it is
+-- resolved after the statements rather than up front.
+type Settings = typeof defaults
+const other: Settings = { volume: 3, muted: false }
+
+-- A path into the value.
+const volume: typeof defaults.volume = 5
+
+-- `let` widens, and the query sees the widened type.
+let count = 1
+const alsoNumber: typeof count = 2
+
+-- Composes with the rest of the type system.
+const function scale(n: number): number
+    return n * 2
+end
+const doubled: ReturnType<typeof scale> = 4
+const args: Parameters<typeof scale> = [3]
+
+-- Parameters can refer to earlier parameters.
+const function clampTo(limit: number, value: typeof limit): number
+    return value
+end
+
+-- Luau's parenthesised spelling still works.
+const paren: typeof(count) = 3
+
+print(copy, other, volume, alsoNumber, doubled, args, clampTo(1, 2), paren)

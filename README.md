@@ -28,7 +28,13 @@ for (const d of [...scopes.diagnostics, ...types.diagnostics]) console.log(d.mes
 |---|---|---|
 | `parse(source)` | `Program` — every node carries `line`/`column` spans | everything |
 | `analyzeScopes(program, opts)` | `bindingOf`, `bindings`, `references`, `diagnostics` | go-to-definition, find-references, rename |
-| `analyzeTypes(program, scopes, opts)` | `typeOf`, `narrowedTypeOf`, `bindingType`, `aliases`, `diagnostics` | hover, assignability errors |
+| `analyzeTypes(program, scopes, opts)` | `typeOf`, `narrowedTypeOf`, `bindingType`, `typeOfTypeNode`, `aliases`, `diagnostics` | hover, assignability errors |
+
+Every name in the AST has a node with its own span — including the ones that
+used to be bare strings: `DeclareStatement.id`, `TableTypeProperty.key`,
+`FunctionTypeParameter.id`, `GenericTypeParameter.id`, `InferTypeNode.id`,
+`MappedTypeNode.parameterId`. `typeOfTypeNode` gives what each type
+annotation resolves to, so a tool never has to re-derive a type from text.
 
 `parseWithRecovery(source)` returns `{ program, errors }` instead of throwing —
 use it for editors, where the text is usually mid-edit.
@@ -91,6 +97,11 @@ several values a function returns), `keyof`, `T[K]`, conditional types with
 written in luaut on top of those, not built in.
 
 `<const T>` infers an argument at its narrowest, as in TypeScript 5.
+
+`typeof x` in a type is TypeScript's type query — the type of a value
+(`typeof config`, `typeof config.volume`, `ReturnType<typeof f>`). Luau's
+`typeof(expr)` spelling works too. It is compile-time only, unrelated to the
+`typeof(v)` function that returns a string at runtime.
 
 ## Options
 

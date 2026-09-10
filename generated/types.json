@@ -24,6 +24,18 @@
             {
               "type": "TableTypeProperty",
               "name": "x",
+              "key": {
+                "type": "Identifier",
+                "name": "x",
+                "line": {
+                  "start": 3,
+                  "end": 3
+                },
+                "column": {
+                  "start": 15,
+                  "end": 16
+                }
+              },
               "valueType": {
                 "type": "TypeReference",
                 "base": "number",
@@ -37,11 +49,31 @@
                   "end": 24
                 }
               },
-              "optional": false
+              "optional": false,
+              "line": {
+                "start": 3,
+                "end": 3
+              },
+              "column": {
+                "start": 15,
+                "end": 24
+              }
             },
             {
               "type": "TableTypeProperty",
               "name": "y",
+              "key": {
+                "type": "Identifier",
+                "name": "y",
+                "line": {
+                  "start": 3,
+                  "end": 3
+                },
+                "column": {
+                  "start": 26,
+                  "end": 27
+                }
+              },
               "valueType": {
                 "type": "TypeReference",
                 "base": "number",
@@ -55,7 +87,15 @@
                   "end": 35
                 }
               },
-              "optional": false
+              "optional": false,
+              "line": {
+                "start": 3,
+                "end": 3
+              },
+              "column": {
+                "start": 26,
+                "end": 35
+              }
             }
           ],
           "line": {
@@ -267,6 +307,18 @@
             {
               "type": "TableTypeProperty",
               "name": "name",
+              "key": {
+                "type": "Identifier",
+                "name": "name",
+                "line": {
+                  "start": 9,
+                  "end": 9
+                },
+                "column": {
+                  "start": 5,
+                  "end": 9
+                }
+              },
               "valueType": {
                 "type": "TypeReference",
                 "base": "string",
@@ -280,11 +332,31 @@
                   "end": 17
                 }
               },
-              "optional": false
+              "optional": false,
+              "line": {
+                "start": 9,
+                "end": 9
+              },
+              "column": {
+                "start": 5,
+                "end": 17
+              }
             },
             {
               "type": "TableTypeProperty",
               "name": "position",
+              "key": {
+                "type": "Identifier",
+                "name": "position",
+                "line": {
+                  "start": 10,
+                  "end": 10
+                },
+                "column": {
+                  "start": 5,
+                  "end": 13
+                }
+              },
               "valueType": {
                 "type": "TypeReference",
                 "base": "Vec2",
@@ -298,11 +370,31 @@
                   "end": 19
                 }
               },
-              "optional": false
+              "optional": false,
+              "line": {
+                "start": 10,
+                "end": 10
+              },
+              "column": {
+                "start": 5,
+                "end": 19
+              }
             },
             {
               "type": "TableTypeProperty",
               "name": "tags",
+              "key": {
+                "type": "Identifier",
+                "name": "tags",
+                "line": {
+                  "start": 11,
+                  "end": 11
+                },
+                "column": {
+                  "start": 5,
+                  "end": 9
+                }
+              },
               "valueType": {
                 "type": "ArrayTypeNode",
                 "element": {
@@ -327,11 +419,31 @@
                   "end": 19
                 }
               },
-              "optional": false
+              "optional": false,
+              "line": {
+                "start": 11,
+                "end": 11
+              },
+              "column": {
+                "start": 5,
+                "end": 19
+              }
             },
             {
               "type": "TableTypeProperty",
               "name": "nickname",
+              "key": {
+                "type": "Identifier",
+                "name": "nickname",
+                "line": {
+                  "start": 12,
+                  "end": 12
+                },
+                "column": {
+                  "start": 5,
+                  "end": 13
+                }
+              },
               "valueType": {
                 "type": "TypeReference",
                 "base": "string",
@@ -345,11 +457,31 @@
                   "end": 22
                 }
               },
-              "optional": true
+              "optional": true,
+              "line": {
+                "start": 12,
+                "end": 12
+              },
+              "column": {
+                "start": 5,
+                "end": 22
+              }
             },
             {
               "type": "TableTypeProperty",
               "name": "parent",
+              "key": {
+                "type": "Identifier",
+                "name": "parent",
+                "line": {
+                  "start": 13,
+                  "end": 13
+                },
+                "column": {
+                  "start": 5,
+                  "end": 11
+                }
+              },
               "valueType": {
                 "type": "UnionTypeNode",
                 "types": [
@@ -389,17 +521,49 @@
                   "end": 25
                 }
               },
-              "optional": false
+              "optional": false,
+              "line": {
+                "start": 13,
+                "end": 13
+              },
+              "column": {
+                "start": 5,
+                "end": 25
+              }
             },
             {
               "type": "TableTypeProperty",
               "name": "stats",
+              "key": {
+                "type": "Identifier",
+                "name": "stats",
+                "line": {
+                  "start": 14,
+                  "end": 14
+                },
+                "column": {
+                  "start": 5,
+                  "end": 10
+                }
+              },
               "valueType": {
                 "type": "TableTypeNode",
                 "properties": [
                   {
                     "type": "TableTypeProperty",
                     "name": "hp",
+                    "key": {
+                      "type": "Identifier",
+                      "name": "hp",
+                      "line": {
+                        "start": 14,
+                        "end": 14
+                      },
+                      "column": {
+                        "start": 14,
+                        "end": 16
+                      }
+                    },
                     "valueType": {
                       "type": "TypeReference",
                       "base": "number",
@@ -413,11 +577,31 @@
                         "end": 24
                       }
                     },
-                    "optional": false
+                    "optional": false,
+                    "line": {
+                      "start": 14,
+                      "end": 14
+                    },
+                    "column": {
+                      "start": 14,
+                      "end": 24
+                    }
                   },
                   {
                     "type": "TableTypeProperty",
                     "name": "mp",
+                    "key": {
+                      "type": "Identifier",
+                      "name": "mp",
+                      "line": {
+                        "start": 14,
+                        "end": 14
+                      },
+                      "column": {
+                        "start": 26,
+                        "end": 28
+                      }
+                    },
                     "valueType": {
                       "type": "TypeReference",
                       "base": "number",
@@ -431,7 +615,15 @@
                         "end": 36
                       }
                     },
-                    "optional": false
+                    "optional": false,
+                    "line": {
+                      "start": 14,
+                      "end": 14
+                    },
+                    "column": {
+                      "start": 26,
+                      "end": 36
+                    }
                   }
                 ],
                 "line": {
@@ -443,7 +635,15 @@
                   "end": 38
                 }
               },
-              "optional": false
+              "optional": false,
+              "line": {
+                "start": 14,
+                "end": 14
+              },
+              "column": {
+                "start": 5,
+                "end": 38
+              }
             }
           ],
           "line": {
@@ -499,12 +699,24 @@
                   "end": 30
                 }
               },
+              "id": {
+                "type": "Identifier",
+                "name": "event",
+                "line": {
+                  "start": 17,
+                  "end": 17
+                },
+                "column": {
+                  "start": 17,
+                  "end": 22
+                }
+              },
               "line": {
                 "start": 17,
                 "end": 17
               },
               "column": {
-                "start": 24,
+                "start": 17,
                 "end": 30
               }
             },
@@ -524,12 +736,24 @@
                   "end": 48
                 }
               },
+              "id": {
+                "type": "Identifier",
+                "name": "payload",
+                "line": {
+                  "start": 17,
+                  "end": 17
+                },
+                "column": {
+                  "start": 32,
+                  "end": 39
+                }
+              },
               "line": {
                 "start": 17,
                 "end": 17
               },
               "column": {
-                "start": 41,
+                "start": 32,
                 "end": 48
               }
             }
@@ -590,6 +814,18 @@
                 {
                   "type": "TableTypeProperty",
                   "name": "ok",
+                  "key": {
+                    "type": "Identifier",
+                    "name": "ok",
+                    "line": {
+                      "start": 18,
+                      "end": 18
+                    },
+                    "column": {
+                      "start": 17,
+                      "end": 19
+                    }
+                  },
                   "valueType": {
                     "type": "TypeLiteralBoolean",
                     "value": true,
@@ -602,11 +838,31 @@
                       "end": 25
                     }
                   },
-                  "optional": false
+                  "optional": false,
+                  "line": {
+                    "start": 18,
+                    "end": 18
+                  },
+                  "column": {
+                    "start": 17,
+                    "end": 25
+                  }
                 },
                 {
                   "type": "TableTypeProperty",
                   "name": "value",
+                  "key": {
+                    "type": "Identifier",
+                    "name": "value",
+                    "line": {
+                      "start": 18,
+                      "end": 18
+                    },
+                    "column": {
+                      "start": 27,
+                      "end": 32
+                    }
+                  },
                   "valueType": {
                     "type": "TypeReference",
                     "base": "number",
@@ -620,7 +876,15 @@
                       "end": 40
                     }
                   },
-                  "optional": false
+                  "optional": false,
+                  "line": {
+                    "start": 18,
+                    "end": 18
+                  },
+                  "column": {
+                    "start": 27,
+                    "end": 40
+                  }
                 }
               ],
               "line": {
@@ -638,6 +902,18 @@
                 {
                   "type": "TableTypeProperty",
                   "name": "ok",
+                  "key": {
+                    "type": "Identifier",
+                    "name": "ok",
+                    "line": {
+                      "start": 18,
+                      "end": 18
+                    },
+                    "column": {
+                      "start": 47,
+                      "end": 49
+                    }
+                  },
                   "valueType": {
                     "type": "TypeLiteralBoolean",
                     "value": false,
@@ -650,11 +926,31 @@
                       "end": 56
                     }
                   },
-                  "optional": false
+                  "optional": false,
+                  "line": {
+                    "start": 18,
+                    "end": 18
+                  },
+                  "column": {
+                    "start": 47,
+                    "end": 56
+                  }
                 },
                 {
                   "type": "TableTypeProperty",
                   "name": "error",
+                  "key": {
+                    "type": "Identifier",
+                    "name": "error",
+                    "line": {
+                      "start": 18,
+                      "end": 18
+                    },
+                    "column": {
+                      "start": 58,
+                      "end": 63
+                    }
+                  },
                   "valueType": {
                     "type": "TypeReference",
                     "base": "string",
@@ -668,7 +964,15 @@
                       "end": 71
                     }
                   },
-                  "optional": false
+                  "optional": false,
+                  "line": {
+                    "start": 18,
+                    "end": 18
+                  },
+                  "column": {
+                    "start": 58,
+                    "end": 71
+                  }
                 }
               ],
               "line": {

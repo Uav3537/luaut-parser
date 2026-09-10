@@ -711,6 +711,18 @@
             {
               "type": "GenericTypeParameter",
               "name": "T",
+              "id": {
+                "type": "Identifier",
+                "name": "T",
+                "line": {
+                  "start": 16,
+                  "end": 16
+                },
+                "column": {
+                  "start": 21,
+                  "end": 22
+                }
+              },
               "isPack": false,
               "constraint": {
                 "type": "TableTypeNode",
@@ -718,6 +730,18 @@
                   {
                     "type": "TableTypeProperty",
                     "name": "Name",
+                    "key": {
+                      "type": "Identifier",
+                      "name": "Name",
+                      "line": {
+                        "start": 16,
+                        "end": 16
+                      },
+                      "column": {
+                        "start": 33,
+                        "end": 37
+                      }
+                    },
                     "valueType": {
                       "type": "TypeReference",
                       "base": "string",
@@ -731,7 +755,15 @@
                         "end": 45
                       }
                     },
-                    "optional": false
+                    "optional": false,
+                    "line": {
+                      "start": 16,
+                      "end": 16
+                    },
+                    "column": {
+                      "start": 33,
+                      "end": 45
+                    }
                   }
                 ],
                 "line": {

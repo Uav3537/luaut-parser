@@ -64,6 +64,10 @@ export interface TypeAnalysis {
     /** Type of a specific variable *reference*, after flow narrowing at that
      *  point. For an un-narrowed reference this equals `bindingType`. */
     readonly narrowedTypeOf: Map<Identifier, Type>
+    /** What every type annotation node resolves to — `number`, `Shape`,
+     *  `typeof x`, a property's type inside `{ ... }`. Inside a generic alias or
+     *  function its parameters stay unresolved (`T`). */
+    readonly typeOfTypeNode: Map<TypeNode | TypePackNode, Type>
     /** Top-level type aliases, resolved. */
     readonly aliases: Map<string, Type>
     readonly diagnostics: TypeDiagnostic[]
@@ -236,6 +240,7 @@ class TypeAnalyzer {
     private readonly typeOf = new Map<Expression, Type>()
     private readonly bindingType = new Map<BindingId, Type>()
     private readonly narrowedTypeOf = new Map<Identifier, Type>()
+    private readonly typeOfTypeNode = new Map<TypeNode | TypePackNode, Type>()
     /** Public: each alias resolved once (generic aliases keep their params as
      *  `typeParam` nodes in the body). */
     private readonly aliases = new Map<string, Type>()
@@ -312,7 +317,8 @@ class TypeAnalyzer {
             typeOf: this.typeOf,
             bindingType: this.bindingType,
             narrowedTypeOf: this.narrowedTypeOf,
-            aliases: this.aliases,
+            typeOfTypeNode: this.typeOfTypeNode,
+            aliases: this.resolveDeferredAliases(),
             diagnostics: this.diagnostics,
         }
     }
@@ -346,10 +352,26 @@ class TypeAnalyzer {
         // Public `aliases` map — each resolved once, generic params kept as
         // `typeParam` nodes in the body.
         for (const [name, def] of this.aliasDefs) {
+            // `type Config = typeof defaults` needs `defaults` to have a type,
+            // which only happens once the statements are walked. Such an alias
+            // resolves on first use (through `expand`) or at the end instead.
+            if (containsTypeQuery(def.node)) continue
             this.withTypeParams(def.params, () => {
                 this.aliases.set(name, this.resolveType(def.node))
             })
         }
+    }
+
+    /** The aliases `resolveAllAliases` left for later, now that every binding
+     *  has its type. */
+    private resolveDeferredAliases(): Map<string, Type> {
+        for (const [name, def] of this.aliasDefs) {
+            if (this.aliases.has(name)) continue
+            this.withTypeParams(def.params, () => {
+                this.aliases.set(name, this.resolveType(def.node))
+            })
+        }
+        return this.aliases
     }
 
     private withTypeParams<T>(params: GenericTypeParameter[], fn: () => T): T {
@@ -399,6 +421,15 @@ class TypeAnalyzer {
     // --------------------------------------------------------
 
     private resolveType(node: TypeNode | TypePackNode): Type {
+        const type = this.resolveTypeNode(node)
+        // Record what each annotation means, for tooling — but not while
+        // instantiating a generic alias: those nodes resolve again per use
+        // site, and the last instantiation would overwrite the definition.
+        if (this.instantiationDepth === 0) this.typeOfTypeNode.set(node, type)
+        return type
+    }
+
+    private resolveTypeNode(node: TypeNode | TypePackNode): Type {
         switch (node.type) {
             case "TypeReference": {
                 const name = node.namespace ? `${node.namespace}.${node.base}` : node.base
@@ -1472,11 +1503,21 @@ class TypeAnalyzer {
     private inferFunctionBody(func: FunctionBody, env: FlowEnv): Type {
         const names = func.generics.map(g => g.name)
         return this.withTypeParams(func.generics, () => {
-            const params = func.params.map(p => ({
-                name: p.pattern ? undefined : p.name,
-                type: this.paramType(p, env),
-                optional: p.optional || p.default !== undefined,
-            }))
+            const params = func.params.map(p => {
+                const type = this.paramType(p, env)
+                // Record each parameter's type before the next one's annotation
+                // is read, so `(limit: number, value: typeof limit)` sees
+                // `limit`. The body pass records the same type again later.
+                if (!p.pattern) {
+                    const id = this.bindingIdByName(p.name, p)
+                    if (id !== undefined && !this.bindingType.has(id)) this.bindingType.set(id, type)
+                }
+                return {
+                    name: p.pattern ? undefined : p.name,
+                    type,
+                    optional: p.optional || p.default !== undefined,
+                }
+            })
             // Infer the return type with the parameters bound, so `return { x: p }`
             // sees `p`'s type rather than `any`.
             const bodyEnv = forkEnv(env)
@@ -2475,4 +2516,13 @@ class TypeAnalyzer {
         return this.bindingByDecl.get(node as object) ??
             this.bindingByPos.get(posKey(name, node.line.start, node.column.start))
     }
+}
+
+/** Does a type contain a `typeof x`? Such a type depends on a value's type,
+ *  so it cannot be resolved before the statements are walked. */
+function containsTypeQuery(node: unknown): boolean {
+    if (!node || typeof node !== "object") return false
+    if (Array.isArray(node)) return node.some(containsTypeQuery)
+    if ((node as { type?: unknown }).type === "TypeofTypeNode") return true
+    return Object.values(node).some(containsTypeQuery)
 }

@@ -24,6 +24,18 @@
             {
               "type": "TableTypeProperty",
               "name": "host",
+              "key": {
+                "type": "Identifier",
+                "name": "host",
+                "line": {
+                  "start": 15,
+                  "end": 15
+                },
+                "column": {
+                  "start": 5,
+                  "end": 9
+                }
+              },
               "valueType": {
                 "type": "TypeReference",
                 "base": "string",
@@ -37,11 +49,31 @@
                   "end": 17
                 }
               },
-              "optional": false
+              "optional": false,
+              "line": {
+                "start": 15,
+                "end": 15
+              },
+              "column": {
+                "start": 5,
+                "end": 17
+              }
             },
             {
               "type": "TableTypeProperty",
               "name": "port",
+              "key": {
+                "type": "Identifier",
+                "name": "port",
+                "line": {
+                  "start": 17,
+                  "end": 17
+                },
+                "column": {
+                  "start": 5,
+                  "end": 9
+                }
+              },
               "valueType": {
                 "type": "TypeReference",
                 "base": "number",
@@ -55,11 +87,31 @@
                   "end": 18
                 }
               },
-              "optional": true
+              "optional": true,
+              "line": {
+                "start": 17,
+                "end": 17
+              },
+              "column": {
+                "start": 5,
+                "end": 18
+              }
             },
             {
               "type": "TableTypeProperty",
               "name": "proxy",
+              "key": {
+                "type": "Identifier",
+                "name": "proxy",
+                "line": {
+                  "start": 19,
+                  "end": 19
+                },
+                "column": {
+                  "start": 5,
+                  "end": 10
+                }
+              },
               "valueType": {
                 "type": "UnionTypeNode",
                 "types": [
@@ -99,7 +151,15 @@
                   "end": 24
                 }
               },
-              "optional": false
+              "optional": false,
+              "line": {
+                "start": 19,
+                "end": 19
+              },
+              "column": {
+                "start": 5,
+                "end": 24
+              }
             }
           ],
           "line": {
@@ -917,12 +977,24 @@
                       "end": 27
                     }
                   },
+                  "id": {
+                    "type": "Identifier",
+                    "name": "host",
+                    "line": {
+                      "start": 39,
+                      "end": 39
+                    },
+                    "column": {
+                      "start": 15,
+                      "end": 19
+                    }
+                  },
                   "line": {
                     "start": 39,
                     "end": 39
                   },
                   "column": {
-                    "start": 21,
+                    "start": 15,
                     "end": 27
                   }
                 },
@@ -942,13 +1014,25 @@
                       "end": 42
                     }
                   },
+                  "id": {
+                    "type": "Identifier",
+                    "name": "port",
+                    "line": {
+                      "start": 39,
+                      "end": 39
+                    },
+                    "column": {
+                      "start": 29,
+                      "end": 33
+                    }
+                  },
                   "optional": true,
                   "line": {
                     "start": 39,
                     "end": 39
                   },
                   "column": {
-                    "start": 36,
+                    "start": 29,
                     "end": 42
                   }
                 }
@@ -1867,6 +1951,18 @@
             {
               "type": "TableTypeProperty",
               "name": "m",
+              "key": {
+                "type": "Identifier",
+                "name": "m",
+                "line": {
+                  "start": 62,
+                  "end": 62
+                },
+                "column": {
+                  "start": 18,
+                  "end": 19
+                }
+              },
               "valueType": {
                 "type": "FunctionTypeNode",
                 "generics": [],
@@ -1887,12 +1983,24 @@
                         "end": 35
                       }
                     },
+                    "id": {
+                      "type": "Identifier",
+                      "name": "self",
+                      "line": {
+                        "start": 62,
+                        "end": 62
+                      },
+                      "column": {
+                        "start": 22,
+                        "end": 26
+                      }
+                    },
                     "line": {
                       "start": 62,
                       "end": 62
                     },
                     "column": {
-                      "start": 28,
+                      "start": 22,
                       "end": 35
                     }
                   }
@@ -1920,7 +2028,15 @@
                   "end": 46
                 }
               },
-              "optional": false
+              "optional": false,
+              "line": {
+                "start": 62,
+                "end": 62
+              },
+              "column": {
+                "start": 18,
+                "end": 46
+              }
             }
           ],
           "line": {

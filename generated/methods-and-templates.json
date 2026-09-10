@@ -24,6 +24,18 @@
             {
               "type": "TableTypeProperty",
               "name": "n",
+              "key": {
+                "type": "Identifier",
+                "name": "n",
+                "line": {
+                  "start": 17,
+                  "end": 17
+                },
+                "column": {
+                  "start": 18,
+                  "end": 19
+                }
+              },
               "valueType": {
                 "type": "TypeReference",
                 "base": "number",
@@ -37,7 +49,15 @@
                   "end": 27
                 }
               },
-              "optional": false
+              "optional": false,
+              "line": {
+                "start": 17,
+                "end": 17
+              },
+              "column": {
+                "start": 18,
+                "end": 27
+              }
             }
           ],
           "line": {
@@ -1421,6 +1441,18 @@
           {
             "type": "GenericTypeParameter",
             "name": "T",
+            "id": {
+              "type": "Identifier",
+              "name": "T",
+              "line": {
+                "start": 57,
+                "end": 57
+              },
+              "column": {
+                "start": 15,
+                "end": 16
+              }
+            },
             "isPack": false,
             "line": {
               "start": 57,
@@ -1435,6 +1467,18 @@
         "definition": {
           "type": "MappedTypeNode",
           "parameter": "K",
+          "parameterId": {
+            "type": "Identifier",
+            "name": "K",
+            "line": {
+              "start": 57,
+              "end": 57
+            },
+            "column": {
+              "start": 23,
+              "end": 24
+            }
+          },
           "constraint": {
             "type": "KeyofTypeNode",
             "target": {
@@ -1547,12 +1591,24 @@
                     "end": 74
                   }
                 },
+                "id": {
+                  "type": "Identifier",
+                  "name": "value",
+                  "line": {
+                    "start": 57,
+                    "end": 57
+                  },
+                  "column": {
+                    "start": 63,
+                    "end": 68
+                  }
+                },
                 "line": {
                   "start": 57,
                   "end": 57
                 },
                 "column": {
-                  "start": 70,
+                  "start": 63,
                   "end": 74
                 }
               }
@@ -1623,6 +1679,18 @@
                     {
                       "type": "TableTypeProperty",
                       "name": "click",
+                      "key": {
+                        "type": "Identifier",
+                        "name": "click",
+                        "line": {
+                          "start": 58,
+                          "end": 58
+                        },
+                        "column": {
+                          "start": 28,
+                          "end": 33
+                        }
+                      },
                       "valueType": {
                         "type": "TypeReference",
                         "base": "number",
@@ -1636,11 +1704,31 @@
                           "end": 41
                         }
                       },
-                      "optional": false
+                      "optional": false,
+                      "line": {
+                        "start": 58,
+                        "end": 58
+                      },
+                      "column": {
+                        "start": 28,
+                        "end": 41
+                      }
                     },
                     {
                       "type": "TableTypeProperty",
                       "name": "hover",
+                      "key": {
+                        "type": "Identifier",
+                        "name": "hover",
+                        "line": {
+                          "start": 58,
+                          "end": 58
+                        },
+                        "column": {
+                          "start": 43,
+                          "end": 48
+                        }
+                      },
                       "valueType": {
                         "type": "TypeReference",
                         "base": "string",
@@ -1654,7 +1742,15 @@
                           "end": 56
                         }
                       },
-                      "optional": false
+                      "optional": false,
+                      "line": {
+                        "start": 58,
+                        "end": 58
+                      },
+                      "column": {
+                        "start": 43,
+                        "end": 56
+                      }
                     }
                   ],
                   "line": {
@@ -1953,6 +2049,18 @@
                 {
                   "type": "TableTypeProperty",
                   "name": "host",
+                  "key": {
+                    "type": "Identifier",
+                    "name": "host",
+                    "line": {
+                      "start": 66,
+                      "end": 66
+                    },
+                    "column": {
+                      "start": 62,
+                      "end": 66
+                    }
+                  },
                   "valueType": {
                     "type": "TypeReference",
                     "base": "string",
@@ -1966,11 +2074,31 @@
                       "end": 74
                     }
                   },
-                  "optional": false
+                  "optional": false,
+                  "line": {
+                    "start": 66,
+                    "end": 66
+                  },
+                  "column": {
+                    "start": 62,
+                    "end": 74
+                  }
                 },
                 {
                   "type": "TableTypeProperty",
                   "name": "port",
+                  "key": {
+                    "type": "Identifier",
+                    "name": "port",
+                    "line": {
+                      "start": 66,
+                      "end": 66
+                    },
+                    "column": {
+                      "start": 76,
+                      "end": 80
+                    }
+                  },
                   "valueType": {
                     "type": "TypeReference",
                     "base": "number",
@@ -1984,7 +2112,15 @@
                       "end": 88
                     }
                   },
-                  "optional": false
+                  "optional": false,
+                  "line": {
+                    "start": 66,
+                    "end": 66
+                  },
+                  "column": {
+                    "start": 76,
+                    "end": 88
+                  }
                 }
               ],
               "line": {

@@ -2064,6 +2064,18 @@
             {
               "type": "TableTypeProperty",
               "name": "id",
+              "key": {
+                "type": "Identifier",
+                "name": "id",
+                "line": {
+                  "start": 74,
+                  "end": 74
+                },
+                "column": {
+                  "start": 15,
+                  "end": 17
+                }
+              },
               "valueType": {
                 "type": "TypeReference",
                 "base": "number",
@@ -2077,11 +2089,31 @@
                   "end": 25
                 }
               },
-              "optional": false
+              "optional": false,
+              "line": {
+                "start": 74,
+                "end": 74
+              },
+              "column": {
+                "start": 15,
+                "end": 25
+              }
             },
             {
               "type": "TableTypeProperty",
               "name": "name",
+              "key": {
+                "type": "Identifier",
+                "name": "name",
+                "line": {
+                  "start": 74,
+                  "end": 74
+                },
+                "column": {
+                  "start": 27,
+                  "end": 31
+                }
+              },
               "valueType": {
                 "type": "TypeReference",
                 "base": "string",
@@ -2095,11 +2127,31 @@
                   "end": 39
                 }
               },
-              "optional": false
+              "optional": false,
+              "line": {
+                "start": 74,
+                "end": 74
+              },
+              "column": {
+                "start": 27,
+                "end": 39
+              }
             },
             {
               "type": "TableTypeProperty",
               "name": "secret",
+              "key": {
+                "type": "Identifier",
+                "name": "secret",
+                "line": {
+                  "start": 74,
+                  "end": 74
+                },
+                "column": {
+                  "start": 41,
+                  "end": 47
+                }
+              },
               "valueType": {
                 "type": "TypeReference",
                 "base": "string",
@@ -2113,7 +2165,15 @@
                   "end": 55
                 }
               },
-              "optional": false
+              "optional": false,
+              "line": {
+                "start": 74,
+                "end": 74
+              },
+              "column": {
+                "start": 41,
+                "end": 55
+              }
             }
           ],
           "line": {
