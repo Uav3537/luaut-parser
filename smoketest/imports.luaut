@@ -1,0 +1,18 @@
+-- Imports carry the exporting module's types. Every annotation below is an
+-- assertion: if an import fell back to `any`, the negative cases at the end
+-- would stop being errors — see the language server's tests for those.
+
+import main, { ORIGIN, distance, scale, Point } from "./modules"
+
+-- A value export keeps its declared or inferred type.
+const origin: { x: number, y: number } = ORIGIN
+const d: number = distance(ORIGIN, ORIGIN)
+const s: number = scale
+
+-- A type export is usable in annotations.
+const p: Point = { x: 1, y: 2 }
+
+-- The default export.
+const r: number = main()
+
+print(origin, d, s, p, r)

@@ -11,8 +11,8 @@ import { readdirSync, readFileSync, writeFileSync, mkdirSync } from "fs";
 import { join, relative, dirname } from "path";
 import { fileURLToPath } from "url";
 
-import { parse, analyzeScopes, analyzeTypes, isUnassignedGlobal, formatType, defaultLibs } from "../src/index.js";
-import type { Type } from "../src/index.js";
+import { parse, analyzeScopes, analyzeTypes, moduleExports, isUnassignedGlobal, formatType, defaultLibs } from "../src/index.js";
+import type { Type, ModuleExports } from "../src/index.js";
 
 const root = join(dirname(fileURLToPath(import.meta.url)), "..");
 const smokeDir = join(root, "smoketest");
@@ -47,6 +47,37 @@ mkdirSync(outDir, { recursive: true });
 
 const failures: string[] = [];
 
+// Imports resolve against the other smoketest files, relative to the importer,
+// so a module test checks real exported types rather than `any`.
+const exportsCache = new Map<string, ModuleExports>();
+const inProgress = new Set<string>();
+
+function resolverFor(file: string) {
+    return (specifier: string): ModuleExports | undefined => {
+        const target = join(dirname(file), specifier.endsWith(".luaut") ? specifier : `${specifier}.luaut`);
+        if (inProgress.has(target)) return { values: new Map(), types: new Map(), partial: true };
+        const cached = exportsCache.get(target);
+        if (cached) return cached;
+        let text: string;
+        try {
+            text = readFileSync(target, "utf8");
+        } catch {
+            return undefined;
+        }
+        inProgress.add(target);
+        try {
+            const program = parse(text);
+            const scopes = analyzeScopes(program, { builtinGlobals: BUILTIN_GLOBALS });
+            const types = analyzeTypes(program, scopes, { libs: defaultLibs, resolveModule: resolverFor(target) });
+            const exports = moduleExports(program, scopes, types);
+            exportsCache.set(target, exports);
+            return exports;
+        } finally {
+            inProgress.delete(target);
+        }
+    };
+}
+
 for (const file of files) {
     const name = relative(smokeDir, file).replace(/[\\/]/g, "__");
     const source = readFileSync(file, "utf8");
@@ -54,7 +85,7 @@ for (const file of files) {
     try {
         const program = parse(source);
         const scopes = analyzeScopes(program, { builtinGlobals: BUILTIN_GLOBALS });
-        const types = analyzeTypes(program, scopes, { libs: defaultLibs });
+        const types = analyzeTypes(program, scopes, { libs: defaultLibs, resolveModule: resolverFor(file) });
 
         writeFileSync(
             join(outDir, name.replace(/\.luaut$/, ".json")),

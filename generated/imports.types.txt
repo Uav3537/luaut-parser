@@ -1,0 +1,10 @@
+ORIGIN: { x: number, y: number }
+Point: any
+d: number
+distance: (a: Point, b: Point) -> number
+main: () -> number
+origin: { x: number, y: number }
+p: { x: number, y: number }
+r: number
+s: number
+scale: number

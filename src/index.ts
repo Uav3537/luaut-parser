@@ -7,8 +7,8 @@ export * from '@lexer/token'
 export * from '@ast/nodes'
 import { analyzeScopes, getBinding, isGlobal, isUnassignedGlobal } from '@ast/analyzeScopes'
 export type { ScopeAnalysis, ScopeDiagnostic, Binding, BindingId, BindingKind } from '@ast/analyzeScopes'
-import { analyzeTypes } from '@ast/analyzeTypes'
-export type { TypeAnalysis, AnalyzeTypesOptions, TypeDiagnostic } from '@ast/analyzeTypes'
+import { analyzeTypes, moduleExports } from '@ast/analyzeTypes'
+export type { TypeAnalysis, AnalyzeTypesOptions, TypeDiagnostic, ModuleExports, ExportedType } from '@ast/analyzeTypes'
 export * from '@ast/typeModel'
 export { luauLib, luauDefs, luauDefsPath } from './lib/luau'
 export { robloxLib, robloxDefs, robloxDefsPath } from './lib/roblox'
@@ -34,7 +34,7 @@ export {
     tokenize, LexError,
     parse, parseTokens, parseExpressionFromSource, parseWithRecovery, ParseError,
     analyzeScopes, getBinding, isGlobal, isUnassignedGlobal,
-    analyzeTypes,
+    analyzeTypes, moduleExports,
 }
 
 export const luautparser = {

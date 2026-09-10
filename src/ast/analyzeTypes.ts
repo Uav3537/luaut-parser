@@ -73,6 +73,26 @@ export interface TypeAnalysis {
     readonly diagnostics: TypeDiagnostic[]
 }
 
+/** A type a module exports: the resolved type, plus the parameter names of a
+ *  generic alias so an importer can instantiate it (`Box<number>`). */
+export interface ExportedType {
+    readonly type: Type
+    readonly params: readonly string[]
+}
+
+/** What a module makes available to `import`. See `moduleExports`. */
+export interface ModuleExports {
+    /** `export const` / `export let` / `export const function` names. */
+    readonly values: ReadonlyMap<string, Type>
+    /** `export type` names. */
+    readonly types: ReadonlyMap<string, ExportedType>
+    /** `export default <expr>`. */
+    readonly default?: Type
+    /** The module is still being analyzed further up an import cycle. Its
+     *  names read as `any`, and nothing about them is reported. */
+    readonly partial?: boolean
+}
+
 export interface AnalyzeTypesOptions {
     /** Types for pre-registered globals (`analyzeScopes`'s `builtinGlobals`).
      *  Anything not listed is treated as `any`. Overrides `libs`. */
@@ -83,6 +103,11 @@ export interface AnalyzeTypesOptions {
      *  available to annotations and their `declare` statements seed global
      *  types. See `robloxLib`. */
     libs?: readonly Program[]
+    /** Resolve an `import`'s module path to what that module exports. Called
+     *  once per distinct path. Return `undefined` when there is no such module:
+     *  the import is reported and its names are `any`. Without this option
+     *  every import is `any` — a single file cannot know better. */
+    resolveModule?: (specifier: string) => ModuleExports | undefined
     /** Emit assignability diagnostics (default: true). */
     diagnostics?: boolean
 }
@@ -93,6 +118,53 @@ export function analyzeTypes(
     options: AnalyzeTypesOptions = {},
 ): TypeAnalysis {
     return new TypeAnalyzer(program, scopes, options).run()
+}
+
+/** The exports of an analyzed module, in the shape another module's
+ *  `resolveModule` returns. */
+export function moduleExports(program: Program, scopes: ScopeAnalysis, types: TypeAnalysis): ModuleExports {
+    const byDeclaration = new Map<object, BindingId>()
+    for (const binding of scopes.bindings.values()) {
+        if (binding.declarationNode) byDeclaration.set(binding.declarationNode, binding.id)
+    }
+    const values = new Map<string, Type>()
+    const exportedTypes = new Map<string, ExportedType>()
+    let defaultType: Type | undefined
+
+    const exportName = (declaration: object, name: string): void => {
+        const id = byDeclaration.get(declaration)
+        values.set(name, (id !== undefined ? types.bindingType.get(id) : undefined) ?? anyType)
+    }
+    const exportPattern = (target: BindingTarget): void => {
+        switch (target.type) {
+            case "IdentifierPattern":
+                exportName(target, target.name)
+                return
+            case "ObjectPattern":
+                for (const p of target.properties) exportPattern(p.value)
+                if (target.rest) exportPattern(target.rest)
+                return
+            case "ArrayPattern":
+                for (const el of target.elements) if (el) exportPattern(el.value)
+                if (target.rest) exportPattern(target.rest)
+                return
+        }
+    }
+
+    for (const stmt of program.body.statements) {
+        if (stmt.type === "ExportStatement") {
+            const declaration = stmt.declaration
+            if (declaration.type === "FunctionDeclaration") exportName(declaration.name, declaration.name.name)
+            else for (const target of declaration.names) exportPattern(target)
+        } else if (stmt.type === "ExportTypeAliasStatement") {
+            const name = stmt.alias.name.name
+            const type = types.aliases.get(name)
+            if (type) exportedTypes.set(name, { type, params: stmt.alias.generics.map(g => g.name) })
+        } else if (stmt.type === "ExportDefaultStatement") {
+            defaultType = types.typeOf.get(stmt.declaration) ?? anyType
+        }
+    }
+    return { values, types: exportedTypes, default: defaultType }
 }
 
 // ============================================================
@@ -275,6 +347,10 @@ class TypeAnalyzer {
      *  (`type Tree = { children: Tree[] }`); it resolves to a nominal ref. */
     private readonly resolvingAliases = new Set<string>()
     private readonly diagnostics: TypeDiagnostic[] = []
+    /** `import`ed type names, from `resolveModule`. */
+    private readonly importedTypes = new Map<string, ExportedType>()
+    /** `resolveModule` results, one lookup per module path. */
+    private readonly resolvedModules = new Map<string, ModuleExports | undefined>()
     private emitDiagnostics: boolean
     /** Recursion guard for `preVisitBody`. */
     private preVisitDepth = 0
@@ -296,6 +372,8 @@ class TypeAnalyzer {
         // A `declare` in the program itself seeds a global type too, and wins
         // over a lib's declaration of the same name.
         this.harvestDeclares(this.program.body)
+        // Imported type names must be known before any annotation resolves.
+        this.registerImportedTypes()
         this.resolveAllAliases()
         this.indexDeclarations()
 
@@ -326,6 +404,26 @@ class TypeAnalyzer {
     // --------------------------------------------------------
     // Aliases
     // --------------------------------------------------------
+
+    private moduleFor(specifier: string): ModuleExports | undefined {
+        if (!this.resolvedModules.has(specifier)) {
+            this.resolvedModules.set(specifier, this.options.resolveModule?.(specifier))
+        }
+        return this.resolvedModules.get(specifier)
+    }
+
+    private registerImportedTypes(): void {
+        if (!this.options.resolveModule) return
+        for (const stmt of this.program.body.statements) {
+            if (stmt.type !== "ImportStatement") continue
+            const exports = this.moduleFor(stmt.source.value)
+            if (!exports) continue
+            for (const s of stmt.specifiers) {
+                const exported = exports.types.get(s.imported.name)
+                if (exported) this.importedTypes.set(s.local.name, exported)
+            }
+        }
+    }
 
     private registerAliasDefs(block: Block): void {
         for (const stmt of block.statements) {
@@ -464,6 +562,16 @@ class TypeAnalyzer {
                             name: node.base,
                             typeArguments: node.typeArguments.map(a => this.resolveType(a)),
                         })
+                    }
+                    const imported = this.importedTypes.get(node.base)
+                    if (imported) {
+                        if (!imported.params.length) return imported.type
+                        const subst = new Map<string, Type>()
+                        imported.params.forEach((name, i) => {
+                            const arg = node.typeArguments[i]
+                            subst.set(name, arg ? this.resolveType(arg) : unknownType)
+                        })
+                        return this.reduceType(substitute(imported.type, subst))
                     }
                     const lib = this.options.libTypes?.[node.base]
                     if (lib) return lib
@@ -1114,11 +1222,35 @@ class TypeAnalyzer {
                 return
 
             case "ImportStatement": {
-                // TODO(types): cross-module resolution. Imported names are `any`.
-                const ids: (BindingId | undefined)[] = []
-                if (stmt.defaultImport) ids.push(this.bindingIdOf(stmt.defaultImport))
-                for (const s of stmt.specifiers) ids.push(this.bindingIdOf(s.local))
-                for (const id of ids) if (id !== undefined) this.bindingType.set(id, anyType)
+                // Without a resolver a file cannot see other modules: `any`.
+                const resolving = this.options.resolveModule !== undefined
+                const exports = resolving ? this.moduleFor(stmt.source.value) : undefined
+                const specifier = stmt.source.value
+                const report = (node: Expression, message: string): void => {
+                    if (this.emitDiagnostics) this.diagnostics.push({ node, message })
+                }
+                if (resolving && !exports) report(stmt.source, `Cannot find module '${specifier}'`)
+                // A module still being analyzed up an import cycle has nothing
+                // reliable to offer yet; read it as `any` and report nothing.
+                const usable = exports && !exports.partial ? exports : undefined
+
+                if (stmt.defaultImport) {
+                    if (usable && usable.default === undefined) {
+                        report(stmt.defaultImport, `Module '${specifier}' has no default export`)
+                    }
+                    const id = this.bindingIdByName(stmt.defaultImport.name, stmt.defaultImport)
+                    if (id !== undefined) this.bindingType.set(id, usable?.default ?? anyType)
+                }
+                for (const s of stmt.specifiers) {
+                    const value = usable?.values.get(s.imported.name)
+                    // A name exported only as a type imports fine: it is used in
+                    // annotations, not as a value.
+                    if (usable && !value && !usable.types.has(s.imported.name)) {
+                        report(s.imported, `Module '${specifier}' has no exported member '${s.imported.name}'`)
+                    }
+                    const id = this.bindingIdByName(s.local.name, s.local)
+                    if (id !== undefined) this.bindingType.set(id, value ?? anyType)
+                }
                 return
             }
 

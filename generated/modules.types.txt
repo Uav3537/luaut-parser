@@ -1,8 +1,14 @@
+Config: { scale: number }
+DefaultExport: (x: number) -> number
 ORIGIN: { x: number, y: number }
 a: Point
 b: Point
+clamp: (x: number, lo: number, hi: number) -> number
 distance: (a: Point, b: Point) -> number
 dx: number
 dy: number
-main: () -> any
-scale: any
+helper: (x: number) -> number
+lerp: (a: number, b: number, t: number) -> number
+main: () -> number
+scale: number
+version: 3

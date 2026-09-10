@@ -1,0 +1,9 @@
+-- Imported by modules.luaut: named exports alongside a default.
+
+export const VERSION = 3
+
+export const function helper(x: number): number
+    return x
+end
+
+export default helper

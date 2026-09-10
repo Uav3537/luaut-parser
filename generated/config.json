@@ -1,0 +1,76 @@
+{
+  "type": "Program",
+  "body": {
+    "type": "Block",
+    "statements": [
+      {
+        "type": "ExportDefaultStatement",
+        "declaration": {
+          "type": "TableExpression",
+          "fields": [
+            {
+              "type": "TableFieldNamed",
+              "key": {
+                "type": "Identifier",
+                "name": "scale",
+                "line": {
+                  "start": 3,
+                  "end": 3
+                },
+                "column": {
+                  "start": 18,
+                  "end": 23
+                }
+              },
+              "value": {
+                "type": "NumberLiteral",
+                "value": 2,
+                "raw": "2",
+                "line": {
+                  "start": 3,
+                  "end": 3
+                },
+                "column": {
+                  "start": 25,
+                  "end": 26
+                }
+              }
+            }
+          ],
+          "line": {
+            "start": 3,
+            "end": 3
+          },
+          "column": {
+            "start": 16,
+            "end": 28
+          }
+        },
+        "line": {
+          "start": 3,
+          "end": 3
+        },
+        "column": {
+          "start": 1,
+          "end": 28
+        }
+      }
+    ],
+    "line": {
+      "start": 3,
+      "end": 3
+    },
+    "column": {
+      "start": 1,
+      "end": 28
+    }
+  },
+  "line": {
+    "start": 3,
+    "end": 3
+  },
+  "column": {
+    "start": 1,
+    "end": 28
+  }
+}

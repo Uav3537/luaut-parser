@@ -1,0 +1,745 @@
+{
+  "type": "Program",
+  "body": {
+    "type": "Block",
+    "statements": [
+      {
+        "type": "ImportStatement",
+        "defaultImport": {
+          "type": "Identifier",
+          "name": "main",
+          "line": {
+            "start": 5,
+            "end": 5
+          },
+          "column": {
+            "start": 8,
+            "end": 12
+          }
+        },
+        "specifiers": [
+          {
+            "type": "ImportSpecifier",
+            "imported": {
+              "type": "Identifier",
+              "name": "ORIGIN",
+              "line": {
+                "start": 5,
+                "end": 5
+              },
+              "column": {
+                "start": 16,
+                "end": 22
+              }
+            },
+            "local": {
+              "type": "Identifier",
+              "name": "ORIGIN",
+              "line": {
+                "start": 5,
+                "end": 5
+              },
+              "column": {
+                "start": 16,
+                "end": 22
+              }
+            },
+            "line": {
+              "start": 5,
+              "end": 5
+            },
+            "column": {
+              "start": 16,
+              "end": 22
+            }
+          },
+          {
+            "type": "ImportSpecifier",
+            "imported": {
+              "type": "Identifier",
+              "name": "distance",
+              "line": {
+                "start": 5,
+                "end": 5
+              },
+              "column": {
+                "start": 24,
+                "end": 32
+              }
+            },
+            "local": {
+              "type": "Identifier",
+              "name": "distance",
+              "line": {
+                "start": 5,
+                "end": 5
+              },
+              "column": {
+                "start": 24,
+                "end": 32
+              }
+            },
+            "line": {
+              "start": 5,
+              "end": 5
+            },
+            "column": {
+              "start": 24,
+              "end": 32
+            }
+          },
+          {
+            "type": "ImportSpecifier",
+            "imported": {
+              "type": "Identifier",
+              "name": "scale",
+              "line": {
+                "start": 5,
+                "end": 5
+              },
+              "column": {
+                "start": 34,
+                "end": 39
+              }
+            },
+            "local": {
+              "type": "Identifier",
+              "name": "scale",
+              "line": {
+                "start": 5,
+                "end": 5
+              },
+              "column": {
+                "start": 34,
+                "end": 39
+              }
+            },
+            "line": {
+              "start": 5,
+              "end": 5
+            },
+            "column": {
+              "start": 34,
+              "end": 39
+            }
+          },
+          {
+            "type": "ImportSpecifier",
+            "imported": {
+              "type": "Identifier",
+              "name": "Point",
+              "line": {
+                "start": 5,
+                "end": 5
+              },
+              "column": {
+                "start": 41,
+                "end": 46
+              }
+            },
+            "local": {
+              "type": "Identifier",
+              "name": "Point",
+              "line": {
+                "start": 5,
+                "end": 5
+              },
+              "column": {
+                "start": 41,
+                "end": 46
+              }
+            },
+            "line": {
+              "start": 5,
+              "end": 5
+            },
+            "column": {
+              "start": 41,
+              "end": 46
+            }
+          }
+        ],
+        "source": {
+          "type": "StringLiteral",
+          "value": "./modules",
+          "raw": "\"./modules\"",
+          "line": {
+            "start": 5,
+            "end": 5
+          },
+          "column": {
+            "start": 54,
+            "end": 65
+          }
+        },
+        "line": {
+          "start": 5,
+          "end": 5
+        },
+        "column": {
+          "start": 1,
+          "end": 65
+        }
+      },
+      {
+        "type": "VariableDeclaration",
+        "kind": "const",
+        "names": [
+          {
+            "type": "IdentifierPattern",
+            "name": "origin",
+            "line": {
+              "start": 8,
+              "end": 8
+            },
+            "column": {
+              "start": 7,
+              "end": 13
+            },
+            "typeAnnotation": {
+              "type": "TableTypeNode",
+              "properties": [
+                {
+                  "type": "TableTypeProperty",
+                  "name": "x",
+                  "key": {
+                    "type": "Identifier",
+                    "name": "x",
+                    "line": {
+                      "start": 8,
+                      "end": 8
+                    },
+                    "column": {
+                      "start": 17,
+                      "end": 18
+                    }
+                  },
+                  "valueType": {
+                    "type": "TypeReference",
+                    "base": "number",
+                    "typeArguments": [],
+                    "line": {
+                      "start": 8,
+                      "end": 8
+                    },
+                    "column": {
+                      "start": 20,
+                      "end": 26
+                    }
+                  },
+                  "optional": false,
+                  "line": {
+                    "start": 8,
+                    "end": 8
+                  },
+                  "column": {
+                    "start": 17,
+                    "end": 26
+                  }
+                },
+                {
+                  "type": "TableTypeProperty",
+                  "name": "y",
+                  "key": {
+                    "type": "Identifier",
+                    "name": "y",
+                    "line": {
+                      "start": 8,
+                      "end": 8
+                    },
+                    "column": {
+                      "start": 28,
+                      "end": 29
+                    }
+                  },
+                  "valueType": {
+                    "type": "TypeReference",
+                    "base": "number",
+                    "typeArguments": [],
+                    "line": {
+                      "start": 8,
+                      "end": 8
+                    },
+                    "column": {
+                      "start": 31,
+                      "end": 37
+                    }
+                  },
+                  "optional": false,
+                  "line": {
+                    "start": 8,
+                    "end": 8
+                  },
+                  "column": {
+                    "start": 28,
+                    "end": 37
+                  }
+                }
+              ],
+              "line": {
+                "start": 8,
+                "end": 8
+              },
+              "column": {
+                "start": 15,
+                "end": 39
+              }
+            }
+          }
+        ],
+        "init": [
+          {
+            "type": "Identifier",
+            "name": "ORIGIN",
+            "line": {
+              "start": 8,
+              "end": 8
+            },
+            "column": {
+              "start": 42,
+              "end": 48
+            }
+          }
+        ],
+        "line": {
+          "start": 8,
+          "end": 8
+        },
+        "column": {
+          "start": 1,
+          "end": 48
+        }
+      },
+      {
+        "type": "VariableDeclaration",
+        "kind": "const",
+        "names": [
+          {
+            "type": "IdentifierPattern",
+            "name": "d",
+            "line": {
+              "start": 9,
+              "end": 9
+            },
+            "column": {
+              "start": 7,
+              "end": 8
+            },
+            "typeAnnotation": {
+              "type": "TypeReference",
+              "base": "number",
+              "typeArguments": [],
+              "line": {
+                "start": 9,
+                "end": 9
+              },
+              "column": {
+                "start": 10,
+                "end": 16
+              }
+            }
+          }
+        ],
+        "init": [
+          {
+            "type": "CallExpression",
+            "callee": {
+              "type": "Identifier",
+              "name": "distance",
+              "line": {
+                "start": 9,
+                "end": 9
+              },
+              "column": {
+                "start": 19,
+                "end": 27
+              }
+            },
+            "arguments": [
+              {
+                "type": "Identifier",
+                "name": "ORIGIN",
+                "line": {
+                  "start": 9,
+                  "end": 9
+                },
+                "column": {
+                  "start": 28,
+                  "end": 34
+                }
+              },
+              {
+                "type": "Identifier",
+                "name": "ORIGIN",
+                "line": {
+                  "start": 9,
+                  "end": 9
+                },
+                "column": {
+                  "start": 36,
+                  "end": 42
+                }
+              }
+            ],
+            "line": {
+              "start": 9,
+              "end": 9
+            },
+            "column": {
+              "start": 19,
+              "end": 43
+            }
+          }
+        ],
+        "line": {
+          "start": 9,
+          "end": 9
+        },
+        "column": {
+          "start": 1,
+          "end": 43
+        }
+      },
+      {
+        "type": "VariableDeclaration",
+        "kind": "const",
+        "names": [
+          {
+            "type": "IdentifierPattern",
+            "name": "s",
+            "line": {
+              "start": 10,
+              "end": 10
+            },
+            "column": {
+              "start": 7,
+              "end": 8
+            },
+            "typeAnnotation": {
+              "type": "TypeReference",
+              "base": "number",
+              "typeArguments": [],
+              "line": {
+                "start": 10,
+                "end": 10
+              },
+              "column": {
+                "start": 10,
+                "end": 16
+              }
+            }
+          }
+        ],
+        "init": [
+          {
+            "type": "Identifier",
+            "name": "scale",
+            "line": {
+              "start": 10,
+              "end": 10
+            },
+            "column": {
+              "start": 19,
+              "end": 24
+            }
+          }
+        ],
+        "line": {
+          "start": 10,
+          "end": 10
+        },
+        "column": {
+          "start": 1,
+          "end": 24
+        }
+      },
+      {
+        "type": "VariableDeclaration",
+        "kind": "const",
+        "names": [
+          {
+            "type": "IdentifierPattern",
+            "name": "p",
+            "line": {
+              "start": 13,
+              "end": 13
+            },
+            "column": {
+              "start": 7,
+              "end": 8
+            },
+            "typeAnnotation": {
+              "type": "TypeReference",
+              "base": "Point",
+              "typeArguments": [],
+              "line": {
+                "start": 13,
+                "end": 13
+              },
+              "column": {
+                "start": 10,
+                "end": 15
+              }
+            }
+          }
+        ],
+        "init": [
+          {
+            "type": "TableExpression",
+            "fields": [
+              {
+                "type": "TableFieldNamed",
+                "key": {
+                  "type": "Identifier",
+                  "name": "x",
+                  "line": {
+                    "start": 13,
+                    "end": 13
+                  },
+                  "column": {
+                    "start": 20,
+                    "end": 21
+                  }
+                },
+                "value": {
+                  "type": "NumberLiteral",
+                  "value": 1,
+                  "raw": "1",
+                  "line": {
+                    "start": 13,
+                    "end": 13
+                  },
+                  "column": {
+                    "start": 23,
+                    "end": 24
+                  }
+                }
+              },
+              {
+                "type": "TableFieldNamed",
+                "key": {
+                  "type": "Identifier",
+                  "name": "y",
+                  "line": {
+                    "start": 13,
+                    "end": 13
+                  },
+                  "column": {
+                    "start": 26,
+                    "end": 27
+                  }
+                },
+                "value": {
+                  "type": "NumberLiteral",
+                  "value": 2,
+                  "raw": "2",
+                  "line": {
+                    "start": 13,
+                    "end": 13
+                  },
+                  "column": {
+                    "start": 29,
+                    "end": 30
+                  }
+                }
+              }
+            ],
+            "line": {
+              "start": 13,
+              "end": 13
+            },
+            "column": {
+              "start": 18,
+              "end": 32
+            }
+          }
+        ],
+        "line": {
+          "start": 13,
+          "end": 13
+        },
+        "column": {
+          "start": 1,
+          "end": 32
+        }
+      },
+      {
+        "type": "VariableDeclaration",
+        "kind": "const",
+        "names": [
+          {
+            "type": "IdentifierPattern",
+            "name": "r",
+            "line": {
+              "start": 16,
+              "end": 16
+            },
+            "column": {
+              "start": 7,
+              "end": 8
+            },
+            "typeAnnotation": {
+              "type": "TypeReference",
+              "base": "number",
+              "typeArguments": [],
+              "line": {
+                "start": 16,
+                "end": 16
+              },
+              "column": {
+                "start": 10,
+                "end": 16
+              }
+            }
+          }
+        ],
+        "init": [
+          {
+            "type": "CallExpression",
+            "callee": {
+              "type": "Identifier",
+              "name": "main",
+              "line": {
+                "start": 16,
+                "end": 16
+              },
+              "column": {
+                "start": 19,
+                "end": 23
+              }
+            },
+            "arguments": [],
+            "line": {
+              "start": 16,
+              "end": 16
+            },
+            "column": {
+              "start": 19,
+              "end": 25
+            }
+          }
+        ],
+        "line": {
+          "start": 16,
+          "end": 16
+        },
+        "column": {
+          "start": 1,
+          "end": 25
+        }
+      },
+      {
+        "type": "CallStatement",
+        "expression": {
+          "type": "CallExpression",
+          "callee": {
+            "type": "Identifier",
+            "name": "print",
+            "line": {
+              "start": 18,
+              "end": 18
+            },
+            "column": {
+              "start": 1,
+              "end": 6
+            }
+          },
+          "arguments": [
+            {
+              "type": "Identifier",
+              "name": "origin",
+              "line": {
+                "start": 18,
+                "end": 18
+              },
+              "column": {
+                "start": 7,
+                "end": 13
+              }
+            },
+            {
+              "type": "Identifier",
+              "name": "d",
+              "line": {
+                "start": 18,
+                "end": 18
+              },
+              "column": {
+                "start": 15,
+                "end": 16
+              }
+            },
+            {
+              "type": "Identifier",
+              "name": "s",
+              "line": {
+                "start": 18,
+                "end": 18
+              },
+              "column": {
+                "start": 18,
+                "end": 19
+              }
+            },
+            {
+              "type": "Identifier",
+              "name": "p",
+              "line": {
+                "start": 18,
+                "end": 18
+              },
+              "column": {
+                "start": 21,
+                "end": 22
+              }
+            },
+            {
+              "type": "Identifier",
+              "name": "r",
+              "line": {
+                "start": 18,
+                "end": 18
+              },
+              "column": {
+                "start": 24,
+                "end": 25
+              }
+            }
+          ],
+          "line": {
+            "start": 18,
+            "end": 18
+          },
+          "column": {
+            "start": 1,
+            "end": 26
+          }
+        },
+        "line": {
+          "start": 18,
+          "end": 18
+        },
+        "column": {
+          "start": 1,
+          "end": 26
+        }
+      }
+    ],
+    "line": {
+      "start": 5,
+      "end": 18
+    },
+    "column": {
+      "start": 1,
+      "end": 26
+    }
+  },
+  "line": {
+    "start": 5,
+    "end": 18
+  },
+  "column": {
+    "start": 1,
+    "end": 26
+  }
+}

@@ -115,12 +115,15 @@ analyzeTypes(program, scopes, {
   globalTypes: { … },         // types for specific globals; wins over `libs`
   libTypes: { … },            // extra named types for annotations
   diagnostics: true,          // emit assignability errors (default)
+  resolveModule: specifier => exportsOfThatFile,
+                              // what an `import` sees; without it imports are `any`
 })
 ```
 
 ## Known limitations
 
-- Cross-module `import` resolves to `any`.
+- `export { a, b }` lists and `export * from` are not supported; export at
+  the declaration (`export const`, `export type`, `export default`).
 - `setmetatable` and metatables are not modelled.
 - Accessing a property a type does not have yields `unknown` rather than an
   error; assigning to a `readonly` property is not reported; generic
