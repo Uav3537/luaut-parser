@@ -1,0 +1,22 @@
+-- Array literals: `[]` is arrays only (Luau `{1, 2}` is gone).
+
+const empty = []
+const nums = [1, 2, 3]
+const nested = [[1, 2], [3, 4]]
+const mixed = [1, "two", true, nil]
+
+const a = [1, 2]
+const b = [3, 4]
+const joined = [...a, ...b, 5]
+
+const matrix = [
+    [1, 0, 0],
+    [0, 1, 0],
+    [0, 0, 1],
+]
+
+const function firstTwo(xs: number[]): number[]
+    return [xs[1], xs[2]]
+end
+
+print(#nums, #joined, #empty, matrix, mixed, firstTwo(nums))

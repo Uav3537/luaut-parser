@@ -1,0 +1,70 @@
+-- Method `self`, template literal types, and `satisfies`.
+--
+-- Every binding is annotated with what it should infer to, so a wrong result
+-- shows up as a diagnostic rather than needing to be read off the output.
+
+-- `:` methods ---------------------------------------------------------------
+-- Luau's colon is sugar on both sides, and the analyzer treats it that way:
+--
+--   function T:m(a)   is   function T.m(self, a)
+--   o:m(x)            is   o.m(o, x)
+--
+-- So the definition really does take `self` as its first parameter, and a `:`
+-- call fills that slot and shifts the written arguments by one. The rule is
+-- "first parameter is named `self`" — the same convention the definitions
+-- files use for `Instance:FindFirstChild(self, name)`.
+
+type Counter = { n: number }
+
+const counter: Counter = { n: 0 }
+
+function counter:bump(by: number)
+    -- `self` is the receiver, not `any`
+    const here: Counter = self
+    return here.n + by
+end
+
+function counter:peek()
+    return self.n
+end
+
+-- The receiver fills `self`, so `bump` is called with one written argument.
+const bumped: number = counter:bump(1)
+const peeked: number = counter:peek()
+
+-- Arity counts the written arguments, not `self`.
+const viaDot: number = counter.bump(counter, 2)
+
+-- Template literal types ----------------------------------------------------
+-- Interpolation uses `${...}`, the same syntax as luaut's template *strings*.
+
+type Event = "click" | "hover"
+
+-- A pattern: any string with this shape.
+const anyOn: `on${string}` = "onWhatever"
+
+-- Every interpolation a literal union, so it expands to the cross product.
+const onEvent: `on${Event}` = "onclick"
+const pair: `${"a" | "b"}-${"x" | "y"}` = "b-y"
+
+-- The four string intrinsics, which cannot be written in luaut itself.
+const shout: Uppercase<Event> = "CLICK"
+const quiet: Lowercase<"ABC"> = "abc"
+const upper: Capitalize<"click"> = "Click"
+const lower: Uncapitalize<"Click"> = "click"
+
+-- Together with key remapping this gives derived object types.
+type Handlers<T> = { [K in keyof T as `on${Capitalize<K>}`]: (value: T[K]) -> () }
+const handlers: Handlers<{ click: number, hover: string }> = {
+    onClick: function(value: number) end,
+    onHover: function(value: string) end,
+}
+
+-- satisfies -----------------------------------------------------------------
+-- Checks against a contract without widening: `port` stays `number`, and the
+-- object is still known to have exactly these keys.
+const config = { host: "localhost", port: 8080 } satisfies { host: string, port: number }
+const host: string = config.host
+const port: number = config.port
+
+print(bumped, peeked, viaDot, anyOn, onEvent, pair, shout, quiet, upper, lower, handlers, host, port)

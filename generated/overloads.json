@@ -1,0 +1,847 @@
+{
+  "type": "Program",
+  "body": {
+    "type": "Block",
+    "statements": [
+      {
+        "type": "FunctionDeclarationStatement",
+        "target": {
+          "type": "FunctionName",
+          "base": {
+            "type": "Identifier",
+            "name": "len",
+            "line": {
+              "start": 3,
+              "end": 3
+            },
+            "column": {
+              "start": 10,
+              "end": 13
+            }
+          },
+          "path": [],
+          "line": {
+            "start": 3,
+            "end": 3
+          },
+          "column": {
+            "start": 10,
+            "end": 13
+          }
+        },
+        "isMethod": false,
+        "func": {
+          "type": "FunctionBody",
+          "generics": [],
+          "params": [
+            {
+              "type": "FunctionParameter",
+              "name": "x",
+              "typeAnnotation": {
+                "type": "UnionTypeNode",
+                "types": [
+                  {
+                    "type": "TypeReference",
+                    "base": "string",
+                    "typeArguments": [],
+                    "line": {
+                      "start": 5,
+                      "end": 5
+                    },
+                    "column": {
+                      "start": 17,
+                      "end": 23
+                    }
+                  },
+                  {
+                    "type": "ArrayTypeNode",
+                    "element": {
+                      "type": "TypeReference",
+                      "base": "unknown",
+                      "typeArguments": [],
+                      "line": {
+                        "start": 5,
+                        "end": 5
+                      },
+                      "column": {
+                        "start": 26,
+                        "end": 33
+                      }
+                    },
+                    "line": {
+                      "start": 5,
+                      "end": 5
+                    },
+                    "column": {
+                      "start": 26,
+                      "end": 35
+                    }
+                  }
+                ],
+                "line": {
+                  "start": 5,
+                  "end": 5
+                },
+                "column": {
+                  "start": 17,
+                  "end": 35
+                }
+              },
+              "line": {
+                "start": 5,
+                "end": 5
+              },
+              "column": {
+                "start": 14,
+                "end": 35
+              }
+            }
+          ],
+          "hasVarargs": false,
+          "returnType": {
+            "type": "TypeReference",
+            "base": "number",
+            "typeArguments": [],
+            "line": {
+              "start": 5,
+              "end": 5
+            },
+            "column": {
+              "start": 38,
+              "end": 44
+            }
+          },
+          "body": {
+            "type": "Block",
+            "statements": [
+              {
+                "type": "ReturnStatement",
+                "arguments": [
+                  {
+                    "type": "UnaryExpression",
+                    "operator": "#",
+                    "argument": {
+                      "type": "Identifier",
+                      "name": "x",
+                      "line": {
+                        "start": 6,
+                        "end": 6
+                      },
+                      "column": {
+                        "start": 13,
+                        "end": 14
+                      }
+                    },
+                    "line": {
+                      "start": 6,
+                      "end": 6
+                    },
+                    "column": {
+                      "start": 12,
+                      "end": 14
+                    }
+                  }
+                ],
+                "line": {
+                  "start": 6,
+                  "end": 6
+                },
+                "column": {
+                  "start": 5,
+                  "end": 14
+                }
+              }
+            ],
+            "line": {
+              "start": 6,
+              "end": 6
+            },
+            "column": {
+              "start": 5,
+              "end": 14
+            }
+          },
+          "line": {
+            "start": 5,
+            "end": 7
+          },
+          "column": {
+            "start": 13,
+            "end": 4
+          }
+        },
+        "signatures": [
+          {
+            "type": "FunctionSignature",
+            "generics": [],
+            "params": [
+              {
+                "type": "FunctionParameter",
+                "name": "x",
+                "typeAnnotation": {
+                  "type": "TypeReference",
+                  "base": "string",
+                  "typeArguments": [],
+                  "line": {
+                    "start": 3,
+                    "end": 3
+                  },
+                  "column": {
+                    "start": 17,
+                    "end": 23
+                  }
+                },
+                "line": {
+                  "start": 3,
+                  "end": 3
+                },
+                "column": {
+                  "start": 14,
+                  "end": 23
+                }
+              }
+            ],
+            "hasVarargs": false,
+            "returnType": {
+              "type": "TypeReference",
+              "base": "number",
+              "typeArguments": [],
+              "line": {
+                "start": 3,
+                "end": 3
+              },
+              "column": {
+                "start": 26,
+                "end": 32
+              }
+            },
+            "line": {
+              "start": 3,
+              "end": 3
+            },
+            "column": {
+              "start": 13,
+              "end": 32
+            }
+          },
+          {
+            "type": "FunctionSignature",
+            "generics": [],
+            "params": [
+              {
+                "type": "FunctionParameter",
+                "name": "x",
+                "typeAnnotation": {
+                  "type": "ArrayTypeNode",
+                  "element": {
+                    "type": "TypeReference",
+                    "base": "unknown",
+                    "typeArguments": [],
+                    "line": {
+                      "start": 4,
+                      "end": 4
+                    },
+                    "column": {
+                      "start": 17,
+                      "end": 24
+                    }
+                  },
+                  "line": {
+                    "start": 4,
+                    "end": 4
+                  },
+                  "column": {
+                    "start": 17,
+                    "end": 26
+                  }
+                },
+                "line": {
+                  "start": 4,
+                  "end": 4
+                },
+                "column": {
+                  "start": 14,
+                  "end": 26
+                }
+              }
+            ],
+            "hasVarargs": false,
+            "returnType": {
+              "type": "TypeReference",
+              "base": "number",
+              "typeArguments": [],
+              "line": {
+                "start": 4,
+                "end": 4
+              },
+              "column": {
+                "start": 29,
+                "end": 35
+              }
+            },
+            "line": {
+              "start": 4,
+              "end": 4
+            },
+            "column": {
+              "start": 13,
+              "end": 35
+            }
+          }
+        ],
+        "line": {
+          "start": 3,
+          "end": 7
+        },
+        "column": {
+          "start": 1,
+          "end": 4
+        }
+      },
+      {
+        "type": "FunctionDeclaration",
+        "kind": "const",
+        "name": {
+          "type": "Identifier",
+          "name": "reverse",
+          "line": {
+            "start": 9,
+            "end": 9
+          },
+          "column": {
+            "start": 16,
+            "end": 23
+          }
+        },
+        "func": {
+          "type": "FunctionBody",
+          "generics": [],
+          "params": [
+            {
+              "type": "FunctionParameter",
+              "name": "x",
+              "line": {
+                "start": 11,
+                "end": 11
+              },
+              "column": {
+                "start": 24,
+                "end": 25
+              }
+            }
+          ],
+          "hasVarargs": false,
+          "body": {
+            "type": "Block",
+            "statements": [
+              {
+                "type": "ReturnStatement",
+                "arguments": [
+                  {
+                    "type": "Identifier",
+                    "name": "x",
+                    "line": {
+                      "start": 12,
+                      "end": 12
+                    },
+                    "column": {
+                      "start": 12,
+                      "end": 13
+                    }
+                  }
+                ],
+                "line": {
+                  "start": 12,
+                  "end": 12
+                },
+                "column": {
+                  "start": 5,
+                  "end": 13
+                }
+              }
+            ],
+            "line": {
+              "start": 12,
+              "end": 12
+            },
+            "column": {
+              "start": 5,
+              "end": 13
+            }
+          },
+          "line": {
+            "start": 11,
+            "end": 13
+          },
+          "column": {
+            "start": 23,
+            "end": 4
+          }
+        },
+        "signatures": [
+          {
+            "type": "FunctionSignature",
+            "generics": [],
+            "params": [
+              {
+                "type": "FunctionParameter",
+                "name": "x",
+                "typeAnnotation": {
+                  "type": "TypeReference",
+                  "base": "string",
+                  "typeArguments": [],
+                  "line": {
+                    "start": 9,
+                    "end": 9
+                  },
+                  "column": {
+                    "start": 27,
+                    "end": 33
+                  }
+                },
+                "line": {
+                  "start": 9,
+                  "end": 9
+                },
+                "column": {
+                  "start": 24,
+                  "end": 33
+                }
+              }
+            ],
+            "hasVarargs": false,
+            "returnType": {
+              "type": "TypeReference",
+              "base": "string",
+              "typeArguments": [],
+              "line": {
+                "start": 9,
+                "end": 9
+              },
+              "column": {
+                "start": 36,
+                "end": 42
+              }
+            },
+            "line": {
+              "start": 9,
+              "end": 9
+            },
+            "column": {
+              "start": 23,
+              "end": 42
+            }
+          },
+          {
+            "type": "FunctionSignature",
+            "generics": [],
+            "params": [
+              {
+                "type": "FunctionParameter",
+                "name": "x",
+                "typeAnnotation": {
+                  "type": "ArrayTypeNode",
+                  "element": {
+                    "type": "TypeReference",
+                    "base": "number",
+                    "typeArguments": [],
+                    "line": {
+                      "start": 10,
+                      "end": 10
+                    },
+                    "column": {
+                      "start": 27,
+                      "end": 33
+                    }
+                  },
+                  "line": {
+                    "start": 10,
+                    "end": 10
+                  },
+                  "column": {
+                    "start": 27,
+                    "end": 35
+                  }
+                },
+                "line": {
+                  "start": 10,
+                  "end": 10
+                },
+                "column": {
+                  "start": 24,
+                  "end": 35
+                }
+              }
+            ],
+            "hasVarargs": false,
+            "returnType": {
+              "type": "ArrayTypeNode",
+              "element": {
+                "type": "TypeReference",
+                "base": "number",
+                "typeArguments": [],
+                "line": {
+                  "start": 10,
+                  "end": 10
+                },
+                "column": {
+                  "start": 38,
+                  "end": 44
+                }
+              },
+              "line": {
+                "start": 10,
+                "end": 10
+              },
+              "column": {
+                "start": 38,
+                "end": 46
+              }
+            },
+            "line": {
+              "start": 10,
+              "end": 10
+            },
+            "column": {
+              "start": 23,
+              "end": 46
+            }
+          }
+        ],
+        "line": {
+          "start": 9,
+          "end": 13
+        },
+        "column": {
+          "start": 1,
+          "end": 4
+        }
+      },
+      {
+        "type": "VariableDeclaration",
+        "kind": "const",
+        "names": [
+          {
+            "type": "IdentifierPattern",
+            "name": "a",
+            "line": {
+              "start": 16,
+              "end": 16
+            },
+            "column": {
+              "start": 7,
+              "end": 8
+            }
+          }
+        ],
+        "init": [
+          {
+            "type": "CallExpression",
+            "callee": {
+              "type": "Identifier",
+              "name": "len",
+              "line": {
+                "start": 16,
+                "end": 16
+              },
+              "column": {
+                "start": 11,
+                "end": 14
+              }
+            },
+            "arguments": [
+              {
+                "type": "StringLiteral",
+                "value": "hi",
+                "raw": "\"hi\"",
+                "line": {
+                  "start": 16,
+                  "end": 16
+                },
+                "column": {
+                  "start": 15,
+                  "end": 19
+                }
+              }
+            ],
+            "line": {
+              "start": 16,
+              "end": 16
+            },
+            "column": {
+              "start": 11,
+              "end": 20
+            }
+          }
+        ],
+        "line": {
+          "start": 16,
+          "end": 16
+        },
+        "column": {
+          "start": 1,
+          "end": 20
+        }
+      },
+      {
+        "type": "VariableDeclaration",
+        "kind": "const",
+        "names": [
+          {
+            "type": "IdentifierPattern",
+            "name": "b",
+            "line": {
+              "start": 17,
+              "end": 17
+            },
+            "column": {
+              "start": 7,
+              "end": 8
+            }
+          }
+        ],
+        "init": [
+          {
+            "type": "CallExpression",
+            "callee": {
+              "type": "Identifier",
+              "name": "reverse",
+              "line": {
+                "start": 17,
+                "end": 17
+              },
+              "column": {
+                "start": 11,
+                "end": 18
+              }
+            },
+            "arguments": [
+              {
+                "type": "ArrayExpression",
+                "elements": [
+                  {
+                    "type": "NumberLiteral",
+                    "value": 1,
+                    "raw": "1",
+                    "line": {
+                      "start": 17,
+                      "end": 17
+                    },
+                    "column": {
+                      "start": 20,
+                      "end": 21
+                    }
+                  },
+                  {
+                    "type": "NumberLiteral",
+                    "value": 2,
+                    "raw": "2",
+                    "line": {
+                      "start": 17,
+                      "end": 17
+                    },
+                    "column": {
+                      "start": 23,
+                      "end": 24
+                    }
+                  },
+                  {
+                    "type": "NumberLiteral",
+                    "value": 3,
+                    "raw": "3",
+                    "line": {
+                      "start": 17,
+                      "end": 17
+                    },
+                    "column": {
+                      "start": 26,
+                      "end": 27
+                    }
+                  }
+                ],
+                "line": {
+                  "start": 17,
+                  "end": 17
+                },
+                "column": {
+                  "start": 19,
+                  "end": 28
+                }
+              }
+            ],
+            "line": {
+              "start": 17,
+              "end": 17
+            },
+            "column": {
+              "start": 11,
+              "end": 29
+            }
+          }
+        ],
+        "line": {
+          "start": 17,
+          "end": 17
+        },
+        "column": {
+          "start": 1,
+          "end": 29
+        }
+      },
+      {
+        "type": "VariableDeclaration",
+        "kind": "const",
+        "names": [
+          {
+            "type": "IdentifierPattern",
+            "name": "c",
+            "line": {
+              "start": 18,
+              "end": 18
+            },
+            "column": {
+              "start": 7,
+              "end": 8
+            }
+          }
+        ],
+        "init": [
+          {
+            "type": "CallExpression",
+            "callee": {
+              "type": "Identifier",
+              "name": "reverse",
+              "line": {
+                "start": 18,
+                "end": 18
+              },
+              "column": {
+                "start": 11,
+                "end": 18
+              }
+            },
+            "arguments": [
+              {
+                "type": "StringLiteral",
+                "value": "abc",
+                "raw": "\"abc\"",
+                "line": {
+                  "start": 18,
+                  "end": 18
+                },
+                "column": {
+                  "start": 19,
+                  "end": 24
+                }
+              }
+            ],
+            "line": {
+              "start": 18,
+              "end": 18
+            },
+            "column": {
+              "start": 11,
+              "end": 25
+            }
+          }
+        ],
+        "line": {
+          "start": 18,
+          "end": 18
+        },
+        "column": {
+          "start": 1,
+          "end": 25
+        }
+      },
+      {
+        "type": "CallStatement",
+        "expression": {
+          "type": "CallExpression",
+          "callee": {
+            "type": "Identifier",
+            "name": "print",
+            "line": {
+              "start": 20,
+              "end": 20
+            },
+            "column": {
+              "start": 1,
+              "end": 6
+            }
+          },
+          "arguments": [
+            {
+              "type": "Identifier",
+              "name": "a",
+              "line": {
+                "start": 20,
+                "end": 20
+              },
+              "column": {
+                "start": 7,
+                "end": 8
+              }
+            },
+            {
+              "type": "Identifier",
+              "name": "b",
+              "line": {
+                "start": 20,
+                "end": 20
+              },
+              "column": {
+                "start": 10,
+                "end": 11
+              }
+            },
+            {
+              "type": "Identifier",
+              "name": "c",
+              "line": {
+                "start": 20,
+                "end": 20
+              },
+              "column": {
+                "start": 13,
+                "end": 14
+              }
+            }
+          ],
+          "line": {
+            "start": 20,
+            "end": 20
+          },
+          "column": {
+            "start": 1,
+            "end": 15
+          }
+        },
+        "line": {
+          "start": 20,
+          "end": 20
+        },
+        "column": {
+          "start": 1,
+          "end": 15
+        }
+      }
+    ],
+    "line": {
+      "start": 3,
+      "end": 20
+    },
+    "column": {
+      "start": 1,
+      "end": 15
+    }
+  },
+  "line": {
+    "start": 3,
+    "end": 20
+  },
+  "column": {
+    "start": 1,
+    "end": 15
+  }
+}

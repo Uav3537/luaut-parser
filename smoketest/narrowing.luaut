@@ -1,0 +1,73 @@
+-- Flow-sensitive narrowing that analyzeTypes should track.
+
+type Shape =
+    | { kind: "circle", radius: number }
+    | { kind: "rect", w: number, h: number }
+
+const function area(shape: Shape): number
+    if shape.kind == "circle" then
+        return 3.14159 * shape.radius * shape.radius
+    else
+        return shape.w * shape.h
+    end
+end
+
+const function describe(value: string | number | nil): string
+    if value == nil then
+        return "nothing"
+    end
+    if type(value) == "string" then
+        return "text: " .. value
+    end
+    return "number: " .. tostring(value)
+end
+
+const function firstWord(s?: string): string
+    -- truthiness narrows `string | nil -> string`
+    if not s then
+        return ""
+    end
+    return s
+end
+
+const config: { debug: boolean } | nil = nil
+const verbose = config and config.debug or false
+
+print(area({ kind: "circle", radius: 2 }), describe(42), firstWord(nil), verbose)
+
+-- `and` / `or` refine only the branch where every operand's outcome is known:
+-- `a and b` refines the true branch, `a or b` the false one. The other branch
+-- must keep the un-narrowed type.
+const function branches(a: string | number)
+    if type(a) == "string" and a ~= "" then
+        const inAnd = a
+    else
+        -- either test could have failed — still `string | number`
+        const afterAnd = a
+    end
+
+    if a == 1 or a == "x" then
+        -- not refinable: `string | number`
+        const inOr = a
+    else
+        const afterOr = a
+    end
+end
+
+-- A binding assigned in only one branch keeps the other path's type after the
+-- `if` — here `flag` is `boolean` again, not the literal `true`.
+const function mergePaths(cond: boolean)
+    let flag: boolean = false
+    if cond then
+        flag = true
+    end
+    return flag
+end
+
+-- A declared property wins over the catch-all indexer for a known key.
+type Bag = { [string]: number, label: string }
+const function readBag(bag: Bag): string
+    return bag["label"]
+end
+
+print(branches(1), mergePaths(true), readBag({ label: "x" }))

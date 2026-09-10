@@ -1,0 +1,69 @@
+-- Optionality and the ternary operator.
+--
+-- luaut has **no `T?` shorthand**. `?` in type position always belongs to a
+-- conditional type, and `?` in expression position always belongs to a
+-- ternary. Optionality is written the TypeScript way:
+--
+--     name?: T    the property/parameter may be absent  (its type is `T | nil`)
+--     name: T | nil   it must be present, but may be nil
+--
+-- That distinction is enforced: omitting an argument for a parameter without
+-- `?` is an error even when its type admits nil, exactly as in TypeScript.
+
+-- Optional vs. nilable ------------------------------------------------------
+type Config = {
+    host: string,
+    -- may be absent entirely
+    port?: number,
+    -- must be written, but may be nil
+    proxy: string | nil,
+}
+
+const full: Config = { host: "a", port: 80, proxy: nil }
+const minimal: Config = { host: "a", proxy: nil }
+
+-- A required parameter may not follow an optional one — same rule as
+-- TypeScript — so the nilable-but-required `timeout` comes first.
+const function connect(host: string, timeout: number | nil, port?: number)
+    -- an optional parameter's type includes nil
+    const p: number | nil = port
+    const t: number | nil = timeout
+    return p, t
+end
+
+-- `timeout` must be written even though it may be nil; `port` may be omitted.
+const c1 = connect("a", nil)
+const c2 = connect("a", 5, 80)
+
+-- Optionality also crosses into function *types*.
+const later: (host: string, port?: number) -> number | nil =
+    function(host: string, port?: number)
+        return port
+    end
+const c3 = later("a")
+
+-- Ternary -------------------------------------------------------------------
+-- `cond ? a : b` builds the same node as `if cond then a else b`.
+const function describe(n: number, flag: boolean)
+    const t1: string = flag ? "on" : "off"
+    -- right-associative, so this chains like an if/elseif ladder
+    const t2: string = n == 0 ? "zero" : n == 1 ? "one" : "many"
+    return t1 .. t2
+end
+
+-- The condition narrows the branches, just as the statement form does.
+const function orElse(v: string | nil)
+    const t3: string = v ? v : "fallback"
+    return t3
+end
+
+-- A ternary's `:` never swallows a method call: `o : other` below is the
+-- ternary separator, while `o:m()` is a real method call.
+type Counter = { m: (self: Counter) -> number }
+const function choose(flag: boolean, o: Counter, other: Counter)
+    const t4: Counter = flag ? o : other
+    const t5: number = flag ? o:m() : 0
+    return t4, t5
+end
+
+print(full, minimal, c1, c2, c3, describe(1, true), orElse(nil), choose)

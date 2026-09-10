@@ -1,0 +1,79 @@
+-- Return type inference, and `<const T>` type parameters.
+
+-- ============================================================
+-- Inferred return types are a plain union of what is returned
+-- ------------------------------------------------------------
+-- The return type is never widened on its own. Whatever each `return`
+-- expression's type is, that is what goes into the union — so the *binding*
+-- decides how narrow the result is, and the reader can predict it from the
+-- code rather than from a rule about return positions.
+-- ============================================================
+
+declare cond: number
+
+-- Two literal returns stay two literals.
+const pickLiteral: () -> 1 | "a" = function()
+    if cond == 1 then return 1 end
+    return "a"
+end
+
+-- `let a = "a"` widens the *binding* to `string`, and that is what the return
+-- type picks up. Nothing widened the return type itself.
+const viaLet: () -> 1 | string = function()
+    if cond == 1 then return 1 end
+    let a = "a"
+    return a
+end
+
+-- `const a = "a"` keeps the literal, so the return type keeps it too.
+const viaConst: () -> 1 | "a" = function()
+    if cond == 1 then return 1 end
+    const a = "a"
+    return a
+end
+
+-- A bare `return` contributes `nil`.
+const maybe: () -> nil | 2 = function()
+    if cond == 1 then return end
+    return 2
+end
+
+-- Several values form a *type pack*, written and printed `(A, B)`. A pack is
+-- not a tuple: it spreads across names in an expression list, where a tuple
+-- is one value.
+const pair: () -> (1, "x") | (2, "y") = function()
+    if cond == 1 then return 1, "x" end
+    return 2, "y"
+end
+
+-- ============================================================
+-- `<const T>`
+-- ------------------------------------------------------------
+-- A normal type parameter widens its argument, as TypeScript does. A `const`
+-- one infers it at its narrowest: literals stay literal, array literals
+-- become tuples, and table literals become readonly with literal members.
+-- ============================================================
+
+declare function plain<T>(v: T): T
+declare function narrow<const T>(v: T): T
+
+const widened: number = plain(1)
+const widenedList: number[] = plain([1, 2])
+const widenedTable: { k: number } = plain({ k: 1 })
+
+const kept: 1 = narrow(1)
+const keptText: "x" = narrow("x")
+const keptTuple: [1, 2] = narrow([1, 2])
+const keptTable: { readonly k: 1 } = narrow({ k: 1 })
+
+-- Constraints work the same way.
+declare function keyed<const K extends string>(k: K): K
+const keptKey: "hello" = keyed("hello")
+
+-- And so do methods, where the receiver fills `self`.
+type Box = { of: <const T>(self: Box, v: T) -> { value: T } }
+declare box: Box
+const boxed: { value: ["a", "b"] } = box:of(["a", "b"])
+
+print(pickLiteral, viaLet, viaConst, maybe, pair, widened, widenedList,
+      widenedTable, kept, keptText, keptTuple, keptTable, keptKey, boxed)

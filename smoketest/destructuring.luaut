@@ -1,0 +1,19 @@
+-- Destructuring patterns in `const` bindings (JS-style).
+
+const obj = { a: 1, b: 2, c: 3, nested: { deep: 4 }, list: [10, 20, 30] }
+const arr = [1, 2, 3, 4, 5]
+
+-- object pattern: shorthand, rename (`key: const`), nested, default, rest
+const { a, b: renamed, nested: { deep }, missing: fallback = 99, ...restObj } = obj
+
+-- array pattern: positional, elision hole, nested, default, rest
+const [first, , third, ...tail] = arr
+const [[p, q], [r, s]] = [[1, 2], [3, 4]]
+
+-- pattern with a whole-pattern type annotation
+const { a: aa }: { a: number, b: number, c: number } = obj
+
+-- mixed nesting
+const { list: [head, ...listTail] } = obj
+
+print(a, renamed, deep, fallback, restObj, first, third, tail, p, q, r, s, aa, head, listTail)

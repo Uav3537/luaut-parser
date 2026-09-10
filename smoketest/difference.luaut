@@ -1,0 +1,78 @@
+-- Set difference: `A - B`.
+--
+-- Narrowing an `unknown` by equality used to lose the negative half — the
+-- `else` of `if a == 1` was still just `unknown`. It is now `unknown - 1`,
+-- which is both what the test proved and enough to keep narrowing further.
+--
+-- The rule is that the subtraction is kept only when the base is *opaque*:
+--
+--   union     subtract exactly, by dropping members   ("a"|"b") - "b"  =  "a"
+--   concrete  discard, it buys nothing                 string - "a"    =  string
+--   opaque    keep                                     unknown - 1
+--
+-- `Exclude<T, U>` is defined as `T - U`, so writing it and narrowing to it
+-- give the same type.
+
+-- The motivating case ---------------------------------------------------------
+const function classify(a: unknown)
+    if a == 1 then
+        const one: 1 = a
+        return one
+    end
+    -- everything except 1
+    const notOne: unknown - 1 = a
+
+    -- and the subtraction accumulates
+    if a == 2 then
+        const two: 2 = a
+        return two
+    end
+    const neither: unknown - (1 | 2) = a
+    return 0
+end
+
+-- Truthiness on an unknown is the same idea: the true branch is everything
+-- that is not falsy. (In Luau only `nil` and `false` are falsy.)
+const function truthiness(b: unknown)
+    if b then
+        const kept: unknown - (nil | false) = b
+        return kept
+    end
+    const gone: nil | false = b
+    return gone
+end
+
+-- Narrowing continues through a subtraction --------------------------------
+const function refine(v: unknown)
+    if v ~= nil then
+        const present: unknown - nil = v
+        if typeof(v) == "number" then
+            -- narrowing the base of a subtraction narrows normally
+            const n: number = v
+            return n
+        end
+    end
+    return 0
+end
+
+-- Simplification ------------------------------------------------------------
+-- A union subtracts member by member…
+const fromUnion: "a" | "c" = "a" as Exclude<"a" | "b" | "c", "b">
+const nonNil: string = "x" as NonNullable<string | nil>
+const truthy: string = "x" as Truthy<string | nil | false>
+
+-- …a concrete base keeps nothing, since `string - "a"` admits exactly the
+-- operations `string` does…
+const stillString: string = "b" as (string - "a")
+
+-- …and an opaque base keeps it.
+const stillOpaque: unknown - 1 = 2 as Exclude<unknown, 1>
+
+-- `Omit` is `Pick<T, Exclude<keyof T, K>>`, so it rides on the same operator:
+-- `keyof T` is deferred while `T` is generic, and the subtraction survives
+-- until it becomes a real union.
+type User = { id: number, name: string, secret: string }
+const public: Omit<User, "secret"> = { id: 1, name: "ada" }
+
+print(classify(1), truthiness(nil), refine(2), fromUnion, nonNil, truthy,
+      stillString, stillOpaque, public)

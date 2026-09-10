@@ -1,0 +1,9 @@
+a: number
+b: number
+c: number
+first: nil | number
+inner: nil | number
+nums: number[]
+outer: nil | number
+rest: nil | number[]
+src: { a: number, b: number, c: number }

@@ -1,0 +1,10 @@
+Players: Players
+descendants: Instance[]
+firstChild: Instance
+greeting: string
+idOf: <T>(x: T) -> string
+n1: string
+rig: Instance | nil
+rigName: string
+rounded: number
+x: T

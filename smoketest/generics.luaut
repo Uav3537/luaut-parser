@@ -1,0 +1,31 @@
+-- Generic type aliases and generic functions.
+
+type Box<T> = { value: T }
+type Pair<A, B> = { first: A, second: B }
+type Dict<V> = { [string]: V }
+type Result<T, E = string> = { ok: true, value: T } | { ok: false, error: E }
+
+const intBox: Box<number> = { value: 1 }
+const strPair: Pair<string, string> = { first: "a", second: "b" }
+const scores: Dict<number> = { alice: 10, bob: 20 }
+const r: Result<number> = { ok: true, value: 42 }
+
+-- generic function: T inferred from the argument
+const function identity<T>(x: T): T
+    return x
+end
+
+const function first<T>(xs: T[]): T
+    return xs[1]
+end
+
+const function pair<A, B>(a: A, b: B): Pair<A, B>
+    return { first: a, second: b }
+end
+
+const n = identity(5)          -- number
+const s = identity("hello")    -- string
+const head = first([10, 20, 30])  -- number
+const p = pair("x", true)      -- Pair<string, boolean>
+
+print(intBox, strPair, scores, r, n, s, head, p)

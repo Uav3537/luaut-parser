@@ -1,0 +1,22 @@
+-- Module syntax (compiled away by the bundler; never reaches emitted Luau).
+
+import Config from "./config"
+import DefaultExport, { helper, VERSION as version } from "./util"
+import { clamp, lerp } from "./math"
+
+export type Point = { x: number, y: number }
+
+export const ORIGIN = { x: 0, y: 0 }
+
+export const function distance(a: Point, b: Point): number
+    const dx, dy = a.x - b.x, a.y - b.y
+    return math.sqrt(dx * dx + dy * dy)
+end
+
+export const scale = Config.scale or 1
+
+const function main()
+    return helper(clamp(lerp(0, 10, 0.5), 0, version))
+end
+
+export default main

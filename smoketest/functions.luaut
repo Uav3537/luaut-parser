@@ -1,0 +1,32 @@
+-- Function parameters: destructuring + default values.
+
+const function makeEnemy({ name, hp = 100, pos: { x = 0, y = 0 } })
+    return { name: name, hp: hp, x: x, y: y }
+end
+
+const function sum([a, b, c = 0]: number[]): number
+    return a + b + c
+end
+
+const applyN = function(n: number, [dx, dy]: number[])
+    return n + dx + dy
+end
+
+const greet = function(who: string, punct = "!")
+    return `hello, ${who}${punct}`
+end
+
+-- Template strings interpolate with `${...}`, like JS/TS. A bare `{` is an
+-- ordinary character (Luau's `{expr}` form is not supported), a lone `$` is
+-- literal, and `\$` escapes a dollar that precedes a brace.
+const braces = function(x: number)
+    return `set {a, b} costs $5 -> ${x}, not \${x}`
+end
+
+const T = {}
+function T:configure({ verbose = false, retries = 3 })
+    self.verbose = verbose
+    self.retries = retries
+end
+
+print(makeEnemy({ name: "bat" }), sum([1, 2]), applyN(1, [2, 3]), greet("world"))

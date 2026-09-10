@@ -1,0 +1,98 @@
+-- TypeScript-style narrowing: type guards, assertion signatures, and the
+-- declaration-driven `typeof` overloads.
+--
+-- Nothing here is special-cased in the analyzer. `type` / `typeof` are declared
+-- in `roblox.d.luaut` as overload sets returning *string-literal* types, and
+-- `typeof(x) == "number"` narrows by keeping the parameter types of the
+-- overloads that can return `"number"`. A user function declared the same way
+-- narrows the same way.
+
+type Shape =
+    | { kind: "circle", radius: number }
+    | { kind: "rect", w: number, h: number }
+
+type Wrapper = { shape: Shape, label: string | nil }
+
+-- `typeof` / `type`, including the exhaustive `else` reaching `never`.
+const function classify(v: string | number | boolean | nil): string
+    if typeof(v) == "number" then
+        const asNumber: number = v
+        return "n" .. tostring(asNumber)
+    elseif typeof(v) == "string" then
+        const asString: string = v
+        return asString
+    elseif type(v) == "boolean" then
+        const asBoolean: boolean = v
+        return tostring(asBoolean)
+    end
+    const isNil: nil = v
+    return "nil"
+end
+
+-- The overloads also give the call its own precise result type.
+const function reflect(n: number)
+    const literalResult = typeof(n)
+    return literalResult
+end
+
+-- Narrowing a nested reference (`w.shape.kind`) narrows the reference it hangs
+-- off (`w.shape`) too — discriminated unions at any depth.
+const function area(w: Wrapper): number
+    if w.shape.kind == "circle" then
+        const circle = w.shape
+        return 3.14159 * circle.radius * circle.radius
+    end
+    const rect = w.shape
+    return rect.w * rect.h
+end
+
+-- Truthiness on a member path. Only `nil` and `false` are falsy in Luau, so
+-- this says nothing about a `number` — but everything about a `string | nil`.
+const function labelOf(w: Wrapper): string
+    if w.label then
+        const present: string = w.label
+        return present
+    end
+    return "(none)"
+end
+
+-- A user-declared type guard: `s is <type>`.
+const function isCircle(s: Shape): s is { kind: "circle", radius: number }
+    return s.kind == "circle"
+end
+
+const function radiusOf(s: Shape): number
+    if isCircle(s) then
+        return s.radius
+    end
+    return 0
+end
+
+-- An assertion signature (`assert` is declared `asserts value`) narrows the
+-- rest of the block rather than a branch.
+const function nameOf(inst?: Instance): string
+    assert(inst)
+    return inst.Name
+end
+
+-- Narrowing is dropped again when the reference is assigned.
+const function reassigned(w: Wrapper)
+    if w.label then
+        const before: string = w.label
+        w.label = nil
+        const after: nil = w.label
+        return before
+    end
+    return ""
+end
+
+-- Comparing against a literal narrows a wide primitive to that literal.
+const function pick(s: string)
+    if s == "yes" then
+        const exact: "yes" = s
+        return exact
+    end
+    return s
+end
+
+print(classify(1), reflect(2), area, labelOf, radiusOf, nameOf, reassigned, pick("no"))

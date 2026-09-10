@@ -1,0 +1,21 @@
+-- Destructuring assignment (no parens needed, unlike JS).
+-- A statement that starts with `[` needs a leading `;` after another
+-- statement, same as Lua's `a = b \n [c] = d` ambiguity rule.
+
+let a, b, c = 0, 0, 0
+let first, rest = nil, nil
+let outer, inner = nil, nil
+
+const src = { a: 1, b: 2, c: 3 }
+const nums = [10, 20, 30]
+
+{ a, b, c } = src
+;[ first, ...rest ] = nums
+
+-- nested + rename on the assignment side
+;{ x: outer, y: { z: inner } } = { x: 1, y: { z: 2 } }
+
+-- swap via array pattern
+;[a, b] = [b, a]
+
+print(a, b, c, first, rest, outer, inner)

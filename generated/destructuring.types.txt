@@ -1,0 +1,17 @@
+a: number
+aa: number
+arr: number[]
+deep: number
+fallback: number
+first: number
+head: number
+listTail: number[]
+obj: { a: number, b: number, c: number, list: number[], nested: { deep: number } }
+p: number
+q: number
+r: number
+renamed: number
+restObj: { a: number, b: number, c: number, list: number[], nested: { deep: number } }
+s: number
+tail: number[]
+third: number

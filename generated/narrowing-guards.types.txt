@@ -1,0 +1,29 @@
+after: nil
+area: (w: Wrapper) -> number
+asBoolean: boolean
+asNumber: number
+asString: string
+before: string
+circle: { kind: "circle", radius: number }
+classify: (v: string | number | boolean | nil) -> string
+exact: "yes"
+inst: Instance | nil
+isCircle: (s: { kind: "circle", radius: number } | { h: number, kind: "rect", w: number }) -> s is { kind: "circle", radius: number }
+isNil: nil
+labelOf: (w: Wrapper) -> string
+literalResult: "number"
+n: number
+nameOf: (inst: Instance | nil) -> string
+pick: (s: string) -> string
+present: string
+radiusOf: (s: { kind: "circle", radius: number } | { h: number, kind: "rect", w: number }) -> number
+reassigned: (w: Wrapper) -> string
+rect: { h: number, kind: "rect", w: number }
+reflect: (n: number) -> "number"
+s: string
+s: { kind: "circle", radius: number } | { h: number, kind: "rect", w: number }
+s: { kind: "circle", radius: number } | { h: number, kind: "rect", w: number }
+v: string | number | boolean | nil
+w: Wrapper
+w: Wrapper
+w: Wrapper

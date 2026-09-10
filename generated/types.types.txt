@@ -1,0 +1,9 @@
+entry: [string, number]
+frozen: { readonly mode: "debug", readonly retries: 3 }
+frozenList: [10, 20, 30]
+grid: number[][]
+litNum: 5
+maybe: number | nil
+origin: Vec2
+path: Vec2[]
+widened: Vec2

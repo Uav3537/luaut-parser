@@ -1,0 +1,21 @@
+a: number
+b: string
+endAt: number | nil
+expanded: number
+first: number
+firstNonNil: (v: string | nil) -> string
+fromOnly: number | nil
+justFirst: number
+mightBreak: (v: string | nil) -> string | nil
+ok: boolean
+one: 1
+result: number
+second: string
+settled: string
+spare: unknown
+startAt: number | nil
+truncated: number
+two: () -> (number, string)
+unsettled: string | nil
+v: string | nil
+v: string | nil

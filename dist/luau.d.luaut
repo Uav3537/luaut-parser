@@ -1,0 +1,244 @@
+-- Core Luau ambient definitions, written in luaut.
+--
+-- This file is the *only* place the analyzer learns what `type` and `typeof`
+-- mean. There is no built-in table of result strings and no special case for
+-- these names anywhere in `analyzeTypes` — narrowing is derived from the
+-- overloads below, and any function you declare the same way narrows the same
+-- way. Load it with `analyzeTypes(program, scopes, { libs: [luauLib] })`, or
+-- `defaultLibs` for these plus the Roblox definitions.
+--
+-- Roblox-only globals (`game`, `task`, `Vector3`, ...) live in
+-- `roblox.d.luaut`, which also adds the `typeof` overloads for the Roblox data
+-- types. Overloads of one name accumulate across definitions files.
+
+-- ============================================================
+-- Truthiness
+-- ------------------------------------------------------------
+-- In Luau **only `nil` and `false` are falsy** — `0`, `0/0` and `""` are all
+-- truthy, unlike JavaScript. `if x then` therefore tells you nothing about a
+-- `number` or a `string`, and everything about a `T | nil`.
+--
+-- These two names are what the analyzer's truthiness narrowing computes, made
+-- available to write down:
+--
+--     const function f(v: string | nil)
+--         if v then ... end     -- v: string      (Truthy<string | nil>)
+--         if not v then ... end -- v: nil         (Extract<string | nil, Falsy>)
+--     end
+-- ============================================================
+
+type Falsy = nil | false
+type Truthy<T> = T - Falsy
+
+-- ============================================================
+-- Utility types
+-- ------------------------------------------------------------
+-- Written in luaut on top of `keyof`, `T[K]`, conditional types with `infer`,
+-- and mapped types. None of these names is known to the analyzer.
+-- ============================================================
+
+-- `-` is set difference. Over a union it drops members; over a concrete type
+-- it simplifies away; over an opaque type (`unknown`, an unresolved parameter)
+-- it is *kept*, so `Exclude<unknown, 1>` stays `unknown - 1` rather than
+-- forgetting what was ruled out.
+type Exclude<T, U> = T - U
+type Extract<T, U> = T extends U ? T : never
+type NonNullable<T> = T - nil
+
+type ReturnType<T> = T extends (...unknown) -> infer R ? R : never
+type Parameters<T> = T extends (...infer P) -> unknown ? P : never
+
+type Partial<T> = { [K in keyof T]?: T[K] }
+type Required<T> = { [K in keyof T]-?: T[K] }
+type Readonly<T> = { readonly [K in keyof T]: T[K] }
+type Mutable<T> = { -readonly [K in keyof T]: T[K] }
+
+type Pick<T, K> = { [P in K]: T[P] }
+type Omit<T, K> = Pick<T, Exclude<keyof T, K>>
+type Record<K, V> = { [P in K]: V }
+
+-- ============================================================
+-- The narrowing built-ins
+-- ------------------------------------------------------------
+-- Each result string gets its own overload returning that string as a
+-- *literal* type. For `typeof(x) == "number"` the analyzer keeps the parameter
+-- types of the overloads that can return `"number"` and narrows `x` to their
+-- union; the `else` branch excludes them. The trailing generic signature is the
+-- catch-all, tried only after every concrete one, so it never steals a match.
+-- ============================================================
+
+-- `type()`: the Lua base types.
+declare function type(value: nil): "nil"
+declare function type(value: boolean): "boolean"
+declare function type(value: number): "number"
+declare function type(value: string): "string"
+declare function type(value: thread): "thread"
+declare function type(value: buffer): "buffer"
+declare function type(value: (...unknown) -> ...unknown): "function"
+declare function type(value: { [unknown]: unknown }): "table"
+declare function type<T>(value: T): string
+
+-- `typeof()`: the same, plus (in `roblox.d.luaut`) the Roblox data types,
+-- which it reports by name rather than as `userdata`.
+declare function typeof(value: nil): "nil"
+declare function typeof(value: boolean): "boolean"
+declare function typeof(value: number): "number"
+declare function typeof(value: string): "string"
+declare function typeof(value: thread): "thread"
+declare function typeof(value: buffer): "buffer"
+declare function typeof(value: (...unknown) -> ...unknown): "function"
+declare function typeof(value: { [unknown]: unknown }): "table"
+declare function typeof<T>(value: T): string
+
+-- ============================================================
+-- Base library
+-- ============================================================
+
+declare _G: { [string]: unknown }
+
+declare function require(module: unknown): unknown
+declare function tostring(value: unknown): string
+declare function tonumber(value: unknown, base?: number): number | nil
+declare function print(...: unknown): ()
+declare function warn(...: unknown): ()
+-- `error` never returns, which is what lets
+-- `if v == nil then error("...") end` narrow the rest of the block.
+declare function error(message: unknown, level?: number): never
+
+-- `asserts value` — narrows the *rest of the enclosing block*, the way
+-- TypeScript's assertion signatures do:
+--
+--     const part = workspace:FindFirstChild("Part")  -- Instance | nil
+--     assert(part)
+--     part.Name                                      -- Instance, no `?`
+declare function assert<T>(value: T, message?: string): asserts value
+
+declare function pcall<T>(fn: (...unknown) -> T, ...: unknown): (boolean, T)
+declare function xpcall<T>(fn: (...unknown) -> T, handler: (err: unknown) -> unknown, ...: unknown): (boolean, T)
+declare function select(n: unknown, ...: unknown): unknown
+declare function unpack<V>(list: V[], i?: number, j?: number): ...V
+declare function rawget(t: unknown, key: unknown): unknown
+declare function rawset<T>(t: T, key: unknown, value: unknown): T
+declare function rawequal(a: unknown, b: unknown): boolean
+declare function rawlen(t: unknown): number
+declare function setmetatable<T>(t: T, mt: unknown): T
+declare function getmetatable(t: unknown): unknown
+declare function newproxy(addMeta?: boolean): unknown
+declare function next<K, V>(t: { [K]: V }, key?: K): (K, V)
+
+declare string: {
+    format: (fmt: string, ...unknown) -> string,
+    sub: (s: string, i: number, j?: number) -> string,
+    len: (s: string) -> number,
+    upper: (s: string) -> string,
+    lower: (s: string) -> string,
+    rep: (s: string, n: number, sep?: string) -> string,
+    reverse: (s: string) -> string,
+    split: (s: string, separator?: string) -> string[],
+    find: (s: string, pattern: string, init?: number, plain?: boolean) -> (number | nil, number | nil),
+    match: (s: string, pattern: string, init?: number) -> ...unknown,
+    gmatch: (s: string, pattern: string) -> () -> ...string,
+    gsub: (s: string, pattern: string, repl: unknown, n?: number) -> (string, number),
+    byte: (s: string, i?: number, j?: number) -> ...number,
+    char: (...number) -> string,
+}
+
+declare math: {
+    floor: (x: number) -> number,
+    ceil: (x: number) -> number,
+    abs: (x: number) -> number,
+    sqrt: (x: number) -> number,
+    min: (...number) -> number,
+    max: (...number) -> number,
+    clamp: (x: number, min: number, max: number) -> number,
+    round: (x: number) -> number,
+    sign: (x: number) -> number,
+    random: (m?: number, n?: number) -> number,
+    pow: (x: number, y: number) -> number,
+    log: (x: number, base?: number) -> number,
+    sin: (x: number) -> number,
+    cos: (x: number) -> number,
+    tan: (x: number) -> number,
+    atan2: (y: number, x: number) -> number,
+    rad: (deg: number) -> number,
+    deg: (rad: number) -> number,
+    huge: number,
+    pi: number,
+}
+
+declare table: {
+    insert: (t: unknown[], a: unknown, b?: unknown) -> (),
+    remove: (t: unknown[], pos?: number) -> unknown,
+    concat: (t: unknown[], sep?: string, i?: number, j?: number) -> string,
+    find: (t: unknown[], value: unknown, init?: number) -> number | nil,
+    sort: (t: unknown[], comp?: unknown) -> (),
+    clear: (t: unknown) -> (),
+    clone: (t: unknown) -> unknown,
+    freeze: (t: unknown) -> unknown,
+    isfrozen: (t: unknown) -> boolean,
+    create: (count: number, value?: unknown) -> unknown[],
+    pack: (...unknown) -> { n: number, [number]: unknown },
+    unpack: (list: unknown[], i?: number, j?: number) -> ...unknown,
+    move: (src: unknown[], a: number, b: number, t: number, dst?: unknown[]) -> unknown[],
+    keys: (t: unknown) -> unknown[],
+}
+
+declare os: {
+    time: (t?: unknown) -> number,
+    clock: () -> number,
+    date: (format?: string, time?: number) -> unknown,
+    difftime: (a: number, b: number) -> number,
+}
+
+declare coroutine: {
+    create: (fn: (...unknown) -> ...unknown) -> thread,
+    resume: (co: thread, ...unknown) -> ...unknown,
+    yield: (...unknown) -> ...unknown,
+    wrap: (fn: (...unknown) -> ...unknown) -> (...unknown) -> ...unknown,
+    status: (co: thread) -> string,
+    running: () -> thread,
+    isyieldable: () -> boolean,
+}
+
+declare utf8: {
+    char: (...number) -> string,
+    codepoint: (s: string, i?: number, j?: number) -> ...number,
+    len: (s: string, i?: number, j?: number) -> number | nil,
+    offset: (s: string, n: number, i?: number) -> number | nil,
+    nfdnormalize: (s: string) -> string,
+    nfcnormalize: (s: string) -> string,
+    charpattern: string,
+}
+
+declare bit32: {
+    band: (...number) -> number,
+    bor: (...number) -> number,
+    bxor: (...number) -> number,
+    bnot: (x: number) -> number,
+    lshift: (x: number, disp: number) -> number,
+    rshift: (x: number, disp: number) -> number,
+    arshift: (x: number, disp: number) -> number,
+    extract: (n: number, field: number, width?: number) -> number,
+    replace: (n: number, v: number, field: number, width?: number) -> number,
+    countlz: (n: number) -> number,
+    countrz: (n: number) -> number,
+}
+
+declare buffer: {
+    create: (size: number) -> buffer,
+    fromstring: (s: string) -> buffer,
+    tostring: (b: buffer) -> string,
+    len: (b: buffer) -> number,
+    readi8: (b: buffer, offset: number) -> number,
+    readu8: (b: buffer, offset: number) -> number,
+    readi32: (b: buffer, offset: number) -> number,
+    readu32: (b: buffer, offset: number) -> number,
+    readf64: (b: buffer, offset: number) -> number,
+    writei8: (b: buffer, offset: number, value: number) -> (),
+    writeu8: (b: buffer, offset: number, value: number) -> (),
+    writei32: (b: buffer, offset: number, value: number) -> (),
+    writeu32: (b: buffer, offset: number, value: number) -> (),
+    writef64: (b: buffer, offset: number, value: number) -> (),
+    copy: (dst: buffer, dstOffset: number, src: buffer, srcOffset?: number, count?: number) -> (),
+    fill: (b: buffer, offset: number, value: number, count?: number) -> (),
+}

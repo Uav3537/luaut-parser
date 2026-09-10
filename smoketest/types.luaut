@@ -1,0 +1,31 @@
+-- luaut type syntax: `T[]` arrays, `[T, U]` tuples, object types with `:`.
+
+type Vec2 = { x: number, y: number }
+type Vec2List = Vec2[]
+type Pair = [string, number]
+type Matrix = number[][]
+
+type Entity = {
+    name: string,
+    position: Vec2,
+    tags: string[],
+    nickname?: string,          -- optional property (may be absent)
+    parent: Entity | nil,            -- required, value may be nil
+    stats: { hp: number, mp: number },
+}
+
+type Handler = (event: string, payload: unknown) -> boolean
+type Result = { ok: true, value: number } | { ok: false, error: string }
+
+const origin: Vec2 = { x: 0, y: 0 }
+const path: Vec2[] = [origin, { x: 1, y: 1 }]
+const entry: Pair = ["score", 10]
+const grid: Matrix = [[1, 2], [3, 4]]
+
+const maybe: number | nil = nil
+const frozen = { mode: "debug", retries: 3 } as const
+const frozenList = [10, 20, 30] as const
+const litNum = 5 as const
+const widened = origin as Vec2
+
+print(origin, path, entry, grid, maybe, frozen, frozenList, litNum, widened)

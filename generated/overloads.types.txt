@@ -1,0 +1,6 @@
+a: number
+b: number[]
+c: string
+reverse: ((x: string) -> string) & ((x: number[]) -> number[])
+x: any
+x: string | unknown[]

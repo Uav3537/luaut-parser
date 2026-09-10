@@ -1,0 +1,101 @@
+-- Narrowing across the ways control leaves a block.
+--
+-- A branch that cannot fall through narrows the code *after* the `if` — the
+-- early-return pattern. What counts as "cannot fall through": `return`,
+-- `break`, `continue`, a nested `do` block that does one of those, a call to
+-- something declared `-> never` (`error`), and an if/else where every branch
+-- does.
+
+-- Early return, both directions ---------------------------------------------
+const function orEmpty(v: string | nil): string
+    if v == nil then return "" end
+    const present: string = v
+    return present
+end
+
+const function onlyNil(v: string | nil): string
+    if v ~= nil then return v end
+    const absent: nil = v
+    return ""
+end
+
+-- `return` in the `else` narrows what follows just as well.
+const function widthOf(v: string | number): number
+    if typeof(v) == "string" then
+    else
+        return v
+    end
+    const text: string = v
+    return #text
+end
+
+-- A `do` block that returns still exits.
+const function viaDoBlock(v: string | nil): string
+    if v == nil then
+        do return "" end
+    end
+    const present: string = v
+    return present
+end
+
+-- `error` is declared `-> never`, so it exits too.
+const function orThrow(v: string | nil): string
+    if v == nil then error("missing") end
+    const present: string = v
+    return present
+end
+
+-- An exhausted elseif ladder leaves only what was never returned from.
+const function leftOver(v: string | number | boolean): boolean
+    if typeof(v) == "string" then return true
+    elseif typeof(v) == "number" then return false
+    end
+    const onlyBoolean: boolean = v
+    return onlyBoolean
+end
+
+-- Loops ----------------------------------------------------------------------
+-- `continue` skips the rest of the iteration, so the code below it is narrowed.
+const function lengths(items: (string | nil)[]): number
+    let total = 0
+    for _, item in items do
+        if item == nil then continue end
+        const present: string = item
+        total = total + #present
+    end
+    return total
+end
+
+-- `break` leaves the loop, so the code after it in the body is narrowed too.
+const function firstNil(items: (string | nil)[]): number
+    let seen = 0
+    for _, item in items do
+        if item == nil then break end
+        const present: string = item
+        seen = seen + #present
+    end
+    return seen
+end
+
+-- A `while` is left either because its condition failed or by a `break`, and
+-- the state after it is the join of those. `while true` has only the second.
+const function settle(v: string | nil): string
+    while true do
+        if v ~= nil then break end
+        v = "fallback"
+    end
+    const settled: string = v
+    return settled
+end
+
+-- `repeat` runs its body at least once, so afterwards the `until` holds.
+const function untilSet(v: string | nil): string
+    repeat
+        v = "fallback"
+    until v ~= nil
+    const settled: string = v
+    return settled
+end
+
+print(orEmpty(nil), onlyNil(nil), widthOf(1), viaDoBlock(nil), orThrow("a"),
+      leftOver(true), lengths([]), firstNil([]), settle(nil), untilSet(nil))

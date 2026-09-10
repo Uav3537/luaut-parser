@@ -1,0 +1,20 @@
+-- TS-style function overloads: signature lines with no body, then the impl.
+
+function len(x: string): number
+function len(x: unknown[]): number
+function len(x: string | unknown[]): number
+    return #x
+end
+
+const function reverse(x: string): string
+const function reverse(x: number[]): number[]
+const function reverse(x)
+    return x
+end
+
+-- overload resolution: `len("hi")` picks the `(string) -> number` signature
+const a = len("hi")
+const b = reverse([1, 2, 3])
+const c = reverse("abc")
+
+print(a, b, c)

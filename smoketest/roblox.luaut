@@ -1,0 +1,22 @@
+-- Uses the baseline Roblox definitions (analyzeTypes { libs: [robloxLib] }).
+
+const Players = game:GetService("Players")
+const rig = workspace:FindFirstChild("Rig")
+
+-- truthiness narrows Instance | nil -> Instance
+const rigName = if rig ~= nil then rig.Name else "<none>"
+
+const descendants = workspace:GetDescendants()
+const firstChild = descendants[1]
+
+const greeting = string.format("Hello, %s! (%d players)", rigName, 0)
+const rounded = math.clamp(math.floor(3.7), 0, 10)
+
+-- generic constraint against a lib-independent shape
+const function idOf<T extends { Name: string }>(x: T): string
+    return x.Name
+end
+
+const n1 = idOf(rig ~= nil and rig or workspace)
+
+print(Players, firstChild, greeting, rounded, n1)

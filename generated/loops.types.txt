@@ -1,0 +1,9 @@
+deep: number
+entry: (string | number)[]
+i: number
+i: number
+i: number
+key: string
+pairsList: (string | number)[][]
+record: { id: number, label: string }
+records: { id: number, label: string }[]
