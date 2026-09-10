@@ -69,7 +69,7 @@ function resolverFor(file: string) {
             const program = parse(text);
             const scopes = analyzeScopes(program, { builtinGlobals: BUILTIN_GLOBALS });
             const types = analyzeTypes(program, scopes, { libs: defaultLibs, resolveModule: resolverFor(target) });
-            const exports = moduleExports(program, scopes, types);
+            const exports = moduleExports(program, scopes, types, resolverFor(target));
             exportsCache.set(target, exports);
             return exports;
         } finally {

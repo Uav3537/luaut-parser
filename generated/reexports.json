@@ -1,0 +1,718 @@
+{
+  "type": "Program",
+  "body": {
+    "type": "Block",
+    "statements": [
+      {
+        "type": "ExportAllStatement",
+        "source": {
+          "type": "StringLiteral",
+          "value": "./math",
+          "raw": "\"./math\"",
+          "line": {
+            "start": 5,
+            "end": 5
+          },
+          "column": {
+            "start": 15,
+            "end": 23
+          }
+        },
+        "line": {
+          "start": 5,
+          "end": 5
+        },
+        "column": {
+          "start": 1,
+          "end": 23
+        }
+      },
+      {
+        "type": "ExportNamedStatement",
+        "specifiers": [
+          {
+            "type": "ExportSpecifier",
+            "local": {
+              "type": "Identifier",
+              "name": "helper",
+              "line": {
+                "start": 8,
+                "end": 8
+              },
+              "column": {
+                "start": 10,
+                "end": 16
+              }
+            },
+            "exported": {
+              "type": "Identifier",
+              "name": "help",
+              "line": {
+                "start": 8,
+                "end": 8
+              },
+              "column": {
+                "start": 20,
+                "end": 24
+              }
+            },
+            "line": {
+              "start": 8,
+              "end": 8
+            },
+            "column": {
+              "start": 10,
+              "end": 24
+            }
+          },
+          {
+            "type": "ExportSpecifier",
+            "local": {
+              "type": "Identifier",
+              "name": "VERSION",
+              "line": {
+                "start": 8,
+                "end": 8
+              },
+              "column": {
+                "start": 26,
+                "end": 33
+              }
+            },
+            "exported": {
+              "type": "Identifier",
+              "name": "VERSION",
+              "line": {
+                "start": 8,
+                "end": 8
+              },
+              "column": {
+                "start": 26,
+                "end": 33
+              }
+            },
+            "line": {
+              "start": 8,
+              "end": 8
+            },
+            "column": {
+              "start": 26,
+              "end": 33
+            }
+          }
+        ],
+        "source": {
+          "type": "StringLiteral",
+          "value": "./util",
+          "raw": "\"./util\"",
+          "line": {
+            "start": 8,
+            "end": 8
+          },
+          "column": {
+            "start": 41,
+            "end": 49
+          }
+        },
+        "line": {
+          "start": 8,
+          "end": 8
+        },
+        "column": {
+          "start": 1,
+          "end": 49
+        }
+      },
+      {
+        "type": "TypeAliasStatement",
+        "name": {
+          "type": "Identifier",
+          "name": "Size",
+          "line": {
+            "start": 10,
+            "end": 10
+          },
+          "column": {
+            "start": 6,
+            "end": 10
+          }
+        },
+        "generics": [],
+        "definition": {
+          "type": "TableTypeNode",
+          "properties": [
+            {
+              "type": "TableTypeProperty",
+              "name": "w",
+              "key": {
+                "type": "Identifier",
+                "name": "w",
+                "line": {
+                  "start": 10,
+                  "end": 10
+                },
+                "column": {
+                  "start": 15,
+                  "end": 16
+                }
+              },
+              "valueType": {
+                "type": "TypeReference",
+                "base": "number",
+                "typeArguments": [],
+                "line": {
+                  "start": 10,
+                  "end": 10
+                },
+                "column": {
+                  "start": 18,
+                  "end": 24
+                }
+              },
+              "optional": false,
+              "line": {
+                "start": 10,
+                "end": 10
+              },
+              "column": {
+                "start": 15,
+                "end": 24
+              }
+            },
+            {
+              "type": "TableTypeProperty",
+              "name": "h",
+              "key": {
+                "type": "Identifier",
+                "name": "h",
+                "line": {
+                  "start": 10,
+                  "end": 10
+                },
+                "column": {
+                  "start": 26,
+                  "end": 27
+                }
+              },
+              "valueType": {
+                "type": "TypeReference",
+                "base": "number",
+                "typeArguments": [],
+                "line": {
+                  "start": 10,
+                  "end": 10
+                },
+                "column": {
+                  "start": 29,
+                  "end": 35
+                }
+              },
+              "optional": false,
+              "line": {
+                "start": 10,
+                "end": 10
+              },
+              "column": {
+                "start": 26,
+                "end": 35
+              }
+            }
+          ],
+          "line": {
+            "start": 10,
+            "end": 10
+          },
+          "column": {
+            "start": 13,
+            "end": 37
+          }
+        },
+        "line": {
+          "start": 10,
+          "end": 10
+        },
+        "column": {
+          "start": 1,
+          "end": 37
+        }
+      },
+      {
+        "type": "VariableDeclaration",
+        "kind": "const",
+        "names": [
+          {
+            "type": "IdentifierPattern",
+            "name": "unit",
+            "line": {
+              "start": 12,
+              "end": 12
+            },
+            "column": {
+              "start": 7,
+              "end": 11
+            },
+            "typeAnnotation": {
+              "type": "TypeReference",
+              "base": "Size",
+              "typeArguments": [],
+              "line": {
+                "start": 12,
+                "end": 12
+              },
+              "column": {
+                "start": 13,
+                "end": 17
+              }
+            }
+          }
+        ],
+        "init": [
+          {
+            "type": "TableExpression",
+            "fields": [
+              {
+                "type": "TableFieldNamed",
+                "key": {
+                  "type": "Identifier",
+                  "name": "w",
+                  "line": {
+                    "start": 12,
+                    "end": 12
+                  },
+                  "column": {
+                    "start": 22,
+                    "end": 23
+                  }
+                },
+                "value": {
+                  "type": "NumberLiteral",
+                  "value": 1,
+                  "raw": "1",
+                  "line": {
+                    "start": 12,
+                    "end": 12
+                  },
+                  "column": {
+                    "start": 25,
+                    "end": 26
+                  }
+                }
+              },
+              {
+                "type": "TableFieldNamed",
+                "key": {
+                  "type": "Identifier",
+                  "name": "h",
+                  "line": {
+                    "start": 12,
+                    "end": 12
+                  },
+                  "column": {
+                    "start": 28,
+                    "end": 29
+                  }
+                },
+                "value": {
+                  "type": "NumberLiteral",
+                  "value": 1,
+                  "raw": "1",
+                  "line": {
+                    "start": 12,
+                    "end": 12
+                  },
+                  "column": {
+                    "start": 31,
+                    "end": 32
+                  }
+                }
+              }
+            ],
+            "line": {
+              "start": 12,
+              "end": 12
+            },
+            "column": {
+              "start": 20,
+              "end": 34
+            }
+          }
+        ],
+        "line": {
+          "start": 12,
+          "end": 12
+        },
+        "column": {
+          "start": 1,
+          "end": 34
+        }
+      },
+      {
+        "type": "FunctionDeclaration",
+        "kind": "const",
+        "name": {
+          "type": "Identifier",
+          "name": "area",
+          "line": {
+            "start": 14,
+            "end": 14
+          },
+          "column": {
+            "start": 16,
+            "end": 20
+          }
+        },
+        "func": {
+          "type": "FunctionBody",
+          "generics": [],
+          "params": [
+            {
+              "type": "FunctionParameter",
+              "name": "s",
+              "typeAnnotation": {
+                "type": "TypeReference",
+                "base": "Size",
+                "typeArguments": [],
+                "line": {
+                  "start": 14,
+                  "end": 14
+                },
+                "column": {
+                  "start": 24,
+                  "end": 28
+                }
+              },
+              "line": {
+                "start": 14,
+                "end": 14
+              },
+              "column": {
+                "start": 21,
+                "end": 28
+              }
+            }
+          ],
+          "hasVarargs": false,
+          "returnType": {
+            "type": "TypeReference",
+            "base": "number",
+            "typeArguments": [],
+            "line": {
+              "start": 14,
+              "end": 14
+            },
+            "column": {
+              "start": 31,
+              "end": 37
+            }
+          },
+          "body": {
+            "type": "Block",
+            "statements": [
+              {
+                "type": "ReturnStatement",
+                "arguments": [
+                  {
+                    "type": "BinaryExpression",
+                    "operator": "*",
+                    "left": {
+                      "type": "MemberExpression",
+                      "object": {
+                        "type": "Identifier",
+                        "name": "s",
+                        "line": {
+                          "start": 15,
+                          "end": 15
+                        },
+                        "column": {
+                          "start": 12,
+                          "end": 13
+                        }
+                      },
+                      "property": {
+                        "type": "Identifier",
+                        "name": "w",
+                        "line": {
+                          "start": 15,
+                          "end": 15
+                        },
+                        "column": {
+                          "start": 14,
+                          "end": 15
+                        }
+                      },
+                      "line": {
+                        "start": 15,
+                        "end": 15
+                      },
+                      "column": {
+                        "start": 12,
+                        "end": 15
+                      }
+                    },
+                    "right": {
+                      "type": "MemberExpression",
+                      "object": {
+                        "type": "Identifier",
+                        "name": "s",
+                        "line": {
+                          "start": 15,
+                          "end": 15
+                        },
+                        "column": {
+                          "start": 18,
+                          "end": 19
+                        }
+                      },
+                      "property": {
+                        "type": "Identifier",
+                        "name": "h",
+                        "line": {
+                          "start": 15,
+                          "end": 15
+                        },
+                        "column": {
+                          "start": 20,
+                          "end": 21
+                        }
+                      },
+                      "line": {
+                        "start": 15,
+                        "end": 15
+                      },
+                      "column": {
+                        "start": 18,
+                        "end": 21
+                      }
+                    },
+                    "line": {
+                      "start": 15,
+                      "end": 15
+                    },
+                    "column": {
+                      "start": 12,
+                      "end": 21
+                    }
+                  }
+                ],
+                "line": {
+                  "start": 15,
+                  "end": 15
+                },
+                "column": {
+                  "start": 5,
+                  "end": 21
+                }
+              }
+            ],
+            "line": {
+              "start": 15,
+              "end": 15
+            },
+            "column": {
+              "start": 5,
+              "end": 21
+            }
+          },
+          "line": {
+            "start": 14,
+            "end": 16
+          },
+          "column": {
+            "start": 20,
+            "end": 4
+          }
+        },
+        "line": {
+          "start": 14,
+          "end": 16
+        },
+        "column": {
+          "start": 1,
+          "end": 4
+        }
+      },
+      {
+        "type": "ExportNamedStatement",
+        "specifiers": [
+          {
+            "type": "ExportSpecifier",
+            "local": {
+              "type": "Identifier",
+              "name": "unit",
+              "line": {
+                "start": 19,
+                "end": 19
+              },
+              "column": {
+                "start": 10,
+                "end": 14
+              }
+            },
+            "exported": {
+              "type": "Identifier",
+              "name": "unit",
+              "line": {
+                "start": 19,
+                "end": 19
+              },
+              "column": {
+                "start": 10,
+                "end": 14
+              }
+            },
+            "line": {
+              "start": 19,
+              "end": 19
+            },
+            "column": {
+              "start": 10,
+              "end": 14
+            }
+          },
+          {
+            "type": "ExportSpecifier",
+            "local": {
+              "type": "Identifier",
+              "name": "area",
+              "line": {
+                "start": 19,
+                "end": 19
+              },
+              "column": {
+                "start": 16,
+                "end": 20
+              }
+            },
+            "exported": {
+              "type": "Identifier",
+              "name": "area",
+              "line": {
+                "start": 19,
+                "end": 19
+              },
+              "column": {
+                "start": 16,
+                "end": 20
+              }
+            },
+            "line": {
+              "start": 19,
+              "end": 19
+            },
+            "column": {
+              "start": 16,
+              "end": 20
+            }
+          },
+          {
+            "type": "ExportSpecifier",
+            "local": {
+              "type": "Identifier",
+              "name": "Size",
+              "line": {
+                "start": 19,
+                "end": 19
+              },
+              "column": {
+                "start": 22,
+                "end": 26
+              }
+            },
+            "exported": {
+              "type": "Identifier",
+              "name": "Size",
+              "line": {
+                "start": 19,
+                "end": 19
+              },
+              "column": {
+                "start": 22,
+                "end": 26
+              }
+            },
+            "line": {
+              "start": 19,
+              "end": 19
+            },
+            "column": {
+              "start": 22,
+              "end": 26
+            }
+          }
+        ],
+        "line": {
+          "start": 19,
+          "end": 19
+        },
+        "column": {
+          "start": 1,
+          "end": 28
+        }
+      },
+      {
+        "type": "ExportNamedStatement",
+        "specifiers": [
+          {
+            "type": "ExportSpecifier",
+            "local": {
+              "type": "Identifier",
+              "name": "area",
+              "line": {
+                "start": 20,
+                "end": 20
+              },
+              "column": {
+                "start": 10,
+                "end": 14
+              }
+            },
+            "exported": {
+              "type": "Identifier",
+              "name": "surface",
+              "line": {
+                "start": 20,
+                "end": 20
+              },
+              "column": {
+                "start": 18,
+                "end": 25
+              }
+            },
+            "line": {
+              "start": 20,
+              "end": 20
+            },
+            "column": {
+              "start": 10,
+              "end": 25
+            }
+          }
+        ],
+        "line": {
+          "start": 20,
+          "end": 20
+        },
+        "column": {
+          "start": 1,
+          "end": 27
+        }
+      }
+    ],
+    "line": {
+      "start": 5,
+      "end": 20
+    },
+    "column": {
+      "start": 1,
+      "end": 27
+    }
+  },
+  "line": {
+    "start": 5,
+    "end": 20
+  },
+  "column": {
+    "start": 1,
+    "end": 27
+  }
+}

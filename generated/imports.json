@@ -723,23 +723,894 @@
           "start": 1,
           "end": 26
         }
+      },
+      {
+        "type": "ImportStatement",
+        "specifiers": [
+          {
+            "type": "ImportSpecifier",
+            "imported": {
+              "type": "Identifier",
+              "name": "clamp",
+              "line": {
+                "start": 21,
+                "end": 21
+              },
+              "column": {
+                "start": 10,
+                "end": 15
+              }
+            },
+            "local": {
+              "type": "Identifier",
+              "name": "clamp",
+              "line": {
+                "start": 21,
+                "end": 21
+              },
+              "column": {
+                "start": 10,
+                "end": 15
+              }
+            },
+            "line": {
+              "start": 21,
+              "end": 21
+            },
+            "column": {
+              "start": 10,
+              "end": 15
+            }
+          },
+          {
+            "type": "ImportSpecifier",
+            "imported": {
+              "type": "Identifier",
+              "name": "lerp",
+              "line": {
+                "start": 21,
+                "end": 21
+              },
+              "column": {
+                "start": 17,
+                "end": 21
+              }
+            },
+            "local": {
+              "type": "Identifier",
+              "name": "lerp",
+              "line": {
+                "start": 21,
+                "end": 21
+              },
+              "column": {
+                "start": 17,
+                "end": 21
+              }
+            },
+            "line": {
+              "start": 21,
+              "end": 21
+            },
+            "column": {
+              "start": 17,
+              "end": 21
+            }
+          },
+          {
+            "type": "ImportSpecifier",
+            "imported": {
+              "type": "Identifier",
+              "name": "help",
+              "line": {
+                "start": 21,
+                "end": 21
+              },
+              "column": {
+                "start": 23,
+                "end": 27
+              }
+            },
+            "local": {
+              "type": "Identifier",
+              "name": "help",
+              "line": {
+                "start": 21,
+                "end": 21
+              },
+              "column": {
+                "start": 23,
+                "end": 27
+              }
+            },
+            "line": {
+              "start": 21,
+              "end": 21
+            },
+            "column": {
+              "start": 23,
+              "end": 27
+            }
+          },
+          {
+            "type": "ImportSpecifier",
+            "imported": {
+              "type": "Identifier",
+              "name": "VERSION",
+              "line": {
+                "start": 21,
+                "end": 21
+              },
+              "column": {
+                "start": 29,
+                "end": 36
+              }
+            },
+            "local": {
+              "type": "Identifier",
+              "name": "VERSION",
+              "line": {
+                "start": 21,
+                "end": 21
+              },
+              "column": {
+                "start": 29,
+                "end": 36
+              }
+            },
+            "line": {
+              "start": 21,
+              "end": 21
+            },
+            "column": {
+              "start": 29,
+              "end": 36
+            }
+          },
+          {
+            "type": "ImportSpecifier",
+            "imported": {
+              "type": "Identifier",
+              "name": "unit",
+              "line": {
+                "start": 21,
+                "end": 21
+              },
+              "column": {
+                "start": 38,
+                "end": 42
+              }
+            },
+            "local": {
+              "type": "Identifier",
+              "name": "unit",
+              "line": {
+                "start": 21,
+                "end": 21
+              },
+              "column": {
+                "start": 38,
+                "end": 42
+              }
+            },
+            "line": {
+              "start": 21,
+              "end": 21
+            },
+            "column": {
+              "start": 38,
+              "end": 42
+            }
+          },
+          {
+            "type": "ImportSpecifier",
+            "imported": {
+              "type": "Identifier",
+              "name": "area",
+              "line": {
+                "start": 21,
+                "end": 21
+              },
+              "column": {
+                "start": 44,
+                "end": 48
+              }
+            },
+            "local": {
+              "type": "Identifier",
+              "name": "area",
+              "line": {
+                "start": 21,
+                "end": 21
+              },
+              "column": {
+                "start": 44,
+                "end": 48
+              }
+            },
+            "line": {
+              "start": 21,
+              "end": 21
+            },
+            "column": {
+              "start": 44,
+              "end": 48
+            }
+          },
+          {
+            "type": "ImportSpecifier",
+            "imported": {
+              "type": "Identifier",
+              "name": "surface",
+              "line": {
+                "start": 21,
+                "end": 21
+              },
+              "column": {
+                "start": 50,
+                "end": 57
+              }
+            },
+            "local": {
+              "type": "Identifier",
+              "name": "surface",
+              "line": {
+                "start": 21,
+                "end": 21
+              },
+              "column": {
+                "start": 50,
+                "end": 57
+              }
+            },
+            "line": {
+              "start": 21,
+              "end": 21
+            },
+            "column": {
+              "start": 50,
+              "end": 57
+            }
+          },
+          {
+            "type": "ImportSpecifier",
+            "imported": {
+              "type": "Identifier",
+              "name": "Size",
+              "line": {
+                "start": 21,
+                "end": 21
+              },
+              "column": {
+                "start": 59,
+                "end": 63
+              }
+            },
+            "local": {
+              "type": "Identifier",
+              "name": "Size",
+              "line": {
+                "start": 21,
+                "end": 21
+              },
+              "column": {
+                "start": 59,
+                "end": 63
+              }
+            },
+            "line": {
+              "start": 21,
+              "end": 21
+            },
+            "column": {
+              "start": 59,
+              "end": 63
+            }
+          }
+        ],
+        "source": {
+          "type": "StringLiteral",
+          "value": "./reexports",
+          "raw": "\"./reexports\"",
+          "line": {
+            "start": 21,
+            "end": 21
+          },
+          "column": {
+            "start": 71,
+            "end": 84
+          }
+        },
+        "line": {
+          "start": 21,
+          "end": 21
+        },
+        "column": {
+          "start": 1,
+          "end": 84
+        }
+      },
+      {
+        "type": "VariableDeclaration",
+        "kind": "const",
+        "names": [
+          {
+            "type": "IdentifierPattern",
+            "name": "clamped",
+            "line": {
+              "start": 23,
+              "end": 23
+            },
+            "column": {
+              "start": 7,
+              "end": 14
+            },
+            "typeAnnotation": {
+              "type": "TypeReference",
+              "base": "number",
+              "typeArguments": [],
+              "line": {
+                "start": 23,
+                "end": 23
+              },
+              "column": {
+                "start": 16,
+                "end": 22
+              }
+            }
+          }
+        ],
+        "init": [
+          {
+            "type": "CallExpression",
+            "callee": {
+              "type": "Identifier",
+              "name": "clamp",
+              "line": {
+                "start": 23,
+                "end": 23
+              },
+              "column": {
+                "start": 25,
+                "end": 30
+              }
+            },
+            "arguments": [
+              {
+                "type": "NumberLiteral",
+                "value": 5,
+                "raw": "5",
+                "line": {
+                  "start": 23,
+                  "end": 23
+                },
+                "column": {
+                  "start": 31,
+                  "end": 32
+                }
+              },
+              {
+                "type": "NumberLiteral",
+                "value": 0,
+                "raw": "0",
+                "line": {
+                  "start": 23,
+                  "end": 23
+                },
+                "column": {
+                  "start": 34,
+                  "end": 35
+                }
+              },
+              {
+                "type": "NumberLiteral",
+                "value": 10,
+                "raw": "10",
+                "line": {
+                  "start": 23,
+                  "end": 23
+                },
+                "column": {
+                  "start": 37,
+                  "end": 39
+                }
+              }
+            ],
+            "line": {
+              "start": 23,
+              "end": 23
+            },
+            "column": {
+              "start": 25,
+              "end": 40
+            }
+          }
+        ],
+        "line": {
+          "start": 23,
+          "end": 23
+        },
+        "column": {
+          "start": 1,
+          "end": 40
+        }
+      },
+      {
+        "type": "VariableDeclaration",
+        "kind": "const",
+        "names": [
+          {
+            "type": "IdentifierPattern",
+            "name": "helped",
+            "line": {
+              "start": 24,
+              "end": 24
+            },
+            "column": {
+              "start": 7,
+              "end": 13
+            },
+            "typeAnnotation": {
+              "type": "TypeReference",
+              "base": "number",
+              "typeArguments": [],
+              "line": {
+                "start": 24,
+                "end": 24
+              },
+              "column": {
+                "start": 15,
+                "end": 21
+              }
+            }
+          }
+        ],
+        "init": [
+          {
+            "type": "CallExpression",
+            "callee": {
+              "type": "Identifier",
+              "name": "help",
+              "line": {
+                "start": 24,
+                "end": 24
+              },
+              "column": {
+                "start": 24,
+                "end": 28
+              }
+            },
+            "arguments": [
+              {
+                "type": "NumberLiteral",
+                "value": 1,
+                "raw": "1",
+                "line": {
+                  "start": 24,
+                  "end": 24
+                },
+                "column": {
+                  "start": 29,
+                  "end": 30
+                }
+              }
+            ],
+            "line": {
+              "start": 24,
+              "end": 24
+            },
+            "column": {
+              "start": 24,
+              "end": 31
+            }
+          }
+        ],
+        "line": {
+          "start": 24,
+          "end": 24
+        },
+        "column": {
+          "start": 1,
+          "end": 31
+        }
+      },
+      {
+        "type": "VariableDeclaration",
+        "kind": "const",
+        "names": [
+          {
+            "type": "IdentifierPattern",
+            "name": "version",
+            "line": {
+              "start": 25,
+              "end": 25
+            },
+            "column": {
+              "start": 7,
+              "end": 14
+            },
+            "typeAnnotation": {
+              "type": "TypeLiteralNumber",
+              "value": 3,
+              "line": {
+                "start": 25,
+                "end": 25
+              },
+              "column": {
+                "start": 16,
+                "end": 17
+              }
+            }
+          }
+        ],
+        "init": [
+          {
+            "type": "Identifier",
+            "name": "VERSION",
+            "line": {
+              "start": 25,
+              "end": 25
+            },
+            "column": {
+              "start": 20,
+              "end": 27
+            }
+          }
+        ],
+        "line": {
+          "start": 25,
+          "end": 25
+        },
+        "column": {
+          "start": 1,
+          "end": 27
+        }
+      },
+      {
+        "type": "VariableDeclaration",
+        "kind": "const",
+        "names": [
+          {
+            "type": "IdentifierPattern",
+            "name": "size",
+            "line": {
+              "start": 26,
+              "end": 26
+            },
+            "column": {
+              "start": 7,
+              "end": 11
+            },
+            "typeAnnotation": {
+              "type": "TypeReference",
+              "base": "Size",
+              "typeArguments": [],
+              "line": {
+                "start": 26,
+                "end": 26
+              },
+              "column": {
+                "start": 13,
+                "end": 17
+              }
+            }
+          }
+        ],
+        "init": [
+          {
+            "type": "Identifier",
+            "name": "unit",
+            "line": {
+              "start": 26,
+              "end": 26
+            },
+            "column": {
+              "start": 20,
+              "end": 24
+            }
+          }
+        ],
+        "line": {
+          "start": 26,
+          "end": 26
+        },
+        "column": {
+          "start": 1,
+          "end": 24
+        }
+      },
+      {
+        "type": "VariableDeclaration",
+        "kind": "const",
+        "names": [
+          {
+            "type": "IdentifierPattern",
+            "name": "a1",
+            "line": {
+              "start": 27,
+              "end": 27
+            },
+            "column": {
+              "start": 7,
+              "end": 9
+            },
+            "typeAnnotation": {
+              "type": "TypeReference",
+              "base": "number",
+              "typeArguments": [],
+              "line": {
+                "start": 27,
+                "end": 27
+              },
+              "column": {
+                "start": 11,
+                "end": 17
+              }
+            }
+          }
+        ],
+        "init": [
+          {
+            "type": "CallExpression",
+            "callee": {
+              "type": "Identifier",
+              "name": "area",
+              "line": {
+                "start": 27,
+                "end": 27
+              },
+              "column": {
+                "start": 20,
+                "end": 24
+              }
+            },
+            "arguments": [
+              {
+                "type": "Identifier",
+                "name": "unit",
+                "line": {
+                  "start": 27,
+                  "end": 27
+                },
+                "column": {
+                  "start": 25,
+                  "end": 29
+                }
+              }
+            ],
+            "line": {
+              "start": 27,
+              "end": 27
+            },
+            "column": {
+              "start": 20,
+              "end": 30
+            }
+          }
+        ],
+        "line": {
+          "start": 27,
+          "end": 27
+        },
+        "column": {
+          "start": 1,
+          "end": 30
+        }
+      },
+      {
+        "type": "VariableDeclaration",
+        "kind": "const",
+        "names": [
+          {
+            "type": "IdentifierPattern",
+            "name": "a2",
+            "line": {
+              "start": 28,
+              "end": 28
+            },
+            "column": {
+              "start": 7,
+              "end": 9
+            },
+            "typeAnnotation": {
+              "type": "TypeReference",
+              "base": "number",
+              "typeArguments": [],
+              "line": {
+                "start": 28,
+                "end": 28
+              },
+              "column": {
+                "start": 11,
+                "end": 17
+              }
+            }
+          }
+        ],
+        "init": [
+          {
+            "type": "CallExpression",
+            "callee": {
+              "type": "Identifier",
+              "name": "surface",
+              "line": {
+                "start": 28,
+                "end": 28
+              },
+              "column": {
+                "start": 20,
+                "end": 27
+              }
+            },
+            "arguments": [
+              {
+                "type": "Identifier",
+                "name": "unit",
+                "line": {
+                  "start": 28,
+                  "end": 28
+                },
+                "column": {
+                  "start": 28,
+                  "end": 32
+                }
+              }
+            ],
+            "line": {
+              "start": 28,
+              "end": 28
+            },
+            "column": {
+              "start": 20,
+              "end": 33
+            }
+          }
+        ],
+        "line": {
+          "start": 28,
+          "end": 28
+        },
+        "column": {
+          "start": 1,
+          "end": 33
+        }
+      },
+      {
+        "type": "CallStatement",
+        "expression": {
+          "type": "CallExpression",
+          "callee": {
+            "type": "Identifier",
+            "name": "print",
+            "line": {
+              "start": 30,
+              "end": 30
+            },
+            "column": {
+              "start": 1,
+              "end": 6
+            }
+          },
+          "arguments": [
+            {
+              "type": "Identifier",
+              "name": "clamped",
+              "line": {
+                "start": 30,
+                "end": 30
+              },
+              "column": {
+                "start": 7,
+                "end": 14
+              }
+            },
+            {
+              "type": "Identifier",
+              "name": "lerp",
+              "line": {
+                "start": 30,
+                "end": 30
+              },
+              "column": {
+                "start": 16,
+                "end": 20
+              }
+            },
+            {
+              "type": "Identifier",
+              "name": "helped",
+              "line": {
+                "start": 30,
+                "end": 30
+              },
+              "column": {
+                "start": 22,
+                "end": 28
+              }
+            },
+            {
+              "type": "Identifier",
+              "name": "version",
+              "line": {
+                "start": 30,
+                "end": 30
+              },
+              "column": {
+                "start": 30,
+                "end": 37
+              }
+            },
+            {
+              "type": "Identifier",
+              "name": "size",
+              "line": {
+                "start": 30,
+                "end": 30
+              },
+              "column": {
+                "start": 39,
+                "end": 43
+              }
+            },
+            {
+              "type": "Identifier",
+              "name": "a1",
+              "line": {
+                "start": 30,
+                "end": 30
+              },
+              "column": {
+                "start": 45,
+                "end": 47
+              }
+            },
+            {
+              "type": "Identifier",
+              "name": "a2",
+              "line": {
+                "start": 30,
+                "end": 30
+              },
+              "column": {
+                "start": 49,
+                "end": 51
+              }
+            }
+          ],
+          "line": {
+            "start": 30,
+            "end": 30
+          },
+          "column": {
+            "start": 1,
+            "end": 52
+          }
+        },
+        "line": {
+          "start": 30,
+          "end": 30
+        },
+        "column": {
+          "start": 1,
+          "end": 52
+        }
       }
     ],
     "line": {
       "start": 5,
-      "end": 18
+      "end": 30
     },
     "column": {
       "start": 1,
-      "end": 26
+      "end": 52
     }
   },
   "line": {
     "start": 5,
-    "end": 18
+    "end": 30
   },
   "column": {
     "start": 1,
-    "end": 26
+    "end": 52
   }
 }

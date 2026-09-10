@@ -68,7 +68,8 @@ export interface TypeAnalysis {
      *  `typeof x`, a property's type inside `{ ... }`. Inside a generic alias or
      *  function its parameters stay unresolved (`T`). */
     readonly typeOfTypeNode: Map<TypeNode | TypePackNode, Type>
-    /** Top-level type aliases, resolved. */
+    /** Top-level type aliases, resolved — and the type names this module
+     *  imports, so tooling treats both alike. */
     readonly aliases: Map<string, Type>
     readonly diagnostics: TypeDiagnostic[]
 }
@@ -122,7 +123,13 @@ export function analyzeTypes(
 
 /** The exports of an analyzed module, in the shape another module's
  *  `resolveModule` returns. */
-export function moduleExports(program: Program, scopes: ScopeAnalysis, types: TypeAnalysis): ModuleExports {
+export function moduleExports(
+    program: Program,
+    scopes: ScopeAnalysis,
+    types: TypeAnalysis,
+    /** For `export ... from`: the same resolver the module was analyzed with. */
+    resolveModule?: (specifier: string) => ModuleExports | undefined,
+): ModuleExports {
     const byDeclaration = new Map<object, BindingId>()
     for (const binding of scopes.bindings.values()) {
         if (binding.declarationNode) byDeclaration.set(binding.declarationNode, binding.id)
@@ -130,6 +137,35 @@ export function moduleExports(program: Program, scopes: ScopeAnalysis, types: Ty
     const values = new Map<string, Type>()
     const exportedTypes = new Map<string, ExportedType>()
     let defaultType: Type | undefined
+    const stars: string[] = []
+
+    // `export { x as default }` makes `x` the default export.
+    const setValue = (name: string, type: Type): void => {
+        if (name === "default") defaultType = type
+        else values.set(name, type)
+    }
+    const reexport = (from: ModuleExports | undefined, name: string, as: string): void => {
+        // A module up an import cycle, or missing: nothing reliable to copy.
+        if (!from || from.partial) {
+            setValue(as, anyType)
+            return
+        }
+        if (name === "default") {
+            if (from.default) setValue(as, from.default)
+            return
+        }
+        const value = from.values.get(name)
+        if (value) setValue(as, value)
+        const type = from.types.get(name)
+        if (type) exportedTypes.set(as, type)
+    }
+    const aliasParams = (name: string): string[] => {
+        for (const s of program.body.statements) {
+            const alias = s.type === "TypeAliasStatement" ? s : s.type === "ExportTypeAliasStatement" ? s.alias : undefined
+            if (alias?.name.name === name) return alias.generics.map(g => g.name)
+        }
+        return []
+    }
 
     const exportName = (declaration: object, name: string): void => {
         const id = byDeclaration.get(declaration)
@@ -162,7 +198,30 @@ export function moduleExports(program: Program, scopes: ScopeAnalysis, types: Ty
             if (type) exportedTypes.set(name, { type, params: stmt.alias.generics.map(g => g.name) })
         } else if (stmt.type === "ExportDefaultStatement") {
             defaultType = types.typeOf.get(stmt.declaration) ?? anyType
+        } else if (stmt.type === "ExportNamedStatement") {
+            if (stmt.source) {
+                const from = resolveModule?.(stmt.source.value)
+                for (const s of stmt.specifiers) reexport(from, s.local.name, s.exported.name)
+            } else {
+                for (const s of stmt.specifiers) {
+                    const id = scopes.bindingOf.get(s.local)
+                    if (id !== undefined) setValue(s.exported.name, types.bindingType.get(id) ?? anyType)
+                    const alias = types.aliases.get(s.local.name)
+                    if (alias) exportedTypes.set(s.exported.name, { type: alias, params: aliasParams(s.local.name) })
+                }
+            }
+        } else if (stmt.type === "ExportAllStatement") {
+            stars.push(stmt.source.value)
         }
+    }
+
+    // `export *` last: a name this module exports itself wins, and the
+    // default is never part of it.
+    for (const specifier of stars) {
+        const from = resolveModule?.(specifier)
+        if (!from || from.partial) continue
+        for (const [name, type] of from.values) if (!values.has(name)) values.set(name, type)
+        for (const [name, type] of from.types) if (!exportedTypes.has(name)) exportedTypes.set(name, type)
     }
     return { values, types: exportedTypes, default: defaultType }
 }
@@ -412,6 +471,25 @@ class TypeAnalyzer {
         return this.resolvedModules.get(specifier)
     }
 
+    /** `export ... from "./x"`: the module must exist, and so must each name. */
+    private checkReexport(source: Expression & { value: string }, names: readonly Identifier[]): void {
+        if (!this.options.resolveModule || !this.emitDiagnostics) return
+        const exports = this.moduleFor(source.value)
+        if (!exports) {
+            this.diagnostics.push({ node: source, message: `Cannot find module '${source.value}'` })
+            return
+        }
+        if (exports.partial) return
+        for (const name of names) {
+            const found = name.name === "default"
+                ? exports.default !== undefined
+                : exports.values.has(name.name) || exports.types.has(name.name)
+            if (!found) {
+                this.diagnostics.push({ node: name, message: `Module '${source.value}' has no exported member '${name.name}'` })
+            }
+        }
+    }
+
     private registerImportedTypes(): void {
         if (!this.options.resolveModule) return
         for (const stmt of this.program.body.statements) {
@@ -420,7 +498,14 @@ class TypeAnalyzer {
             if (!exports) continue
             for (const s of stmt.specifiers) {
                 const exported = exports.types.get(s.imported.name)
-                if (exported) this.importedTypes.set(s.local.name, exported)
+                if (exported) {
+                    this.importedTypes.set(s.local.name, exported)
+                    // Listed with the aliases: to hover, completion and
+                    // highlighting an imported type is a type like any other.
+                    // A local alias of the same name replaces it when the
+                    // aliases resolve.
+                    this.aliases.set(s.local.name, exported.type)
+                }
             }
         }
     }
@@ -1219,6 +1304,28 @@ class TypeAnalyzer {
 
             case "ExportDefaultStatement":
                 this.infer(stmt.declaration, env)
+                return
+
+            case "ExportNamedStatement": {
+                if (stmt.source) {
+                    this.checkReexport(stmt.source, stmt.specifiers.map(s => s.local))
+                    return
+                }
+                for (const s of stmt.specifiers) {
+                    if (this.bindingIdOf(s.local) !== undefined) {
+                        // Records the reference's type, for tooling.
+                        this.infer(s.local, env)
+                    } else if (!this.aliasDefs.has(s.local.name) && !this.importedTypes.has(s.local.name)) {
+                        if (this.emitDiagnostics) {
+                            this.diagnostics.push({ node: s.local, message: `Cannot find name '${s.local.name}' to export` })
+                        }
+                    }
+                }
+                return
+            }
+
+            case "ExportAllStatement":
+                this.checkReexport(stmt.source, [])
                 return
 
             case "ImportStatement": {

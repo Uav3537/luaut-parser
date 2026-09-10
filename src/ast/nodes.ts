@@ -58,6 +58,29 @@ export interface ExportDefaultStatement extends BaseNode {
     declaration: Expression
 }
 
+export interface ExportSpecifier extends BaseNode {
+    type: "ExportSpecifier"
+    /** The name in this module — or, with `from`, in the other module. */
+    local: Identifier
+    /** The name it is exported as — same as `local` unless renamed with `as`. */
+    exported: Identifier
+}
+
+/** `export { a, b as c }` exports names declared elsewhere in the module;
+ *  `export { a, b as c } from "./x"` re-exports another module's names. */
+export interface ExportNamedStatement extends BaseNode {
+    type: "ExportNamedStatement"
+    specifiers: ExportSpecifier[]
+    source?: StringLiteral
+}
+
+/** `export * from "./x"` — every named export of another module (not its
+ *  default), except names this module exports itself. */
+export interface ExportAllStatement extends BaseNode {
+    type: "ExportAllStatement"
+    source: StringLiteral
+}
+
 // ============================================================
 // Statements
 // ============================================================
@@ -83,6 +106,8 @@ export type Statement =
     | ImportStatement
     | ExportStatement
     | ExportDefaultStatement
+    | ExportNamedStatement
+    | ExportAllStatement
     | DeclareStatement
     | ErrorStatement
 

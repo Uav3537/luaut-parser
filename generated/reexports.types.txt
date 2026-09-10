@@ -1,0 +1,3 @@
+area: (s: Size) -> number
+s: Size
+unit: Size

@@ -16,3 +16,15 @@ const p: Point = { x: 1, y: 2 }
 const r: number = main()
 
 print(origin, d, s, p, r)
+
+-- Through export lists and re-exports (see reexports.luaut).
+import { clamp, lerp, help, VERSION, unit, area, surface, Size } from "./reexports"
+
+const clamped: number = clamp(5, 0, 10)   -- from `export *`
+const helped: number = help(1)            -- re-exported under a new name
+const version: 3 = VERSION                -- re-exported as is
+const size: Size = unit                   -- a type from an export list
+const a1: number = area(unit)
+const a2: number = surface(unit)          -- the same function, exported twice
+
+print(clamped, lerp, helped, version, size, a1, a2)

@@ -185,6 +185,16 @@ class Analyzer {
         return this.getOrCreateGlobalBinding(name)
     }
 
+    /** Like `resolve`, but never creates a global: `undefined` when no
+     *  enclosing scope declares the name. */
+    private lookup(scope: Scope, name: string): BindingId | undefined {
+        for (let s: Scope | null = scope; s; s = s.parent) {
+            const id = s.declarations.get(name)
+            if (id !== undefined) return id
+        }
+        return undefined
+    }
+
     private getOrCreateGlobalBinding(name: string): BindingId {
         const existing = this.globalScope.declarations.get(name)
         if (existing !== undefined) return existing
@@ -461,6 +471,24 @@ class Analyzer {
 
             case "ExportDefaultStatement":
                 this.visitExpression(stmt.declaration, scope)
+                return
+
+            case "ExportNamedStatement":
+                // `export { a }` reads the local `a`. A name that no scope
+                // declares may be a type, which lives in the type namespace, so
+                // it is left unbound rather than invented as a global. With
+                // `from`, the names belong to the other module entirely.
+                if (!stmt.source) {
+                    for (const specifier of stmt.specifiers) {
+                        const id = this.lookup(scope, specifier.local.name)
+                        if (id === undefined) continue
+                        this.bindingOf.set(specifier.local, id)
+                        this.bindings.get(id)!.references.push(specifier.local)
+                    }
+                }
+                return
+
+            case "ExportAllStatement":
                 return
         }
     }

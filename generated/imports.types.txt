@@ -1,10 +1,24 @@
 ORIGIN: { x: number, y: number }
 Point: any
+Size: any
+VERSION: 3
+a1: number
+a2: number
+area: (s: Size) -> number
+clamp: (x: number, lo: number, hi: number) -> number
+clamped: number
 d: number
 distance: (a: Point, b: Point) -> number
+help: (x: number) -> number
+helped: number
+lerp: (a: number, b: number, t: number) -> number
 main: () -> number
 origin: { x: number, y: number }
 p: { x: number, y: number }
 r: number
 s: number
 scale: number
+size: { h: number, w: number }
+surface: (s: Size) -> number
+unit: Size
+version: 3

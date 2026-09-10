@@ -7,6 +7,7 @@ import type {
     NumericForStatement, GenericForStatement, ReturnStatement,
     BreakStatement, ContinueStatement, TypeAliasStatement, ExportTypeAliasStatement,
     ImportStatement, ImportSpecifier, ExportStatement, ExportDefaultStatement, DeclareStatement,
+    ExportNamedStatement, ExportSpecifier, ExportAllStatement,
     FunctionName, TypedIdentifier, GenericTypeParameter, FunctionSignature, TypePredicateNode,
     MappedTypeNode,
     BindingTarget, IdentifierPattern, ObjectPattern, ObjectPatternProperty,
@@ -498,9 +499,26 @@ export class Parser {
         return { type: "ImportSpecifier", imported, local, ...spanFrom(imported, local) }
     }
 
+    /** `from "<path>"`: consumes `from` and the module string. */
+    private parseModuleSource(): StringLiteral {
+        this.advance() // 'from'
+        const sourceTok = this.current()
+        if (sourceTok.type !== "Literal" || (sourceTok as any).kind !== "string") {
+            this.error("Expected string literal module path after 'from'")
+        }
+        this.advance()
+        return {
+            type: "StringLiteral",
+            value: (sourceTok as any).value,
+            raw: (sourceTok as any).raw,
+            ...spanFrom(sourceTok, sourceTok),
+        }
+    }
+
     // `export const ...` / `export let ...` / `export const function ...` /
     // `export type ...` / `export default <expr>`
-    private parseExportStatement(): ExportStatement | ExportTypeAliasStatement | ExportDefaultStatement {
+    private parseExportStatement():
+        ExportStatement | ExportTypeAliasStatement | ExportDefaultStatement | ExportNamedStatement | ExportAllStatement {
         const start = this.current()
         this.advance() // consume 'export'
 
@@ -520,7 +538,34 @@ export class Parser {
             return { type: "ExportStatement", declaration, ...spanFrom(start, this.previous()) }
         }
 
-        this.error("Expected 'const', 'let', 'type', or 'default' after 'export'")
+        // `export { a, b as c }` / `export { a } from "./x"`
+        if (this.checkPunctuator("{")) {
+            this.advance()
+            const specifiers: ExportSpecifier[] = []
+            while (!this.checkPunctuator("}")) {
+                const local = this.parseIdentifier()
+                let exported = local
+                if (this.checkKeyword("as")) {
+                    this.advance()
+                    exported = this.parseIdentifier()
+                }
+                specifiers.push({ type: "ExportSpecifier", local, exported, ...spanFrom(local, exported) })
+                if (!this.matchPunctuator(",")) break
+            }
+            this.expectPunctuator("}")
+            const source = this.checkKeyword("from") ? this.parseModuleSource() : undefined
+            return { type: "ExportNamedStatement", specifiers, source, ...spanFrom(start, this.previous()) }
+        }
+
+        // `export * from "./x"`
+        if (this.checkOperator("*")) {
+            this.advance()
+            if (!this.checkKeyword("from")) this.error("Expected 'from' after 'export *'")
+            const source = this.parseModuleSource()
+            return { type: "ExportAllStatement", source, ...spanFrom(start, this.previous()) }
+        }
+
+        this.error("Expected 'const', 'let', 'type', 'default', '{' or '*' after 'export'")
     }
 
     // `const x = ...` / `let x, y = ...` / `const function f() ... end`.

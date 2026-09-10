@@ -122,8 +122,9 @@ analyzeTypes(program, scopes, {
 
 ## Known limitations
 
-- `export { a, b }` lists and `export * from` are not supported; export at
-  the declaration (`export const`, `export type`, `export default`).
+- `export * as ns from` and namespace imports (`import * as ns`) are not
+  supported. Export lists (`export { a, b as c }`), re-exports
+  (`export { a } from`) and `export * from` are.
 - `setmetatable` and metatables are not modelled.
 - Accessing a property a type does not have yields `unknown` rather than an
   error; assigning to a `readonly` property is not reported; generic
