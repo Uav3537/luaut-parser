@@ -470,6 +470,15 @@ export class Parser {
         const start = this.current()
         this.advance() // consume 'import'
 
+        // `import type { A } from` / `import type D from` / `import type * as M from`.
+        // `import type from "./m"` is still a default import named `type`.
+        const next = this.peek(1)
+        const isTypeOnly = this.checkIdentifierValue("type") && (
+            (next.type === "Punctuator" && (next as any).value === "{") ||
+            (next.type === "Operator" && (next as any).value === "*") ||
+            next.type === "Identifier")
+        if (isTypeOnly) this.advance()
+
         let defaultImport: Identifier | undefined
         const specifiers: ImportSpecifier[] = []
 
@@ -512,7 +521,11 @@ export class Parser {
             ...spanFrom(sourceTok, sourceTok),
         }
 
-        return { type: "ImportStatement", defaultImport, namespaceImport, specifiers, source, ...spanFrom(start, this.previous()) }
+        return {
+            type: "ImportStatement", defaultImport, namespaceImport, specifiers, source,
+            isTypeOnly: isTypeOnly || undefined,
+            ...spanFrom(start, this.previous()),
+        }
     }
 
     private parseImportSpecifierList(out: ImportSpecifier[]): void {

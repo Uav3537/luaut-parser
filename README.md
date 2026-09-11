@@ -117,6 +117,11 @@ scope; like a TypeScript function declaration it cannot be reassigned.
 Imports are read-only: assigning to an imported name, or to a member of a
 namespace (`M.x = 1`), is an error.
 
+`import type { A } from "./m"` (also `import type D` and `import type * as M`)
+brings in names that are types and nothing else: unlike TypeScript, using one
+as a value is an error, and only type positions — `typeof A` included — may
+name it. Compiled code keeps no trace of it.
+
 **Optionality** — there is no `T?` shorthand. `?` in type position always
 belongs to a conditional type, and in expression position to a ternary.
 

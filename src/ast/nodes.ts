@@ -41,6 +41,10 @@ export interface ImportStatement extends BaseNode {
     defaultImport?: Identifier
     /** `import * as Module from '...'` — the module's exports as one value. */
     namespaceImport?: Identifier
+    /** `import type { A } from '...'`: every name it brings in is a type and
+     *  may only be used as one — never as a value. It exists for the type
+     *  checker alone, and leaves nothing in compiled code. */
+    isTypeOnly?: boolean
     /** `import { a, b as c } from '...'` */
     specifiers: ImportSpecifier[]
     source: StringLiteral

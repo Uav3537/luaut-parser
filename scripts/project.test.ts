@@ -230,6 +230,31 @@ const rel = (path: string | undefined): string | undefined =>
         analyze(`import * as M from "./m"\nM.value = 2\nfunction M.extra() end`, { "./m": "export const value = 1" }).errors,
         ["Cannot assign to a member of 'M' — a module's exports are read-only", "Cannot assign to a member of 'M' — a module's exports are read-only"])
 
+    // `import type`: types only.
+    const shapes = { "./shapes": "export type Circle = { r: number }\nexport function area(r: number): number return r * r end\nexport default 3" }
+    check("import type: its names work as types, typeof included", analyze([
+        `import type { Circle, area } from "./shapes"`,
+        `import type * as S from "./shapes"`,
+        `import type D from "./shapes"`,
+        `const c: Circle = { r: 1 }`,
+        `const d: S.Circle = c`,
+        `const f: typeof area = function(r: number): number return r end`,
+        `const n: typeof D = 3`,
+    ].join("\n"), shapes).errors, [])
+    check("import type: a name used as a value is an error", analyze([
+        `import type { area } from "./shapes"`,
+        `import type * as S from "./shapes"`,
+        `area(2)`,
+        `area = nil`,
+        `print(S.area)`,
+    ].join("\n"), shapes).errors, [
+        "'area' is imported with 'import type' and can only be used as a type",
+        "'area' is imported with 'import type' and can only be used as a type",
+        "'S' is imported with 'import type' and can only be used as a type",
+    ])
+    check("import type: `import type from` is a default import named type",
+        analyze(`import type from "./shapes"\nprint(type)`, shapes).errors, [])
+
     // An empty array takes its type from where it is written.
     check("arrays: an empty array fits an annotation", analyze([
         "let waiting: thread[] = []",

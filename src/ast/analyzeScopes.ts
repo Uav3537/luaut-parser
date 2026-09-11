@@ -63,14 +63,14 @@ export interface Binding {
     isConst?: boolean
     /** Set when the binding comes from something other than `const` / `let`,
      *  which is also what an error about reassigning it names. */
-    declaredBy?: "import" | "namespace" | "function"
+    declaredBy?: "import" | "namespace" | "function" | "type"
 }
 
 export interface ScopeDiagnostic {
     /** the offending node (redeclaration site, or assignment target) */
     node: { line: { start: number; end: number }; column: { start: number; end: number } }
     message: string
-    kind: "redeclare" | "const-assign"
+    kind: "redeclare" | "const-assign" | "type-only"
 }
 
 export interface ScopeAnalysis {
@@ -217,6 +217,21 @@ class Analyzer {
         const id = this.resolve(scope, identifier.name)
         this.bindingOf.set(identifier, id)
         this.bindings.get(id)!.references.push(identifier)
+        if (this.typeQueryDepth === 0) this.checkTypeOnly(id, identifier)
+    }
+
+    /** Inside `typeof x` in a type, where a type-only import may be named. */
+    private typeQueryDepth = 0
+
+    /** A name from `import type` used as a value. */
+    private checkTypeOnly(id: BindingId, node: ScopeDiagnostic["node"]): void {
+        const b = this.bindings.get(id)!
+        if (b.declaredBy !== "type") return
+        this.diagnostics.push({
+            node,
+            message: `'${b.name}' is imported with 'import type' and can only be used as a type`,
+            kind: "type-only",
+        })
     }
 
     /** For assignment-like targets (`x = ...`, `function foo() end`): if
@@ -235,6 +250,7 @@ class Analyzer {
         this.bindingOf.set(identifier, id)
         this.bindings.get(id)!.references.push(identifier)
         this.recordPossibleGlobalDefinition(id, identifier)
+        this.checkTypeOnly(id, identifier)
         this.checkConstAssign(id, identifier)
     }
 
@@ -260,6 +276,8 @@ class Analyzer {
 
     private checkConstAssign(id: BindingId, node: ScopeDiagnostic["node"]): void {
         const b = this.bindings.get(id)!
+        // Already reported as a value use.
+        if (b.declaredBy === "type") return
         if (b.isConst) {
             this.diagnostics.push({
                 node,
@@ -310,6 +328,7 @@ class Analyzer {
                     const id = this.resolve(scope, t.name)
                     this.bindingOf.set(t, id)
                     this.recordPossibleGlobalDefinition(id, t)
+                    this.checkTypeOnly(id, t)
                     this.checkConstAssign(id, t)
                     return
                 }
@@ -497,15 +516,18 @@ class Analyzer {
             case "ImportStatement": {
                 // `import Foo, { a, b as c } from "..."` introduces locals
                 // `Foo`, `a`, `c` in the current scope.
-                // Imports are read-only, as in ES modules.
+                // Imports are read-only, as in ES modules. A type-only import
+                // is still declared, so that using it as a value is reported
+                // rather than read as some undeclared global.
+                const typeOnly = stmt.isTypeOnly ? "type" : undefined
                 if (stmt.defaultImport) {
-                    this.declare(scope, stmt.defaultImport.name, "local", stmt.defaultImport, true, "import")
+                    this.declare(scope, stmt.defaultImport.name, "local", stmt.defaultImport, true, typeOnly ?? "import")
                 }
                 if (stmt.namespaceImport) {
-                    this.declare(scope, stmt.namespaceImport.name, "local", stmt.namespaceImport, true, "namespace")
+                    this.declare(scope, stmt.namespaceImport.name, "local", stmt.namespaceImport, true, typeOnly ?? "namespace")
                 }
                 for (const spec of stmt.specifiers) {
-                    this.declare(scope, spec.local.name, "local", spec.local, true, "import")
+                    this.declare(scope, spec.local.name, "local", spec.local, true, typeOnly ?? "import")
                 }
                 return
             }
@@ -590,7 +612,13 @@ class Analyzer {
                 return
             }
             if ((value as { type?: unknown }).type === "TypeofTypeNode") {
-                this.visitExpression((value as TypeofTypeNode).expression, scope)
+                // A type query: naming a type-only import here is fine.
+                this.typeQueryDepth++
+                try {
+                    this.visitExpression((value as TypeofTypeNode).expression, scope)
+                } finally {
+                    this.typeQueryDepth--
+                }
                 return
             }
             for (const key of Object.keys(value)) {
