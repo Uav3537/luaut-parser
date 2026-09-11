@@ -437,6 +437,33 @@ const rel = (path: string | undefined): string | undefined =>
         "Object literal may only specify known properties, and 'typo' does not exist in type 'Shape'",
     ])
 
+    const constSatisfied = analyze([
+        "const Names = [\"Sans\", \"Asgore\"] as const",
+        "const Map = {",
+        "    Sans: { Thumbnail: \"id://1\" },",
+        "    Asgore: { Thumbnail: \"id://2\" },",
+        "} as const satisfies { [K in typeof Names[number]]: { Thumbnail: string } }",
+        "const Short = { Sans: { Thumbnail: 1 } } as const satisfies { [K in typeof Names[number]]: { Thumbnail: string } }",
+        "const Extra = { a: 1, b: 2 } as const satisfies { a: number }",
+    ].join("\n"))
+    check("satisfies: `as const satisfies` keeps the value readonly and literal",
+        [constSatisfied.bindings.Map, constSatisfied.errors], [
+            `{ readonly Asgore: { readonly Thumbnail: "id://2" }, readonly Sans: { readonly Thumbnail: "id://1" } }`,
+            [
+                `Type '{ readonly Sans: { readonly Thumbnail: 1 } }' does not satisfy the expected type '{ Asgore: { Thumbnail: string }, Sans: { Thumbnail: string } }'`,
+                "Object literal may only specify known properties, and 'b' does not exist in type '{ a: number }'",
+            ],
+        ])
+
+    // Names nothing declares, when asked for.
+    {
+        const program = parse("counter = 1\nprint(counter, typo)\ndeclare later: number\nprint(later, Missing.x)\nconst local = 1\nprint(local)")
+        const scopes = analyzeScopes(program, { builtinGlobals: ["print"], reportUndeclared: true })
+        check("undeclared: reads of names nothing declares, assigns or `declare`s",
+            scopes.diagnostics.map(d => `${d.node.line.start}: ${d.message}`), ["2: Cannot find name 'typo'", "4: Cannot find name 'Missing'"])
+        check("undeclared: off unless asked for", analyzeScopes(program).diagnostics, [])
+    }
+
     // `export type X = typeof value` reads the value, as a plain alias does.
     const classes = [
         "export const DefaultClass = [\"Sans\", \"Asgore\"] as const",

@@ -2809,10 +2809,16 @@ class TypeAnalyzer {
                 const declared = this.resolveType(expr.typeAnnotation)
                 this.applyContext(expr.expression, declared)
                 if (declared.kind === "any") return this.infer(expr.expression, env)
-                const narrow = this.inferAsConst(expr.expression, env)
+                // Only a literal written right here takes its literals from the
+                // contract. Anything with a type of its own — `x as const`, a
+                // variable, a call — keeps exactly that type: `as const
+                // satisfies T` stays readonly and literal.
+                const written = unwrapParens(expr.expression)
+                const fresh = written.type === "TableExpression" || written.type === "ArrayExpression"
+                const narrow = fresh ? this.inferAsConst(expr.expression, env) : this.infer(expr.expression, env)
                 // A bare literal is left for the declaration to widen or not
                 // (`const n = 5 satisfies number` is `5`, a `let` is `number`).
-                const actual = narrow.kind === "literal" ? narrow : this.keepContextualLiterals(narrow, declared)
+                const actual = fresh ? this.keepContextualLiterals(narrow, declared) : narrow
                 this.typeOf.set(expr.expression, actual)
                 if (!this.emitDiagnostics) return actual
                 if (!isAssignable(narrow, declared) && !isAssignable(actual, declared)) {
@@ -3182,7 +3188,8 @@ class TypeAnalyzer {
      *  A target with an indexer, a class, or a member whose shape is not known
      *  accepts anything. */
     private reportExcessProperties(expression: Expression, target: Type): void {
-        const literal = unwrapParens(expression)
+        let literal = unwrapParens(expression)
+        while (literal.type === "AsConstExpression") literal = unwrapParens(literal.expression)
         if (literal.type !== "TableExpression" || !this.emitDiagnostics) return
         const members = this.membersOf(target)
         const shapes = members.filter((m): m is ObjectType => m.kind === "object")

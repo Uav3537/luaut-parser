@@ -236,8 +236,16 @@ The contract types callbacks and empty arrays, and a literal stays a literal
 where the contract asks for literals (`kind: "circle"`, not `string`). A value
 that does not fit is an error. So is a property the contract does not know —
 TypeScript's excess property check, which applies to an object literal written
-straight into an annotation (`const s: Shape = { ..., typo: 1 }`) too. `as`
-reinterprets instead of checking, and compiled code keeps neither.
+straight into an annotation (`const s: Shape = { ..., typo: 1 }`) too. A value
+that already has a type of its own keeps it exactly: `{ ... } as const
+satisfies T` stays readonly and literal. `as` reinterprets instead of
+checking, and compiled code keeps neither.
+
+**Undeclared names** — `analyzeScopes(program, { builtinGlobals, reportUndeclared: true })`
+reports each read of a name nothing declares: "Cannot find name 'x'". A global
+assigned in the file (`x = 1`) and a `declare` count as declarations. It is
+off by default, since it is only right when `builtinGlobals` lists what the
+type libraries declare.
 
 **Directives** — comments that switch checking off, as TypeScript's
 `// @ts-...` do. They silence scope and type errors, never syntax errors:

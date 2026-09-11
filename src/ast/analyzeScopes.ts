@@ -70,7 +70,7 @@ export interface ScopeDiagnostic {
     /** the offending node (redeclaration site, or assignment target) */
     node: { line: { start: number; end: number }; column: { start: number; end: number } }
     message: string
-    kind: "redeclare" | "const-assign" | "type-only"
+    kind: "redeclare" | "const-assign" | "type-only" | "undeclared"
 }
 
 export interface ScopeAnalysis {
@@ -98,6 +98,12 @@ export interface AnalyzeScopesOptions {
      *  one of these does not count as "defining" it, so `declarationNode`
      *  is left unset even though the binding exists up front. */
     builtinGlobals?: readonly string[]
+    /** Report each read of a name nothing declares — not a local, not one of
+     *  `builtinGlobals`, not `declare`d in the file, never assigned as a
+     *  global: "Cannot find name 'x'", as TypeScript says. Only meaningful
+     *  when `builtinGlobals` lists everything the file's type libraries
+     *  declare, so it is off unless asked for. */
+    reportUndeclared?: boolean
 }
 
 // --------------------------------------------------------
@@ -145,7 +151,7 @@ class Analyzer {
     private readonly diagnostics: ScopeDiagnostic[] = []
     private readonly globalScope: Scope = { parent: null, declarations: new Map() }
 
-    constructor(options: AnalyzeScopesOptions) {
+    constructor(private readonly options: AnalyzeScopesOptions) {
         for (const name of options.builtinGlobals ?? []) {
             const id = this.getOrCreateGlobalBinding(name)
             this.bindings.get(id)!.isBuiltin = true
@@ -154,12 +160,31 @@ class Analyzer {
 
     run(program: Program): ScopeAnalysis {
         this.visitBlock(program.body, childScope(this.globalScope))
+        if (this.options.reportUndeclared) this.reportUndeclared(program)
         return {
             bindingOf: this.bindingOf,
             bindings: this.bindings,
             diagnostics: this.diagnostics,
             globalsByName: this.globalScope.declarations,
         }
+    }
+
+    /** Every read of a global nothing declares. A global assigned somewhere
+     *  in the file (`x = 1`) is Lua's implicit global, and is left alone. */
+    private reportUndeclared(program: Program): void {
+        const declared = new Set<string>()
+        for (const statement of program.body.statements) {
+            if (statement.type === "DeclareStatement") declared.add(statement.name)
+        }
+        const found: ScopeDiagnostic[] = []
+        for (const binding of this.bindings.values()) {
+            if (!isUnassignedGlobal(binding) || declared.has(binding.name)) continue
+            for (const reference of binding.references) {
+                found.push({ node: reference, message: `Cannot find name '${binding.name}'`, kind: "undeclared" })
+            }
+        }
+        found.sort((a, b) => a.node.line.start - b.node.line.start || a.node.column.start - b.node.column.start)
+        this.diagnostics.push(...found)
     }
 
     // ---------------- declaration / resolution primitives ----------------
