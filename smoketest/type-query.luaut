@@ -19,13 +19,6 @@ const volume: typeof defaults.volume = 5
 let count = 1
 const alsoNumber: typeof count = 2
 
--- Composes with the rest of the type system.
-const function scale(n: number): number
-    return n * 2
-end
-const doubled: ReturnType<typeof scale> = 4
-const args: Parameters<typeof scale> = [3]
-
 -- Parameters can refer to earlier parameters.
 const function clampTo(limit: number, value: typeof limit): number
     return value
@@ -34,4 +27,4 @@ end
 -- Luau's parenthesised spelling still works.
 const paren: typeof(count) = 3
 
-print(copy, other, volume, alsoNumber, doubled, args, clampTo(1, 2), paren)
+print(copy, other, volume, alsoNumber, clampTo(1, 2), paren)

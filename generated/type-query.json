@@ -571,14 +571,14 @@
         "kind": "const",
         "name": {
           "type": "Identifier",
-          "name": "scale",
+          "name": "clampTo",
           "line": {
             "start": 23,
             "end": 23
           },
           "column": {
             "start": 16,
-            "end": 21
+            "end": 23
           }
         },
         "func": {
@@ -587,7 +587,7 @@
           "params": [
             {
               "type": "FunctionParameter",
-              "name": "n",
+              "name": "limit",
               "typeAnnotation": {
                 "type": "TypeReference",
                 "base": "number",
@@ -597,8 +597,8 @@
                   "end": 23
                 },
                 "column": {
-                  "start": 25,
-                  "end": 31
+                  "start": 31,
+                  "end": 37
                 }
               },
               "line": {
@@ -606,8 +606,43 @@
                 "end": 23
               },
               "column": {
-                "start": 22,
-                "end": 31
+                "start": 24,
+                "end": 37
+              }
+            },
+            {
+              "type": "FunctionParameter",
+              "name": "value",
+              "typeAnnotation": {
+                "type": "TypeofTypeNode",
+                "expression": {
+                  "type": "Identifier",
+                  "name": "limit",
+                  "line": {
+                    "start": 23,
+                    "end": 23
+                  },
+                  "column": {
+                    "start": 53,
+                    "end": 58
+                  }
+                },
+                "line": {
+                  "start": 23,
+                  "end": 23
+                },
+                "column": {
+                  "start": 46,
+                  "end": 58
+                }
+              },
+              "line": {
+                "start": 23,
+                "end": 23
+              },
+              "column": {
+                "start": 39,
+                "end": 58
               }
             }
           ],
@@ -621,8 +656,8 @@
               "end": 23
             },
             "column": {
-              "start": 34,
-              "end": 40
+              "start": 61,
+              "end": 67
             }
           },
           "body": {
@@ -632,33 +667,8 @@
                 "type": "ReturnStatement",
                 "arguments": [
                   {
-                    "type": "BinaryExpression",
-                    "operator": "*",
-                    "left": {
-                      "type": "Identifier",
-                      "name": "n",
-                      "line": {
-                        "start": 24,
-                        "end": 24
-                      },
-                      "column": {
-                        "start": 12,
-                        "end": 13
-                      }
-                    },
-                    "right": {
-                      "type": "NumberLiteral",
-                      "value": 2,
-                      "raw": "2",
-                      "line": {
-                        "start": 24,
-                        "end": 24
-                      },
-                      "column": {
-                        "start": 16,
-                        "end": 17
-                      }
-                    },
+                    "type": "Identifier",
+                    "name": "value",
                     "line": {
                       "start": 24,
                       "end": 24
@@ -693,7 +703,7 @@
             "end": 25
           },
           "column": {
-            "start": 21,
+            "start": 23,
             "end": 4
           }
         },
@@ -712,329 +722,10 @@
         "names": [
           {
             "type": "IdentifierPattern",
-            "name": "doubled",
-            "line": {
-              "start": 26,
-              "end": 26
-            },
-            "column": {
-              "start": 7,
-              "end": 14
-            },
-            "typeAnnotation": {
-              "type": "TypeReference",
-              "base": "ReturnType",
-              "typeArguments": [
-                {
-                  "type": "TypeofTypeNode",
-                  "expression": {
-                    "type": "Identifier",
-                    "name": "scale",
-                    "line": {
-                      "start": 26,
-                      "end": 26
-                    },
-                    "column": {
-                      "start": 34,
-                      "end": 39
-                    }
-                  },
-                  "line": {
-                    "start": 26,
-                    "end": 26
-                  },
-                  "column": {
-                    "start": 27,
-                    "end": 39
-                  }
-                }
-              ],
-              "line": {
-                "start": 26,
-                "end": 26
-              },
-              "column": {
-                "start": 16,
-                "end": 40
-              }
-            }
-          }
-        ],
-        "init": [
-          {
-            "type": "NumberLiteral",
-            "value": 4,
-            "raw": "4",
-            "line": {
-              "start": 26,
-              "end": 26
-            },
-            "column": {
-              "start": 43,
-              "end": 44
-            }
-          }
-        ],
-        "line": {
-          "start": 26,
-          "end": 26
-        },
-        "column": {
-          "start": 1,
-          "end": 44
-        }
-      },
-      {
-        "type": "VariableDeclaration",
-        "kind": "const",
-        "names": [
-          {
-            "type": "IdentifierPattern",
-            "name": "args",
-            "line": {
-              "start": 27,
-              "end": 27
-            },
-            "column": {
-              "start": 7,
-              "end": 11
-            },
-            "typeAnnotation": {
-              "type": "TypeReference",
-              "base": "Parameters",
-              "typeArguments": [
-                {
-                  "type": "TypeofTypeNode",
-                  "expression": {
-                    "type": "Identifier",
-                    "name": "scale",
-                    "line": {
-                      "start": 27,
-                      "end": 27
-                    },
-                    "column": {
-                      "start": 31,
-                      "end": 36
-                    }
-                  },
-                  "line": {
-                    "start": 27,
-                    "end": 27
-                  },
-                  "column": {
-                    "start": 24,
-                    "end": 36
-                  }
-                }
-              ],
-              "line": {
-                "start": 27,
-                "end": 27
-              },
-              "column": {
-                "start": 13,
-                "end": 37
-              }
-            }
-          }
-        ],
-        "init": [
-          {
-            "type": "ArrayExpression",
-            "elements": [
-              {
-                "type": "NumberLiteral",
-                "value": 3,
-                "raw": "3",
-                "line": {
-                  "start": 27,
-                  "end": 27
-                },
-                "column": {
-                  "start": 41,
-                  "end": 42
-                }
-              }
-            ],
-            "line": {
-              "start": 27,
-              "end": 27
-            },
-            "column": {
-              "start": 40,
-              "end": 43
-            }
-          }
-        ],
-        "line": {
-          "start": 27,
-          "end": 27
-        },
-        "column": {
-          "start": 1,
-          "end": 43
-        }
-      },
-      {
-        "type": "FunctionDeclaration",
-        "kind": "const",
-        "name": {
-          "type": "Identifier",
-          "name": "clampTo",
-          "line": {
-            "start": 30,
-            "end": 30
-          },
-          "column": {
-            "start": 16,
-            "end": 23
-          }
-        },
-        "func": {
-          "type": "FunctionBody",
-          "generics": [],
-          "params": [
-            {
-              "type": "FunctionParameter",
-              "name": "limit",
-              "typeAnnotation": {
-                "type": "TypeReference",
-                "base": "number",
-                "typeArguments": [],
-                "line": {
-                  "start": 30,
-                  "end": 30
-                },
-                "column": {
-                  "start": 31,
-                  "end": 37
-                }
-              },
-              "line": {
-                "start": 30,
-                "end": 30
-              },
-              "column": {
-                "start": 24,
-                "end": 37
-              }
-            },
-            {
-              "type": "FunctionParameter",
-              "name": "value",
-              "typeAnnotation": {
-                "type": "TypeofTypeNode",
-                "expression": {
-                  "type": "Identifier",
-                  "name": "limit",
-                  "line": {
-                    "start": 30,
-                    "end": 30
-                  },
-                  "column": {
-                    "start": 53,
-                    "end": 58
-                  }
-                },
-                "line": {
-                  "start": 30,
-                  "end": 30
-                },
-                "column": {
-                  "start": 46,
-                  "end": 58
-                }
-              },
-              "line": {
-                "start": 30,
-                "end": 30
-              },
-              "column": {
-                "start": 39,
-                "end": 58
-              }
-            }
-          ],
-          "hasVarargs": false,
-          "returnType": {
-            "type": "TypeReference",
-            "base": "number",
-            "typeArguments": [],
-            "line": {
-              "start": 30,
-              "end": 30
-            },
-            "column": {
-              "start": 61,
-              "end": 67
-            }
-          },
-          "body": {
-            "type": "Block",
-            "statements": [
-              {
-                "type": "ReturnStatement",
-                "arguments": [
-                  {
-                    "type": "Identifier",
-                    "name": "value",
-                    "line": {
-                      "start": 31,
-                      "end": 31
-                    },
-                    "column": {
-                      "start": 12,
-                      "end": 17
-                    }
-                  }
-                ],
-                "line": {
-                  "start": 31,
-                  "end": 31
-                },
-                "column": {
-                  "start": 5,
-                  "end": 17
-                }
-              }
-            ],
-            "line": {
-              "start": 31,
-              "end": 31
-            },
-            "column": {
-              "start": 5,
-              "end": 17
-            }
-          },
-          "line": {
-            "start": 30,
-            "end": 32
-          },
-          "column": {
-            "start": 23,
-            "end": 4
-          }
-        },
-        "line": {
-          "start": 30,
-          "end": 32
-        },
-        "column": {
-          "start": 1,
-          "end": 4
-        }
-      },
-      {
-        "type": "VariableDeclaration",
-        "kind": "const",
-        "names": [
-          {
-            "type": "IdentifierPattern",
             "name": "paren",
             "line": {
-              "start": 35,
-              "end": 35
+              "start": 28,
+              "end": 28
             },
             "column": {
               "start": 7,
@@ -1046,8 +737,8 @@
                 "type": "Identifier",
                 "name": "count",
                 "line": {
-                  "start": 35,
-                  "end": 35
+                  "start": 28,
+                  "end": 28
                 },
                 "column": {
                   "start": 21,
@@ -1055,8 +746,8 @@
                 }
               },
               "line": {
-                "start": 35,
-                "end": 35
+                "start": 28,
+                "end": 28
               },
               "column": {
                 "start": 14,
@@ -1071,8 +762,8 @@
             "value": 3,
             "raw": "3",
             "line": {
-              "start": 35,
-              "end": 35
+              "start": 28,
+              "end": 28
             },
             "column": {
               "start": 30,
@@ -1081,8 +772,8 @@
           }
         ],
         "line": {
-          "start": 35,
-          "end": 35
+          "start": 28,
+          "end": 28
         },
         "column": {
           "start": 1,
@@ -1097,8 +788,8 @@
             "type": "Identifier",
             "name": "print",
             "line": {
-              "start": 37,
-              "end": 37
+              "start": 30,
+              "end": 30
             },
             "column": {
               "start": 1,
@@ -1110,8 +801,8 @@
               "type": "Identifier",
               "name": "copy",
               "line": {
-                "start": 37,
-                "end": 37
+                "start": 30,
+                "end": 30
               },
               "column": {
                 "start": 7,
@@ -1122,8 +813,8 @@
               "type": "Identifier",
               "name": "other",
               "line": {
-                "start": 37,
-                "end": 37
+                "start": 30,
+                "end": 30
               },
               "column": {
                 "start": 13,
@@ -1134,8 +825,8 @@
               "type": "Identifier",
               "name": "volume",
               "line": {
-                "start": 37,
-                "end": 37
+                "start": 30,
+                "end": 30
               },
               "column": {
                 "start": 20,
@@ -1146,36 +837,12 @@
               "type": "Identifier",
               "name": "alsoNumber",
               "line": {
-                "start": 37,
-                "end": 37
+                "start": 30,
+                "end": 30
               },
               "column": {
                 "start": 28,
                 "end": 38
-              }
-            },
-            {
-              "type": "Identifier",
-              "name": "doubled",
-              "line": {
-                "start": 37,
-                "end": 37
-              },
-              "column": {
-                "start": 40,
-                "end": 47
-              }
-            },
-            {
-              "type": "Identifier",
-              "name": "args",
-              "line": {
-                "start": 37,
-                "end": 37
-              },
-              "column": {
-                "start": 49,
-                "end": 53
               }
             },
             {
@@ -1184,12 +851,12 @@
                 "type": "Identifier",
                 "name": "clampTo",
                 "line": {
-                  "start": 37,
-                  "end": 37
+                  "start": 30,
+                  "end": 30
                 },
                 "column": {
-                  "start": 55,
-                  "end": 62
+                  "start": 40,
+                  "end": 47
                 }
               },
               "arguments": [
@@ -1198,12 +865,12 @@
                   "value": 1,
                   "raw": "1",
                   "line": {
-                    "start": 37,
-                    "end": 37
+                    "start": 30,
+                    "end": 30
                   },
                   "column": {
-                    "start": 63,
-                    "end": 64
+                    "start": 48,
+                    "end": 49
                   }
                 },
                 {
@@ -1211,71 +878,71 @@
                   "value": 2,
                   "raw": "2",
                   "line": {
-                    "start": 37,
-                    "end": 37
+                    "start": 30,
+                    "end": 30
                   },
                   "column": {
-                    "start": 66,
-                    "end": 67
+                    "start": 51,
+                    "end": 52
                   }
                 }
               ],
               "line": {
-                "start": 37,
-                "end": 37
+                "start": 30,
+                "end": 30
               },
               "column": {
-                "start": 55,
-                "end": 68
+                "start": 40,
+                "end": 53
               }
             },
             {
               "type": "Identifier",
               "name": "paren",
               "line": {
-                "start": 37,
-                "end": 37
+                "start": 30,
+                "end": 30
               },
               "column": {
-                "start": 70,
-                "end": 75
+                "start": 55,
+                "end": 60
               }
             }
           ],
           "line": {
-            "start": 37,
-            "end": 37
+            "start": 30,
+            "end": 30
           },
           "column": {
             "start": 1,
-            "end": 76
+            "end": 61
           }
         },
         "line": {
-          "start": 37,
-          "end": 37
+          "start": 30,
+          "end": 30
         },
         "column": {
           "start": 1,
-          "end": 76
+          "end": 61
         }
       }
     ],
     "line": {
       "start": 5,
-      "end": 37
+      "end": 30
     },
     "column": {
       "start": 1,
-      "end": 76
+      "end": 61
     }
   },
   "line": {
     "start": 5,
-    "end": 37
+    "end": 30
   },
   "column": {
     "start": 1,
-    "end": 76
+    "end": 61
   }
 }

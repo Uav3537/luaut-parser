@@ -6,13 +6,9 @@ item: string | nil
 item: string | nil
 items: (string | nil)[]
 items: (string | nil)[]
-leftOver: (v: string | number | boolean) -> boolean
 lengths: (items: (string | nil)[]) -> number
-onlyBoolean: boolean
 onlyNil: (v: string | nil) -> string
 orEmpty: (v: string | nil) -> string
-orThrow: (v: string | nil) -> string
-present: string
 present: string
 present: string
 present: string
@@ -21,7 +17,6 @@ seen: number
 settle: (v: string | nil) -> string
 settled: string
 settled: string
-text: string
 total: number
 untilSet: (v: string | nil) -> string
 v: string | nil
@@ -29,8 +24,4 @@ v: string | nil
 v: string | nil
 v: string | nil
 v: string | nil
-v: string | nil
-v: string | number
-v: string | number | boolean
 viaDoBlock: (v: string | nil) -> string
-widthOf: (v: string | number) -> number

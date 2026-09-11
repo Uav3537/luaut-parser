@@ -9,9 +9,6 @@
 --   union     subtract exactly, by dropping members   ("a"|"b") - "b"  =  "a"
 --   concrete  discard, it buys nothing                 string - "a"    =  string
 --   opaque    keep                                     unknown - 1
---
--- `Exclude<T, U>` is defined as `T - U`, so writing it and narrowing to it
--- give the same type.
 
 -- The motivating case ---------------------------------------------------------
 const function classify(a: unknown)
@@ -46,33 +43,20 @@ end
 const function refine(v: unknown)
     if v ~= nil then
         const present: unknown - nil = v
-        if typeof(v) == "number" then
-            -- narrowing the base of a subtraction narrows normally
-            const n: number = v
-            return n
-        end
+        return present
     end
     return 0
 end
 
 -- Simplification ------------------------------------------------------------
 -- A union subtracts member by member…
-const fromUnion: "a" | "c" = "a" as Exclude<"a" | "b" | "c", "b">
-const nonNil: string = "x" as NonNullable<string | nil>
-const truthy: string = "x" as Truthy<string | nil | false>
+const fromUnion: "a" | "c" = "a" as (("a" | "b" | "c") - "b")
 
 -- …a concrete base keeps nothing, since `string - "a"` admits exactly the
 -- operations `string` does…
 const stillString: string = "b" as (string - "a")
 
 -- …and an opaque base keeps it.
-const stillOpaque: unknown - 1 = 2 as Exclude<unknown, 1>
+const stillOpaque: unknown - 1 = 2 as (unknown - 1)
 
--- `Omit` is `Pick<T, Exclude<keyof T, K>>`, so it rides on the same operator:
--- `keyof T` is deferred while `T` is generic, and the subtraction survives
--- until it becomes a real union.
-type User = { id: number, name: string, secret: string }
-const public: Omit<User, "secret"> = { id: 1, name: "ada" }
-
-print(classify(1), truthiness(nil), refine(2), fromUnion, nonNil, truthy,
-      stillString, stillOpaque, public)
+print(classify(1), truthiness(nil), refine(2), fromUnion, stillString, stillOpaque)

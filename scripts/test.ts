@@ -13,7 +13,7 @@ import { fileURLToPath } from "url";
 
 import {
     parse, analyzeScopes, analyzeTypes, moduleExports, isUnassignedGlobal, formatType,
-    findConfig, resolveTypeLibraries, resolveModulePath,
+    findConfig, resolveModulePath,
 } from "../src/index.js";
 import type { Type, ModuleExports } from "../src/index.js";
 
@@ -21,23 +21,14 @@ const root = join(dirname(fileURLToPath(import.meta.url)), "..");
 const smokeDir = join(root, "smoketest");
 const outDir = join(root, "generated");
 
-// Types come from the smoketests' own luaut.config.json, loaded the way any
-// project loads them — the parser has none built in.
+// The smoketests' own luaut.config.json, for resolving imports. They load no
+// type libraries: the parser is tested on its own, so a name such as `print`
+// is simply an undeclared global here.
 const lookup = findConfig(join(smokeDir, "smoketest.luaut"));
 if (!lookup.config || lookup.problems.length) {
     throw new Error(`smoketest config: ${lookup.problems.map((p) => p.message).join("; ") || "not found"}`);
 }
 const config = lookup.config;
-const libraries = resolveTypeLibraries(config);
-if (libraries.problems.length) {
-    throw new Error(`smoketest types: ${libraries.problems.map((p) => p.message).join("; ")}`);
-}
-const libs = libraries.files.map((file) => parse(readFileSync(file, "utf8")));
-
-// The globals a script may use undeclared: whatever the libraries declare.
-const BUILTIN_GLOBALS = libs.flatMap((lib) =>
-    lib.body.statements.flatMap((s) => (s.type === "DeclareStatement" ? [s.name] : [])),
-);
 
 function collectLuaut(dir: string): string[] {
     const out: string[] = [];
@@ -79,8 +70,8 @@ function resolverFor(file: string) {
         inProgress.add(target);
         try {
             const program = parse(text);
-            const scopes = analyzeScopes(program, { builtinGlobals: BUILTIN_GLOBALS });
-            const types = analyzeTypes(program, scopes, { libs, resolveModule: resolverFor(target) });
+            const scopes = analyzeScopes(program);
+            const types = analyzeTypes(program, scopes, { resolveModule: resolverFor(target) });
             const exports = moduleExports(program, scopes, types, resolverFor(target));
             exportsCache.set(target, exports);
             return exports;
@@ -96,8 +87,8 @@ for (const file of files) {
 
     try {
         const program = parse(source);
-        const scopes = analyzeScopes(program, { builtinGlobals: BUILTIN_GLOBALS });
-        const types = analyzeTypes(program, scopes, { libs, resolveModule: resolverFor(file) });
+        const scopes = analyzeScopes(program);
+        const types = analyzeTypes(program, scopes, { resolveModule: resolverFor(file) });
 
         writeFileSync(
             join(outDir, name.replace(/\.luaut$/, ".json")),

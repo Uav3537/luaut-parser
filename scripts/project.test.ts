@@ -2,19 +2,14 @@
  * Project tests: configs, type libraries, import paths and sourcemaps.
  *
  * Each case runs against an in-memory file system, so it states exactly the
- * files it needs. The sourcemap cases type-check against the real Luau and
- * Roblox definitions.
+ * files it needs. No real type library is involved.
  */
-import { readFileSync } from "node:fs"
-import { dirname, join, resolve } from "node:path"
-import { fileURLToPath } from "node:url"
+import { join, resolve } from "node:path"
 import {
-    parse, analyzeScopes, analyzeTypes, formatType,
     findConfig, loadConfig, resolveTypeLibraries, resolveModulePath, sourceMapTypes,
-    type ProjectHost, type Program,
+    type ProjectHost,
 } from "../src/index.js"
 
-const here = dirname(fileURLToPath(import.meta.url))
 const ROOT = resolve("/luaut-project")
 
 let passed = 0
@@ -154,26 +149,16 @@ const rel = (path: string | undefined): string | undefined =>
 }
 
 // --- sourcemap ------------------------------------------------------------
+// Only the conversion itself. What the resulting types mean depends on the
+// class definitions a project loads, which the parser does not ship.
 {
-    const definitions = (name: string): Program =>
-        parse(readFileSync(join(here, `../node_modules/@luaut/${name}/index.d.luaut`), "utf8"))
-    const libs = [definitions("luau"), definitions("roblox")]
-    const classes = new Set<string>()
-    for (const lib of libs) {
-        for (const s of lib.body.statements) {
-            if (s.type === "TypeAliasStatement") classes.add(s.name.name)
-            if (s.type === "ExportTypeAliasStatement") classes.add(s.alias.name.name)
-            if (s.type === "DeclareClassStatement") classes.add(s.name.name)
-        }
-    }
-
+    const classes = new Set(["Instance", "DataModel", "ReplicatedStorage", "Folder", "ModuleScript", "Workspace", "Part"])
     const tree = {
         name: "Game", className: "DataModel", children: [
             { name: "ReplicatedStorage", className: "ReplicatedStorage", children: [
                 { name: "Shared", className: "Folder", children: [
                     { name: "Util", className: "ModuleScript", filePaths: ["src/shared/Util.luau"] },
                     { name: "Remotes", className: "Folder" },
-                    { name: "Name", className: "Folder" },
                 ] },
             ] },
             { name: "Workspace", className: "Workspace", children: [
@@ -183,170 +168,12 @@ const rel = (path: string | undefined): string | undefined =>
     }
     const { types, problem } = sourceMapTypes(JSON.stringify(tree), join(ROOT, "sourcemap.json"), { classes })
     check("sourcemap: turns into types", problem, undefined)
-
-    const diagnose = (code: string, file: string): string[] => {
-        const script = types!.scriptFor(join(ROOT, file))
-        const all = [...libs, types!.program, ...(script ? [script] : [])]
-        const globals = all.flatMap(l => l.body.statements.flatMap(s => (s.type === "DeclareStatement" ? [s.name] : [])))
-        const program = parse(code)
-        const scopes = analyzeScopes(program, { builtinGlobals: globals })
-        return analyzeTypes(program, scopes, { libs: all }).diagnostics.map(d => d.message)
-    }
-
-    check("sourcemap: `game` and `workspace` follow the tree", diagnose([
-        "const shared: Folder = game.ReplicatedStorage.Shared",
-        "const remotes: Folder = game.ReplicatedStorage.Shared.Remotes",
-        "const spawn: Part = workspace.Spawn",
-    ].join("\n"), "src/other.luaut"), [])
-    check("sourcemap: a mapped file's `script` is its own instance", diagnose([
-        "const me: ModuleScript = script",
-        "const remotes: Folder = script.Parent.Remotes",
-        "const storage: ReplicatedStorage = script.Parent.Parent",
-    ].join("\n"), "src/shared/Util.luaut"), [])
-    check("sourcemap: an instance is not some other class", diagnose([
-        "const wrong: Part = game.ReplicatedStorage.Shared.Remotes",
-        "const kind = typeof(script)",
-        "const ok: \"Instance\" = kind",
-    ].join("\n"), "src/shared/Util.luaut"), ["Type 'SourceMap_Game_ReplicatedStorage_Shared_Remotes' is not assignable to 'Part'"])
-    check("sourcemap: a child is really typed, not any",
-        diagnose("const wrong: number = game.ReplicatedStorage.Shared.Remotes", "src/other.luaut").length, 1)
-    check("sourcemap: a child named like a member leaves the member alone",
-        diagnose("const name: string = game.ReplicatedStorage.Shared.Name", "src/other.luaut"), [])
+    check("sourcemap: a mapped file gets its own `script`",
+        types!.scriptFor(join(ROOT, "src/shared/Util.luaut")) !== undefined, true)
     check("sourcemap: an unmapped file has no `script` of its own",
         types!.scriptFor(join(ROOT, "src/other.luaut")), undefined)
     check("sourcemap: invalid JSON is reported",
         sourceMapTypes("{ nope", join(ROOT, "sourcemap.json"), { classes }).problem?.startsWith("Invalid sourcemap"), true)
-
-    // --- classes ----------------------------------------------------------
-    const classCheck = (code: string): { bindings: Record<string, string>; diagnostics: string[] } => {
-        const globals = libs.flatMap(l => l.body.statements.flatMap(s => (s.type === "DeclareStatement" ? [s.name] : [])))
-        const program = parse(code)
-        const scopes = analyzeScopes(program, { builtinGlobals: globals })
-        const analysis = analyzeTypes(program, scopes, { libs })
-        const bindings: Record<string, string> = {}
-        for (const [id, type] of analysis.bindingType) {
-            const binding = scopes.bindings.get(id)!
-            if (binding.kind !== "global") bindings[binding.name] = formatType(type)
-        }
-        return { bindings, diagnostics: analysis.diagnostics.map(d => d.message) }
-    }
-
-    const reported = classCheck([
-        `const storage = game:GetService("ReplicatedStorage")`,
-        `const a = typeof(storage)`,
-        `const b = type(storage)`,
-        `const c = typeof(Vector3.new())`,
-        `const d = typeof({ x: 1 })`,
-    ].join("\n")).bindings
-    check("classes: typeof an Instance is \"Instance\", not \"table\"",
-        [reported.a, reported.b, reported.c, reported.d], [`"Instance"`, `"userdata"`, `"Vector3"`, `"table"`])
-
-    check("classes: a subclass is its superclasses, and nothing else", classCheck([
-        `const part = Instance.new("Part")`,
-        `const asBase: BasePart = part`,
-        `const asInstance: Instance = part`,
-        `const asScript: Script = Instance.new("LocalScript")`,
-        `const wrong: Model = part`,
-        `const fake: Instance = { Name: "x", ClassName: "Part" }`,
-    ].join("\n")).diagnostics, [
-        "Type 'Part' is not assignable to 'Model'",
-        "Type '{ ClassName: string, Name: string }' is not assignable to 'Instance'",
-    ])
-
-    const inherited = classCheck([
-        `const part = Instance.new("Part")`,
-        `const name = part.Name`,
-        `const size = part.Size`,
-        `const pivot = part:GetPivot()`,
-        `const shape = part.Shape`,
-    ].join("\n")).bindings
-    check("classes: members are inherited",
-        [inherited.name, inherited.size, inherited.pivot, inherited.shape], ["string", "Vector3", "CFrame", "Enum.PartType"])
-
-    check("classes: a class satisfies a shape but is not a table", classCheck([
-        `const function nameOf(x: { Name: string }): string return x.Name end`,
-        `const function keys(t: { [string]: unknown }) end`,
-        `nameOf(workspace)`,
-        `keys(workspace)`,
-    ].join("\n")).diagnostics, ["Argument of type 'Workspace' is not assignable to parameter of type '{ [string]: unknown }'"])
-
-    const narrowed = classCheck([
-        `const function f(x: Instance | Vector3 | { n: number })`,
-        `    if typeof(x) == "Instance" then const i = x`,
-        `    elseif typeof(x) == "table" then const t = x end`,
-        `    if x:IsA("BasePart") then const p = x end`,
-        `end`,
-    ].join("\n")).bindings
-    check("classes: typeof narrows between classes and tables", [narrowed.i, narrowed.t], ["Instance", "{ n: number }"])
-
-    // --- what the whole Roblox API needs ---------------------------------------
-    const callbacks = classCheck([
-        `const function takes(cb: (name: string, count: number) -> ()) end`,
-        `takes(function(n, c) end)`,
-        `const handler: (flag: boolean) -> () = function(f) end`,
-        `const Players = game:GetService("Players")`,
-        `Players.PlayerAdded:Connect(function(player) end)`,
-        `const remote = Instance.new("RemoteFunction")`,
-        `remote.OnServerInvoke = function(invoker) return 1 end`,
-    ].join("\n")).bindings
-    check("callbacks: an unannotated parameter takes its type from where the function is written",
-        [callbacks.n, callbacks.c, callbacks.f, callbacks.player, callbacks.invoker],
-        ["string", "number", "boolean", "Player", "Player"])
-
-    const packs = classCheck([
-        `type Signal<T... = ...any> = { Connect: (self: Signal<T...>, cb: (T...) -> ()) -> (), Wait: (self: Signal<T...>) -> T... }`,
-        `declare two: Signal<string, number>`,
-        `declare none: Signal<()>`,
-        `declare loose: Signal`,
-        `const a, b = two:Wait()`,
-        `two:Connect(function(x, y) end)`,
-        `loose:Connect(function(z) end)`,
-    ].join("\n")).bindings
-    check("packs: `T...` binds every type argument from its position on",
-        [packs.a, packs.b, packs.x, packs.y, packs.z], ["string", "number", "string", "number", "any"])
-
-    const operators = classCheck([
-        `const v = Vector3.new(1, 2, 3)`,
-        `const sum = v + v`,
-        `const scaled = 2 * v`,
-        `const negated = -v`,
-        `const moved = CFrame.new() * v`,
-        `const turned = CFrame.new() * CFrame.new()`,
-    ].join("\n"))
-    check("operators: a metamethod gives the result, from either operand",
-        [operators.bindings.sum, operators.bindings.scaled, operators.bindings.negated, operators.bindings.moved, operators.bindings.turned],
-        ["Vector3", "Vector3", "Vector3", "Vector3", "CFrame"])
-    check("operators: an operand the metamethod does not accept is reported",
-        classCheck(`const bad = Vector3.new() + "x"`).diagnostics,
-        [`Operator '+' cannot be applied to types 'Vector3' and '"x"'`])
-
-    const enums = classCheck([
-        `const material: Enum.Material = Enum.Material.Neon`,
-        `const kind = typeof(material)`,
-        `const wrong: Enum.Material = Enum.KeyCode.E`,
-    ].join("\n"))
-    check("enums: `Enum.Material` names a type", [enums.bindings.material, enums.bindings.kind], ["Enum.Material", `"EnumItem"`])
-    check("enums: one enum's items are not another's", enums.diagnostics,
-        ["Type 'Enum.KeyCode' is not assignable to 'Enum.Material'"])
-
-    check("classes: declaring one", classCheck([
-        `declare class Animal { Name: string }`,
-        `declare class Dog extends Animal { Bark: (self: Dog) -> () }`,
-        `declare class Loop extends Loop {}`,
-        `declare class Odd extends Services {}`,
-        `declare class Lost extends Nowhere {}`,
-        `const function pet(a: Animal) end`,
-        `const function walk(d: Dog) end`,
-        `declare rex: Dog`,
-        `declare cat: Animal`,
-        `pet(rex)`,
-        `walk(cat)`,
-    ].join("\n")).diagnostics, [
-        "'Loop' cannot extend itself",
-        "'Services' is not a class; a class can only extend another class",
-        "Cannot find class 'Nowhere'",
-        "Argument of type 'Animal' is not assignable to parameter of type 'Dog'",
-    ])
 }
 
 for (const failure of failures) console.log(`FAIL ${failure}`)

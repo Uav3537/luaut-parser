@@ -25,14 +25,6 @@ const one: 1, expanded: number = 1, two()
 -- Parentheses truncate.
 const truncated: number = (two())
 
--- The standard library depends on all of this.
-const ok: boolean, result: number = pcall(function()
-    return 5
-end)
-
-const startAt: number | nil, endAt: number | nil = string.find("abc", "b")
-const fromOnly: number | nil = string.find("abc", "b")
-
 -- A `while` exits when its condition fails, so what the condition ruled out
 -- holds afterwards — unless a `break` can skip that.
 const function firstNonNil(v: string | nil)
@@ -53,4 +45,4 @@ const function mightBreak(v: string | nil)
 end
 
 print(first, second, a, b, spare, justFirst, one, expanded, truncated,
-      ok, result, startAt, endAt, fromOnly, firstNonNil(nil), mightBreak(nil))
+      firstNonNil(nil), mightBreak(nil))

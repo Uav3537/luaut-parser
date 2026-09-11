@@ -12,16 +12,6 @@ const function area(shape: Shape): number
     end
 end
 
-const function describe(value: string | number | nil): string
-    if value == nil then
-        return "nothing"
-    end
-    if type(value) == "string" then
-        return "text: " .. value
-    end
-    return "number: " .. tostring(value)
-end
-
 const function firstWord(s?: string): string
     -- truthiness narrows `string | nil -> string`
     if not s then
@@ -33,19 +23,11 @@ end
 const config: { debug: boolean } | nil = nil
 const verbose = config and config.debug or false
 
-print(area({ kind: "circle", radius: 2 }), describe(42), firstWord(nil), verbose)
+print(area({ kind: "circle", radius: 2 }), firstWord(nil), verbose)
 
--- `and` / `or` refine only the branch where every operand's outcome is known:
--- `a and b` refines the true branch, `a or b` the false one. The other branch
--- must keep the un-narrowed type.
+-- `or` refines only the false branch, where every operand's outcome is known.
+-- The true branch must keep the un-narrowed type.
 const function branches(a: string | number)
-    if type(a) == "string" and a ~= "" then
-        const inAnd = a
-    else
-        -- either test could have failed — still `string | number`
-        const afterAnd = a
-    end
-
     if a == 1 or a == "x" then
         -- not refinable: `string | number`
         const inOr = a

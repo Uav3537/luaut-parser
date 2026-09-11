@@ -4,17 +4,13 @@ classify: (a: unknown) -> 1 | 2 | 0
 fromUnion: "a" | "c"
 gone: nil | false
 kept: unknown - (nil | false)
-n: number
 neither: unknown - (1 | 2)
-nonNil: string
 notOne: unknown - 1
 one: 1
 present: unknown - nil
-public: { id: number, name: string }
-refine: (v: unknown) -> number
+refine: (v: unknown) -> (unknown - nil) | 0
 stillOpaque: unknown - 1
 stillString: string
 truthiness: (b: unknown) -> (unknown - (nil | false)) | nil | false
-truthy: string
 two: 2
 v: unknown

@@ -2,9 +2,8 @@
 --
 -- A branch that cannot fall through narrows the code *after* the `if` — the
 -- early-return pattern. What counts as "cannot fall through": `return`,
--- `break`, `continue`, a nested `do` block that does one of those, a call to
--- something declared `-> never` (`error`), and an if/else where every branch
--- does.
+-- `break`, `continue`, a nested `do` block that does one of those, and an
+-- if/else where every branch does.
 
 -- Early return, both directions ---------------------------------------------
 const function orEmpty(v: string | nil): string
@@ -19,16 +18,6 @@ const function onlyNil(v: string | nil): string
     return ""
 end
 
--- `return` in the `else` narrows what follows just as well.
-const function widthOf(v: string | number): number
-    if typeof(v) == "string" then
-    else
-        return v
-    end
-    const text: string = v
-    return #text
-end
-
 -- A `do` block that returns still exits.
 const function viaDoBlock(v: string | nil): string
     if v == nil then
@@ -36,22 +25,6 @@ const function viaDoBlock(v: string | nil): string
     end
     const present: string = v
     return present
-end
-
--- `error` is declared `-> never`, so it exits too.
-const function orThrow(v: string | nil): string
-    if v == nil then error("missing") end
-    const present: string = v
-    return present
-end
-
--- An exhausted elseif ladder leaves only what was never returned from.
-const function leftOver(v: string | number | boolean): boolean
-    if typeof(v) == "string" then return true
-    elseif typeof(v) == "number" then return false
-    end
-    const onlyBoolean: boolean = v
-    return onlyBoolean
 end
 
 -- Loops ----------------------------------------------------------------------
@@ -97,5 +70,5 @@ const function untilSet(v: string | nil): string
     return settled
 end
 
-print(orEmpty(nil), onlyNil(nil), widthOf(1), viaDoBlock(nil), orThrow("a"),
-      leftOver(true), lengths([]), firstNil([]), settle(nil), untilSet(nil))
+print(orEmpty(nil), onlyNil(nil), viaDoBlock(nil),
+      lengths([]), firstNil([]), settle(nil), untilSet(nil))

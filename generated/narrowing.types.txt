@@ -1,19 +1,15 @@
 a: string | number
-afterAnd: string | number
 afterOr: string | number
 area: (shape: { kind: "circle", radius: number } | { h: number, kind: "rect", w: number }) -> number
 bag: Bag
 branches: (a: string | number) -> nil
 cond: boolean
 config: { debug: boolean } | nil
-describe: (value: string | number | nil) -> string
 firstWord: (s: string | nil) -> string
 flag: boolean
-inAnd: string
 inOr: string | number
 mergePaths: (cond: boolean) -> boolean
 readBag: (bag: Bag) -> string
 s: string | nil
 shape: { kind: "circle", radius: number } | { h: number, kind: "rect", w: number }
-value: string | number | nil
 verbose: boolean
