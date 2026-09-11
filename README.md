@@ -51,9 +51,10 @@ Neither analysis mutates the AST; both return side tables.
 
 ## Projects
 
-**No types are built in** — not `print`, not `string`, not `game`. A project
-lists the type libraries it uses in `luaut.config.json`, the way TypeScript
-uses `@types/*`:
+**No globals are built in** — not `print`, not `string`, not `game`. Only the
+language's own utility types are (`Partial`, `Pick`, `Omit`, `Record`,
+`ReturnType`, `Truthy`, ...; see `PRELUDE_SOURCE`). A project lists the type
+libraries it uses in `luaut.config.json`, the way TypeScript uses `@types/*`:
 
 ```bash
 npm i -D @luaut/roblox        # or just @luaut/luau
@@ -194,7 +195,9 @@ several values a function returns), `keyof`, `T[K]`, conditional types with
 `infer`, mapped types with `as` remapping, template literal types
 (`` `on${Event}` ``), and set difference `A - B`. The utility types
 (`Partial`, `Pick`, `Omit`, `ReturnType`, `Parameters`, `Exclude`, …) are
-written in luaut on top of those, not built in.
+built in, and written in luaut on top of those rather than special-cased in
+the analyzer. A type library or a file may declare one again; the later
+declaration wins.
 
 `<const T>` infers an argument at its narrowest, as in TypeScript 5.
 

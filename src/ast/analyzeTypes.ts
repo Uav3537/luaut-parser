@@ -37,6 +37,7 @@ import type {
     TableExpression, ArrayExpression, IfStatement, TypePredicateNode, DeclareClassStatement,
 } from "./nodes"
 import type { ScopeAnalysis, BindingId } from "./analyzeScopes"
+import { preludeProgram } from "./prelude"
 import {
     type Type, type ObjectProperty, type ObjectType, type FunctionType, type TypePredicate,
     type GenericRefType,
@@ -523,8 +524,10 @@ class TypeAnalyzer {
     }
 
     run(): TypeAnalysis {
-        // Definitions files first, then this program — so aliases resolve
-        // against the full set and lib aliases can be overridden locally.
+        // The language's own types, then definitions files, then this program
+        // — so aliases resolve against the full set, and a later declaration
+        // of a name wins over an earlier one.
+        this.registerAliasDefs(preludeProgram().body)
         for (const lib of this.options.libs ?? []) this.registerAliasDefs(lib.body)
         this.registerAliasDefs(this.program.body)
         for (const lib of this.options.libs ?? []) this.harvestDeclares(lib.body)

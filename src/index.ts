@@ -10,10 +10,12 @@ export type { ScopeAnalysis, ScopeDiagnostic, Binding, BindingId, BindingKind } 
 import { analyzeTypes, moduleExports } from '@ast/analyzeTypes'
 export type { TypeAnalysis, AnalyzeTypesOptions, TypeDiagnostic, ModuleExports, ExportedType } from '@ast/analyzeTypes'
 export * from '@ast/typeModel'
-// No types or globals are built in — not even `print`. A project names the
-// type libraries it wants in `luaut.config.json` (`"types": ["luau"]`), and
+// The language's own utility types (`Partial`, `ReturnType`, ...) are built
+// in; see `PRELUDE_SOURCE`. No globals are — not even `print`. A project names
+// the type libraries it wants in `luaut.config.json` (`"types": ["luau"]`), and
 // the project functions find and load them. See `findConfig` and
 // `resolveTypeLibraries`.
+export { PRELUDE_SOURCE } from '@ast/prelude'
 export * from './project'
 
 // This package is the luaut *front end* only: source -> luaut AST (+ scope

@@ -316,6 +316,33 @@ const rel = (path: string | undefined): string | undefined =>
     ].join("\n")).errors, [])
     check("arrays: and still checks what it holds", analyze(`const wrong: number[] = ["a"]`).errors, ["Type 'string[]' is not assignable to 'number[]'"])
 
+    // The language's utility types need no type library.
+    const utilities = analyze([
+        "type User = { id: number, name: string, email: string | nil }",
+        "declare function load(): User",
+        "declare user: Partial<User>",
+        "declare picked: Pick<User, \"id\" | \"name\">",
+        "declare omitted: Omit<User, \"email\">",
+        "declare byName: Record<\"a\" | \"b\", number>",
+        "declare returned: ReturnType<typeof load>",
+        "declare present: NonNullable<string | nil>",
+        "declare kept: Truthy<number | false | nil>",
+        "const u = user",
+        "const p = picked",
+        "const o = omitted",
+        "const r = byName",
+        "const ret = returned",
+        "const n = present",
+        "const t = kept",
+    ].join("\n"))
+    check("prelude: utility types are built in", [utilities.errors, utilities.bindings.p, utilities.bindings.o, utilities.bindings.r, utilities.bindings.n, utilities.bindings.t], [
+        [], "{ id: number, name: string }", "{ id: number, name: string }", "{ a: number, b: number }", "string", "number",
+    ])
+    check("prelude: a file may declare one of them again", analyze([
+        "type Partial<T> = string",
+        "const s: Partial<number> = \"x\"",
+    ].join("\n")).errors, [])
+
     // Optional chaining: `a?.b` and `a?:m()` are nil when `a` is.
     const chains = parse("const x = a?.b.c\nconst y = a?:m(1)?.n\nconst z = c ?a:b")
     const [cx, cy, cz] = chains.body.statements.map(s => (s as { init: any[] }).init[0])
