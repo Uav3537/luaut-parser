@@ -603,6 +603,23 @@ const rel = (path: string | undefined): string | undefined =>
     check("optional chains: a chain is nil when a tested link is", [
         optional.bindings.name, optional.bindings.deep, optional.bindings.found, optional.bindings.called, optional.bindings.paren,
     ], ["string | nil", "string | nil", "Node | nil", "number | nil", "Node | nil"])
+    const guarded = analyze([
+        "declare class Instance { IsA: <K extends keyof ClassMap>(self: Instance, className: K) -> self is ClassMap[K] }",
+        "declare class Folder extends Instance {}",
+        "type ClassMap = { Folder: Folder, Instance: Instance }",
+        "declare function error(message: string): never",
+        "declare function find(): Instance | nil",
+        "function f()",
+        "    const a = find()",
+        "    if not a?:IsA(\"Folder\") then error(\"no\") end",
+        "    const afterGuard = a",
+        "    const b = find()",
+        "    if b?:IsA(\"Folder\") then const inside = b else const outside = b end",
+        "end",
+    ].join("\n"))
+    check("optional chains: a type guard called through `?:` still narrows",
+        [guarded.errors, guarded.bindings.afterGuard, guarded.bindings.inside, guarded.bindings.outside],
+        [[], "Folder", "Folder", "Instance | nil"])
     check("optional chains: a chain that got through narrows what it tested", [
         optional.bindings.truthy, optional.bindings.falsy, optional.bindings.present, optional.bindings.matched,
     ], ["Node", "Node | nil", "Node", "Node"])

@@ -3043,7 +3043,7 @@ class TypeAnalyzer {
             if (!object) return
             if (link.optional) {
                 const key = this.refKeyOf(object)
-                if (key !== undefined) this.setRef(into, key, withoutNil(this.typeAtRef(object, env)))
+                if (key !== undefined) this.setRef(into, key, withoutNil(this.typeAtRef(object, into)))
             }
             e = object
         }
@@ -3393,11 +3393,20 @@ class TypeAnalyzer {
     ): { arg: Expression; predicate: TypePredicate } | undefined {
         let callee: Type
         let args: Expression[]
+        let selfType: Type | undefined
         if (cond.type === "CallExpression") {
-            callee = this.typeOf.get(cond.callee) ?? this.typeAtRef(cond.callee, env)
+            // Past a `?.` the call only runs on what is not nil: `a?.check(x)`.
+            callee = this.chainValue.get(cond.callee) ?? this.typeOf.get(cond.callee) ?? this.typeAtRef(cond.callee, env)
             args = cond.arguments
         } else if (cond.type === "MethodCallExpression") {
-            const objType = this.typeOf.get(cond.object) ?? this.typeAtRef(cond.object, env)
+            // `obj?:IsA("Folder")` calls `IsA` only on an `obj` that is not nil,
+            // so the method, and the `self` it is checked against, are the
+            // non-nil object's.
+            let objType = this.chainValue.get(cond.object) ?? this.typeOf.get(cond.object) ?? this.typeAtRef(cond.object, env)
+            if (cond.optional) {
+                objType = withoutNil(objType)
+                selfType = objType
+            }
             callee = this.propertyType(objType, cond.method.name)
             // `obj:m(a)` — `obj` occupies the `self` slot only for a signature
             // that declares one, so the written arguments shift accordingly.
@@ -3413,7 +3422,9 @@ class TypeAnalyzer {
         // predicate would narrow to whatever class happened to be declared
         // first.
         const overloads = this.overloadsOf(callee)
-        const argTypes = args.map(a => this.typeOf.get(a) ?? this.typeAtRef(a, env))
+        const argTypes = args.map(a =>
+            (selfType && cond.type === "MethodCallExpression" && a === cond.object ? selfType : undefined) ??
+            this.typeOf.get(a) ?? this.typeAtRef(a, env))
         const picked = this.pickOverload(overloads, argTypes)
         const candidates = picked ? [picked, ...overloads.filter(f => f !== picked)] : overloads
 
