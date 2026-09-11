@@ -412,6 +412,31 @@ const rel = (path: string | undefined): string | undefined =>
         ], ["print", "a", "b", "part", "n", "c", "s", "d"]])
     }
 
+    // `satisfies`: checked against the contract, typed as the value.
+    const satisfied = analyze([
+        "type Shape = { kind: \"circle\" | \"rect\", size: number }",
+        "const circle = { kind: \"circle\", size: 2 } satisfies Shape",
+        "const config = { debug: false, level: 3, tags: [\"a\"] } satisfies { debug: boolean, level: 1 | 2 | 3, tags: string[] }",
+        "const handlers = { Click: function(x) return x + 1 end } satisfies { [string]: (x: number) -> number }",
+        "const empty = [] satisfies number[]",
+        "const five = 5 satisfies number",
+        "let widened = 5 satisfies number",
+        "const tri = { kind: \"tri\", size: 1 } satisfies Shape",
+        "const extra = { kind: \"rect\", size: 1, colour: \"red\" } satisfies Shape",
+        "const nested = { inner: { a: 1, b: 2 } } satisfies { inner: { a: number } }",
+        "const annotated: Shape = { kind: \"rect\", size: 1, typo: 1 }",
+        "const loose: { [string]: number } = { anything: 1 }",
+    ].join("\n"))
+    check("satisfies: the value keeps its own type, with the contract's literals",
+        [satisfied.bindings.circle, satisfied.bindings.config, satisfied.bindings.handlers, satisfied.bindings.empty, satisfied.bindings.five, satisfied.bindings.widened],
+        [`{ kind: "circle", size: number }`, "{ debug: boolean, level: 3, tags: string[] }", "{ Click: (x: number) -> number }", "number[]", "5", "number"])
+    check("satisfies: a value that does not fit, and properties the contract does not know", satisfied.errors, [
+        `Type '{ kind: "tri", size: number }' does not satisfy the expected type 'Shape'`,
+        "Object literal may only specify known properties, and 'colour' does not exist in type 'Shape'",
+        "Object literal may only specify known properties, and 'b' does not exist in type '{ a: number }'",
+        "Object literal may only specify known properties, and 'typo' does not exist in type 'Shape'",
+    ])
+
     // `export type X = typeof value` reads the value, as a plain alias does.
     const classes = [
         "export const DefaultClass = [\"Sans\", \"Asgore\"] as const",

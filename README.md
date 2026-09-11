@@ -221,6 +221,24 @@ declaration wins.
 
 **Modules** — `import` / `export`, export lists, re-exports and `export *`.
 
+**`satisfies`** — checks a value against a type without giving it that type,
+as in TypeScript 4.9:
+
+```luau
+type Shape = { kind: "circle" | "rect", size: number }
+const circle = { kind: "circle", size: 2 } satisfies Shape  -- { kind: "circle", size: number }
+const handlers = {
+    Click: function(x) return x + 1 end,                     -- x: number, from the contract
+} satisfies { [string]: (x: number) -> number }
+```
+
+The contract types callbacks and empty arrays, and a literal stays a literal
+where the contract asks for literals (`kind: "circle"`, not `string`). A value
+that does not fit is an error. So is a property the contract does not know —
+TypeScript's excess property check, which applies to an object literal written
+straight into an annotation (`const s: Shape = { ..., typo: 1 }`) too. `as`
+reinterprets instead of checking, and compiled code keeps neither.
+
 **Directives** — comments that switch checking off, as TypeScript's
 `// @ts-...` do. They silence scope and type errors, never syntax errors:
 

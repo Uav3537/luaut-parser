@@ -316,6 +316,12 @@ function isFreshLiteralExpr(e: Expression | undefined): boolean {
             return isFreshLiteralExpr(e.expression)
         case "UnaryExpression":
             return isFreshLiteralExpr(e.argument)
+        // `let n = 5 satisfies number` widens like `let n = 5`. An object or
+        // array has already taken its literals from the contract, and keeps them.
+        case "SatisfiesExpression": {
+            const inner = unwrapParens(e.expression)
+            return inner.type !== "TableExpression" && inner.type !== "ArrayExpression" && isFreshLiteralExpr(inner)
+        }
         default:
             return false
     }
@@ -1438,6 +1444,8 @@ class TypeAnalyzer {
                                 node: stmt,
                                 message: `Type '${formatType(inferred)}' is not assignable to '${formatType(declared)}'`,
                             })
+                        } else if (declared.kind !== "any") {
+                            this.reportExcessProperties(source, declared)
                         }
                     }
                     // `let`   -> widen (`let n = 1` : number)
@@ -2792,17 +2800,28 @@ class TypeAnalyzer {
             }
 
             case "SatisfiesExpression": {
-                // Validate against the contract but keep the inferred type —
-                // that is the whole point of `satisfies` over `as`.
+                // Validate against the contract but keep the value's own type —
+                // that is the whole point of `satisfies` over `as` or an
+                // annotation. As in TypeScript, the contract still shapes that
+                // type: callbacks take their parameters from it, and a literal
+                // stays a literal where the contract asks for literals
+                // (`{ kind: "circle" } satisfies Shape` keeps `kind: "circle"`).
                 const declared = this.resolveType(expr.typeAnnotation)
                 this.applyContext(expr.expression, declared)
-                const actual = this.infer(expr.expression, env)
-                if (this.emitDiagnostics && declared.kind !== "any" &&
-                    !this.fitsAnnotation(expr.expression, declared, actual, env)) {
+                if (declared.kind === "any") return this.infer(expr.expression, env)
+                const narrow = this.inferAsConst(expr.expression, env)
+                // A bare literal is left for the declaration to widen or not
+                // (`const n = 5 satisfies number` is `5`, a `let` is `number`).
+                const actual = narrow.kind === "literal" ? narrow : this.keepContextualLiterals(narrow, declared)
+                this.typeOf.set(expr.expression, actual)
+                if (!this.emitDiagnostics) return actual
+                if (!isAssignable(narrow, declared) && !isAssignable(actual, declared)) {
                     this.diagnostics.push({
                         node: expr,
-                        message: `Type '${formatType(actual)}' does not satisfy '${formatType(declared)}'`,
+                        message: `Type '${formatType(actual)}' does not satisfy the expected type '${formatType(declared)}'`,
                     })
+                } else {
+                    this.reportExcessProperties(expr.expression, declared)
                 }
                 return actual
             }
@@ -3079,6 +3098,115 @@ class TypeAnalyzer {
             }
         }
         return objectType(entries, indexer, asConst || undefined)
+    }
+
+    /** A value inferred `as const`, widened back wherever `context` does not
+     *  ask for a literal: `satisfies`' result type. A property keeps `"circle"`
+     *  when the contract's property admits string literals, and becomes
+     *  `string` when it is only `string`; a tuple becomes an array unless the
+     *  contract is a tuple; nothing stays readonly. */
+    private keepContextualLiterals(value: Type, context: Type | undefined): Type {
+        const ctx = context === undefined ? undefined : this.expand(context)
+        switch (value.kind) {
+            case "literal":
+                return ctx && this.admitsLiteral(ctx, value.base) ? value : widen(value)
+            case "object": {
+                if (value.class) return value
+                const entries: [string, ObjectProperty][] = [...value.properties].map(([name, property]) => [
+                    name,
+                    { ...property, readonly: false, type: this.keepContextualLiterals(property.type, ctx && this.contextProperty(ctx, name)) },
+                ])
+                const indexer = value.indexer && {
+                    key: widen(value.indexer.key),
+                    value: this.keepContextualLiterals(value.indexer.value, ctx && this.contextIndexValue(ctx)),
+                }
+                return objectType(entries, indexer)
+            }
+            case "tuple": {
+                const tupleContext = ctx && this.membersOf(ctx).find(m => m.kind === "tuple")
+                if (tupleContext?.kind === "tuple") {
+                    return tuple(value.elements.map((e, i) => this.keepContextualLiterals(e, tupleContext.elements[i])), value.isPack)
+                }
+                const arrayContext = ctx && this.membersOf(ctx).find(m => m.kind === "array")
+                const element = arrayContext?.kind === "array" ? arrayContext.element : undefined
+                if (!value.elements.length) return arrayContext ?? arrayOf(unknownType)
+                return arrayOf(union(value.elements.map(e => this.keepContextualLiterals(e, element))))
+            }
+            case "array": {
+                const arrayContext = ctx && this.membersOf(ctx).find(m => m.kind === "array")
+                return arrayOf(this.keepContextualLiterals(value.element, arrayContext?.kind === "array" ? arrayContext.element : undefined))
+            }
+            case "union":
+                return union(value.types.map(t => this.keepContextualLiterals(t, context)))
+            default:
+                return value
+        }
+    }
+
+    private membersOf(t: Type): Type[] {
+        const x = this.expand(t)
+        return x.kind === "union" ? x.types.map(m => this.expand(m)) : [x]
+    }
+
+    /** Does a contract accept literals of `base` as such? */
+    private admitsLiteral(ctx: Type, base: string): boolean {
+        return this.membersOf(ctx).some(m =>
+            (m.kind === "literal" && m.base === base) || (m.kind === "templateLiteral" && base === "string"))
+    }
+
+    /** What a contract expects of property `name`, over every object it allows. */
+    private contextProperty(ctx: Type, name: string): Type | undefined {
+        const found: Type[] = []
+        for (const m of this.membersOf(ctx)) {
+            if (m.kind !== "object") continue
+            const property = m.properties.get(name)
+            if (property) found.push(property.type)
+            else if (m.indexer) found.push(m.indexer.value)
+        }
+        return found.length ? union(found) : undefined
+    }
+
+    private contextIndexValue(ctx: Type): Type | undefined {
+        const found = this.membersOf(ctx).flatMap(m => (m.kind === "object" && m.indexer ? [m.indexer.value] : []))
+        return found.length ? union(found) : undefined
+    }
+
+    /** Fields reported by `reportExcessProperties`, once each: a loop body is
+     *  visited more than once. */
+    private readonly excessReported = new WeakSet<object>()
+
+    /** TypeScript's excess property check. An object literal written straight
+     *  into a typed place — an annotation, `satisfies` — may only name
+     *  properties that place knows: anything else is almost always a typo.
+     *  A nested literal is checked against the property it is written for.
+     *  A target with an indexer, a class, or a member whose shape is not known
+     *  accepts anything. */
+    private reportExcessProperties(expression: Expression, target: Type): void {
+        const literal = unwrapParens(expression)
+        if (literal.type !== "TableExpression" || !this.emitDiagnostics) return
+        const members = this.membersOf(target)
+        const shapes = members.filter((m): m is ObjectType => m.kind === "object")
+        if (!shapes.length || shapes.some(o => o.indexer || o.class)) return
+        if (members.some(m => m.kind === "any" || m.kind === "unknown" || m.kind === "typeParam" || m.kind === "intersection")) return
+        for (const field of literal.fields) {
+            if (field.type !== "TableFieldNamed" && field.type !== "TableFieldShorthand") continue
+            const key = field.type === "TableFieldNamed" ? field.key : field.name
+            const name = key.type === "Identifier" ? key.name : key.value
+            const expected = shapes.flatMap(o => {
+                const property = o.properties.get(name)
+                return property ? [property.type] : []
+            })
+            if (!expected.length) {
+                if (this.excessReported.has(key)) continue
+                this.excessReported.add(key)
+                this.diagnostics.push({
+                    node: key,
+                    message: `Object literal may only specify known properties, and '${name}' does not exist in type '${formatType(target)}'`,
+                })
+                continue
+            }
+            if (field.type === "TableFieldNamed") this.reportExcessProperties(field.value, union(expected))
+        }
     }
 
     private inferAsConst(expr: Expression, env: FlowEnv): Type {
