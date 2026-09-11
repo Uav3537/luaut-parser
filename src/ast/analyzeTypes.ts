@@ -377,6 +377,73 @@ interface AliasDef {
     class?: DeclareClassStatement
 }
 
+/** The public alias map, where a name can be registered before its type
+ *  exists: `get` resolves it on first use. Everything else a `Map` does works
+ *  as usual, so a caller cannot tell — except in what it costs. */
+class AliasMap extends Map<string, Type> {
+    private readonly pending = new Map<string, () => Type>()
+
+    defer(name: string, resolve: () => Type): void {
+        super.delete(name)
+        this.pending.set(name, resolve)
+    }
+
+    override get(name: string): Type | undefined {
+        const resolved = super.get(name)
+        if (resolved !== undefined) return resolved
+        const resolve = this.pending.get(name)
+        if (!resolve) return undefined
+        this.pending.delete(name)
+        const type = resolve()
+        super.set(name, type)
+        return type
+    }
+
+    override has(name: string): boolean {
+        return super.has(name) || (this.pending?.has(name) ?? false)
+    }
+
+    override set(name: string, type: Type): this {
+        this.pending?.delete(name)
+        return super.set(name, type)
+    }
+
+    override delete(name: string): boolean {
+        const deferred = this.pending?.delete(name) ?? false
+        return super.delete(name) || deferred
+    }
+
+    override get size(): number {
+        return super.size + (this.pending?.size ?? 0)
+    }
+
+    override keys(): IterableIterator<string> {
+        return [...super.keys(), ...(this.pending?.keys() ?? [])][Symbol.iterator]()
+    }
+
+    override entries(): IterableIterator<[string, Type]> {
+        return [...this.keys()].map((name): [string, Type] => [name, this.get(name)!])[Symbol.iterator]()
+    }
+
+    override values(): IterableIterator<Type> {
+        return [...this.keys()].map(name => this.get(name)!)[Symbol.iterator]()
+    }
+
+    override forEach(callback: (value: Type, key: string, map: Map<string, Type>) => void, thisArg?: unknown): void {
+        for (const [name, type] of this.entries()) callback.call(thisArg, type, name, this)
+    }
+
+    override [Symbol.iterator](): IterableIterator<[string, Type]> {
+        return this.entries()
+    }
+}
+
+/** The metamethod each binary operator calls. */
+const METAMETHODS: Record<string, string> = {
+    "+": "__add", "-": "__sub", "*": "__mul", "/": "__div", "//": "__idiv",
+    "%": "__mod", "^": "__pow", "..": "__concat",
+}
+
 function posKey(name: string, line: number, column: number): string {
     return `${name}@${line}:${column}`
 }
@@ -393,7 +460,7 @@ class TypeAnalyzer {
     private readonly expectedTypeOf = new Map<Expression, Type>()
     /** Public: each alias resolved once (generic aliases keep their params as
      *  `typeParam` nodes in the body). */
-    private readonly aliases = new Map<string, Type>()
+    private readonly aliases = new AliasMap()
     /** Uninstantiated alias definitions, for `Name<Args>` instantiation. */
     private readonly aliasDefs = new Map<string, AliasDef>()
     /** See `resolveClass`. */
@@ -556,14 +623,18 @@ class TypeAnalyzer {
         return this.classTypes.get(stmt) ?? this.resolveClass(stmt)
     }
 
-    /** The class's own members come from its body; the inherited ones are read
-     *  from the superclass the first time anyone asks for `properties`.
+    /** A class's members are resolved the first time anyone asks for
+     *  `properties` — its own from its body, the inherited ones from its
+     *  superclass.
      *
-     *  That has to wait. Classes refer to one another constantly —
-     *  `Instance.IsA` mentions a map of every class, each of which extends
-     *  `Instance` — so while one class resolves, its superclass may itself be
-     *  half-resolved, and copying its members then would miss some for good.
-     *  By the time a member is actually looked up, every class is complete. */
+     *  Both have to wait. A definitions file for a whole engine declares
+     *  thousands of classes that all refer to one another; resolving each body
+     *  as soon as the class is named would resolve every class on every
+     *  analysis, when a script touches a handful. And classes refer to one
+     *  another constantly — `Object.IsA` mentions a map of every class, each
+     *  of which extends `Object` — so while one class resolves, one it extends
+     *  may itself be half-resolved; copying its members then would miss some
+     *  for good. */
     private resolveClass(stmt: DeclareClassStatement): ObjectType {
         const name = stmt.name.name
         const { ancestors, cyclic } = this.classChain(stmt)
@@ -575,16 +646,29 @@ class TypeAnalyzer {
 
         type Members = { properties: Map<string, ObjectProperty>; indexer: ObjectType["indexer"] }
         let own: ObjectType | undefined
+        let resolvingOwn = false
+        const ownMembers = (): ObjectType | undefined => {
+            if (own || resolvingOwn) return own
+            resolvingOwn = true
+            try {
+                own = this.resolveType(stmt.body) as ObjectType
+            } finally {
+                resolvingOwn = false
+            }
+            return own
+        }
         let complete: Members | undefined
         // Every member, or `undefined` while this class or one it extends is
         // still being resolved — asked again on the next access, not cached.
         const members = (): Members | undefined => {
-            if (complete || !own) return complete
+            if (complete) return complete
+            const mine = ownMembers()
+            if (!mine) return undefined
             const base: Members | undefined = superclass ? this.classMembers.get(this.classType(superclass))?.() : undefined
             if (superclass && !base) return undefined
             return (complete = {
-                properties: new Map([...(base?.properties ?? []), ...own.properties]),
-                indexer: own.indexer ?? base?.indexer,
+                properties: new Map([...(base?.properties ?? []), ...mine.properties]),
+                indexer: mine.indexer ?? base?.indexer,
             })
         }
 
@@ -595,7 +679,9 @@ class TypeAnalyzer {
         })
         this.classTypes.set(stmt, type)
         this.classMembers.set(type, members)
-        own = this.resolveType(stmt.body) as ObjectType
+        // A class declared in the file being analysed is resolved now, so its
+        // members' annotations are recorded for hover like any other type.
+        if (this.program.body.statements.includes(stmt)) ownMembers()
         return type
     }
 
@@ -652,6 +738,13 @@ class TypeAnalyzer {
         // Public `aliases` map — each resolved once, generic params kept as
         // `typeParam` nodes in the body.
         for (const [name, def] of this.aliasDefs) {
+            // A library class becomes a type only once something names it: an
+            // engine's definitions declare thousands, a script uses a few.
+            if (def.class && !this.program.body.statements.includes(def.class)) {
+                const cls = def.class
+                this.aliases.defer(name, () => this.classType(cls))
+                continue
+            }
             // `type Config = typeof defaults` needs `defaults` to have a type,
             // which only happens once the statements are walked. Such an alias
             // resolves on first use (through `expand`) or at the end instead.
@@ -701,10 +794,7 @@ class TypeAnalyzer {
     /** Instantiate a generic alias: `Box<number>` -> `{ value: number }`. */
     private instantiateAlias(def: { params: GenericTypeParameter[]; node: TypeNode }, args: Type[]): Type {
         if (this.instantiationDepth > 20) return unknownType
-        const subst = new Map<string, Type>()
-        def.params.forEach((p, i) => {
-            subst.set(p.name, args[i] ?? (p.default ? this.resolveType(p.default) : unknownType))
-        })
+        const subst = this.bindTypeArguments(def.params, args)
         this.instantiationDepth++
         try {
             const body = this.withTypeParams(def.params, () => this.resolveType(def.node))
@@ -714,6 +804,30 @@ class TypeAnalyzer {
         } finally {
             this.instantiationDepth--
         }
+    }
+
+    /** Pair written type arguments with the parameters they instantiate. A
+     *  pack parameter (`T...`) takes every argument from its position on, as
+     *  one pack: `Signal<Instance, string>` binds `T` to `(Instance, string)`,
+     *  and `Signal<()>` to the empty pack. Left out, a parameter takes its
+     *  default (`T... = ...any` is `any`), or `unknown`. */
+    private bindTypeArguments(params: readonly GenericTypeParameter[], args: readonly Type[]): Map<string, Type> {
+        const subst = new Map<string, Type>()
+        params.forEach((p, i) => {
+            let arg: Type | undefined = args[i]
+            if (p.isPack && i < args.length) {
+                const rest = args.slice(i)
+                const single = rest.length === 1 ? rest[0] : undefined
+                // A pack passed along whole stays one pack; so does `any`,
+                // which is what the `...any` default resolves to.
+                arg = single && ((single.kind === "tuple" && single.isPack) || single.kind === "typeParam" ||
+                    single.kind === "any")
+                    ? single
+                    : tuple([...rest], true)
+            }
+            subst.set(p.name, arg ?? (p.default ? this.resolveType(p.default) : unknownType))
+        })
+        return subst
     }
 
     // --------------------------------------------------------
@@ -777,6 +891,13 @@ class TypeAnalyzer {
                     }
                     const lib = this.options.libTypes?.[node.base]
                     if (lib) return lib
+                } else if (this.aliasDefs.has(name)) {
+                    // A qualified name a definitions file declared: `Enum.Material`.
+                    return this.expand({
+                        kind: "genericRef",
+                        name,
+                        typeArguments: node.typeArguments.map(a => this.resolveType(a)),
+                    })
                 }
                 return {
                     kind: "genericRef",
@@ -918,6 +1039,10 @@ class TypeAnalyzer {
             case "VariadicTypeNode": return this.resolveType(node.typeAnnotation)
             case "TypePackNode": {
                 if (node.types.length === 1 && !node.hasVarargs) return this.resolveType(node.types[0])
+                // `-> T...` is the pack parameter itself, which instantiation
+                // replaces with the pack it binds. `-> ...number` has no fixed
+                // length to write down; its first value is what gets used.
+                if (!node.types.length && node.varargType) return this.resolveType(node.varargType)
                 return tuple(node.types.map(t => this.resolveType(t)), true)
             }
         }
@@ -947,7 +1072,9 @@ class TypeAnalyzer {
         this.reduceDepth++
         try {
             const result = this.reduceTypeInner(t)
-            this.reduceCache.set(t, result)
+            // A `keyof` still deferred here may only be waiting for its target
+            // to finish resolving; caching it would keep it deferred for good.
+            if (result.kind !== "keyof") this.reduceCache.set(t, result)
             return result
         } finally {
             this.reduceDepth--
@@ -960,6 +1087,10 @@ class TypeAnalyzer {
                 case "keyof": {
                     const target = this.reduceType(t.target)
                     if (containsTypeParam(target)) return { kind: "keyof", target }
+                    // `keyof ClassMap` met while `ClassMap` itself is being
+                    // resolved — as a class's own members are — has no keys
+                    // to give yet. Ask again when it is used.
+                    if (target.kind === "genericRef" && this.resolvingAliases.has(target.name)) return t
                     return this.keysOf(target)
                 }
                 case "indexedAccess": {
@@ -1220,6 +1351,11 @@ class TypeAnalyzer {
     private visitStatement(stmt: Statement, env: FlowEnv): void {
         switch (stmt.type) {
             case "VariableDeclaration": {
+                stmt.names.forEach((target, i) => {
+                    if (target.type === "IdentifierPattern" && target.typeAnnotation && stmt.init[i]) {
+                        this.applyContext(stmt.init[i], this.resolveType(target.typeAnnotation))
+                    }
+                })
                 const { types: valueTypes, sources } = this.valueList(stmt.init, env)
                 stmt.names.forEach((target, i) => {
                     const inferred = valueTypes[i] ?? (stmt.init.length ? unknownType : nilType)
@@ -1309,6 +1445,16 @@ class TypeAnalyzer {
             }
 
             case "AssignmentStatement": {
+                stmt.targets.forEach((target, i) => {
+                    const value = stmt.values[i]
+                    if (!value) return
+                    if (target.type === "MemberExpression" || target.type === "IndexExpression") {
+                        this.applyContext(value, this.infer(target, env))
+                    } else if (target.type === "Identifier") {
+                        const id = this.bindingIdOf(target)
+                        if (id !== undefined && this.annotated.has(id)) this.applyContext(value, this.bindingType.get(id))
+                    }
+                })
                 const { types: valueTypes, sources } = this.valueList(stmt.values, env)
                 stmt.targets.forEach((target, i) => {
                     const vt = valueTypes[i] ?? unknownType
@@ -1650,7 +1796,55 @@ class TypeAnalyzer {
         }
         if (p.pattern) return this.patternToType(p.pattern, env)
         if (p.default) return widen(this.infer(p.default, env))
-        return anyType
+        return this.contextualParams.get(p) ?? anyType
+    }
+
+    /** What a function expression's unannotated parameters are, from where
+     *  it is written — see `applyContext`. */
+    private readonly contextualParams = new WeakMap<object, Type>()
+
+    /** `expected` is the type the surroundings want for `expr`. A function
+     *  expression written there takes its unannotated parameters' types from
+     *  it, as in TypeScript: `signal:Connect(function(player) ... end)` knows
+     *  `player` from `Connect`'s callback type. Anything else is inferred as
+     *  usual. */
+    private applyContext(expr: Expression, expected: Type | undefined): void {
+        let e = expr
+        while (e.type === "ParenthesizedExpression") e = e.expression
+        if (e.type !== "FunctionExpression" || !expected) return
+        const members = expected.kind === "union" ? expected.types : [expected]
+        const signatures = members.flatMap(m => this.overloadsOf(this.expand(m)))
+        if (!signatures.length) return
+        e.func.params.forEach((p, k) => {
+            if (p.typeAnnotation || p.pattern || p.default) return
+            const candidates: Type[] = []
+            for (const signature of signatures) {
+                const t = signature.params[k]?.type ?? signature.varargs
+                if (t) candidates.push(t)
+            }
+            if (!candidates.length) return
+            const t = union(candidates)
+            // A callback still generic in the call's own type parameters would
+            // need those inferred first; say nothing rather than guess.
+            this.contextualParams.set(p, containsTypeParam(t) ? anyType : t)
+        })
+    }
+
+    /** The parameter type each written argument lands on, across `fns`. */
+    private expectedArguments(
+        written: readonly Expression[],
+        fns: FunctionType[],
+        selfOf: (f: FunctionType) => number,
+    ): (Type | undefined)[] {
+        return written.map((_, j) => {
+            const candidates: Type[] = []
+            for (const f of fns) {
+                const i = j + selfOf(f)
+                const param = i < f.params.length ? this.boundParams(f)[i] : f.varargs
+                if (param) candidates.push(param)
+            }
+            return candidates.length ? union(candidates) : undefined
+        })
     }
 
     /** Synthesize a type from a destructuring pattern used without an
@@ -1713,7 +1907,13 @@ class TypeAnalyzer {
         f.params.forEach((p, i) => {
             const arg = argTypes[i]
             if (arg === undefined) return
-            unify(p.type, keepsLiterals(p.type) ? arg : widen(arg), vars, subst)
+            // The constraint may still be an unevaluated `keyof` (see
+            // `reduceTypeInner`); whether it is made of literals is only known
+            // once it is evaluated.
+            const param = p.type.kind === "typeParam" && p.type.constraint
+                ? { ...p.type, constraint: this.reduceType(p.type.constraint) }
+                : p.type
+            unify(p.type, keepsLiterals(param) ? arg : widen(arg), vars, subst)
         })
         for (const name of f.typeParams ?? []) if (!subst.has(name)) subst.set(name, unknownType)
         return subst
@@ -1790,14 +1990,17 @@ class TypeAnalyzer {
                 value.forEach(walk)
                 return
             }
-            const t = value as { kind?: unknown; name?: unknown; constraint?: Type }
+            const t = value as { kind?: unknown; name?: unknown; constraint?: Type; class?: unknown }
+            // A class is never generic, and walking into one walks every
+            // class it can reach.
+            if (t.kind === "object" && t.class) return
             if (t.kind === "typeParam" && typeof t.name === "string" && bounds.has(t.name)
                 && t.constraint && !containsTypeParam(t.constraint)) {
                 bounds.set(t.name, this.reduceType(t.constraint))
             }
             for (const child of Object.values(value)) walk(child)
         }
-        for (const p of f.params) walk(p.type)
+        for (const p of f.params) if (containsTypeParam(p.type)) walk(p.type)
         return f.params.map(p => substitute(p.type, bounds))
     }
 
@@ -2341,8 +2544,8 @@ class TypeAnalyzer {
                 const arg = this.infer(expr.argument, env)
                 switch (expr.operator) {
                     case "not": return booleanType
-                    case "-": return numberType
-                    case "#": return numberType
+                    case "-": return this.operatorResult(expr, "-", arg, undefined) ?? numberType
+                    case "#": return this.operatorResult(expr, "#", arg, undefined) ?? numberType
                 }
                 return arg
             }
@@ -2364,11 +2567,11 @@ class TypeAnalyzer {
                 const l = this.infer(expr.left, env)
                 const r = this.infer(expr.right, env)
                 switch (op) {
-                    case "..": return stringType
+                    case "..": return this.operatorResult(expr, op, l, r) ?? stringType
                     case "==": case "~=": case "<": case ">": case "<=": case ">=":
                         return booleanType
                     case "+": case "-": case "*": case "/": case "//": case "%": case "^":
-                        return numberType
+                        return this.operatorResult(expr, op, l, r) ?? numberType
                 }
                 return union([l, r])
             }
@@ -2390,8 +2593,10 @@ class TypeAnalyzer {
 
             case "CallExpression": {
                 const callee = this.infer(expr.callee, env)
-                const argTypes = expr.arguments.map(a => this.infer(a, env))
                 const fns = this.overloadsOf(callee)
+                const expected = this.expectedArguments(expr.arguments, fns, () => 0)
+                expr.arguments.forEach((a, i) => this.applyContext(a, expected[i]))
+                const argTypes = expr.arguments.map(a => this.infer(a, env))
                 if (fns.length) {
                     this.recordExpected(expr.arguments, fns, () => 0)
                     const arityFits = this.checkArity(expr, fns, argTypes.length, 0)
@@ -2409,8 +2614,10 @@ class TypeAnalyzer {
 
             case "MethodCallExpression": {
                 const objType = this.infer(expr.object, env)
-                const argTypes = expr.arguments.map(a => this.infer(a, env))
                 const fns = this.overloadsOf(this.propertyType(objType, expr.method.name))
+                const expected = this.expectedArguments(expr.arguments, fns, f => (this.takesSelf(f) ? 1 : 0))
+                expr.arguments.forEach((a, i) => this.applyContext(a, expected[i]))
+                const argTypes = expr.arguments.map(a => this.infer(a, env))
                 if (fns.length) {
                     // `obj:m(a)` passes `obj` as the implicit first argument, but
                     // only to a signature that actually declares a `self` slot —
@@ -2886,6 +3093,40 @@ class TypeAnalyzer {
         } finally {
             this.selfType = saved
         }
+    }
+
+    /** What an operator on a value with metamethods gives: `a + b` calls
+     *  `__add` on `a`, or failing that on `b` with the operands swapped — the
+     *  order Luau tries them in. That is how `Vector3 + Vector3`, `CFrame *
+     *  Vector3` and `2 * vector` get their types from the declarations.
+     *  `undefined` when neither operand declares the metamethod; an operand
+     *  that declares it but accepts neither argument is reported. */
+    private operatorResult(node: Expression, op: string, left: Type, right: Type | undefined): Type | undefined {
+        const name = right === undefined
+            ? (op === "-" ? "__unm" : "__len")
+            : METAMETHODS[op]
+        if (!name) return undefined
+        const candidates: [Type, Type | undefined][] = right === undefined ? [[left, undefined]] : [[left, right], [right, left]]
+        let declared: Type | undefined
+        for (const [receiver, other] of candidates) {
+            const t = this.expand(receiver)
+            const method = t.kind === "object" ? t.properties.get(name) : undefined
+            if (!method) continue
+            declared ??= receiver
+            const args = other === undefined ? [receiver] : [receiver, other]
+            const picked = this.pickOverload(this.overloadsOf(method.type), args)
+            if (picked) return this.callReturn(picked, args)
+        }
+        if (declared && this.emitDiagnostics) {
+            this.diagnostics.push({
+                node,
+                message: right === undefined
+                    ? `Operator '${op}' cannot be applied to type '${formatType(left)}'`
+                    : `Operator '${op}' cannot be applied to types '${formatType(left)}' and '${formatType(right)}'`,
+            })
+            return anyType
+        }
+        return undefined
     }
 
     /** Does this signature take the receiver as its first parameter?

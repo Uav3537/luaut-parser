@@ -132,6 +132,24 @@ has (`{ Name: string }`). It is not a table, though, so `typeof(part)` picks
 the `"Instance"` overload, not `"table"`. Members are inherited, and a subclass
 may narrow one (`Parent: SomeFolder`).
 
+**Callbacks** — a function written where a function type is expected takes
+its parameter types from it: in `signal:Connect(function(player) ... end)`,
+`player` is typed from `Connect`. The same applies to an annotated `const`
+and to an assignment such as `remote.OnServerInvoke = function(player) ...`.
+
+**Type packs** — `type Signal<T... = ...any> = { Connect: (self, cb: (T...) -> ()) -> () }`.
+A pack parameter takes every type argument from its position on:
+`Signal<Player, string>`, `Signal<()>` for none.
+
+**Operators** — on a type that declares metamethods (`__add`, `__mul`,
+`__unm`, ...), an operator has the metamethod's result, tried on the left
+operand and then the right one, as Luau does. So `Vector3 + Vector3` and
+`2 * vector` are both `Vector3`.
+
+**Qualified type names** — a definitions file may declare `Enum.Material`
+(`declare class Enum.Material extends EnumItem {}`), and code writes it the
+same way.
+
 **Calls** — every argument is checked against its parameter, and a generic
 parameter against its constraint (`GetService<K extends keyof Services>`
 rejects `""`).

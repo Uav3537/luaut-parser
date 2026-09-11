@@ -261,7 +261,7 @@ const rel = (path: string | undefined): string | undefined =>
         `const shape = part.Shape`,
     ].join("\n")).bindings
     check("classes: members are inherited",
-        [inherited.name, inherited.size, inherited.pivot, inherited.shape], ["string", "Vector3", "CFrame", "EnumItem"])
+        [inherited.name, inherited.size, inherited.pivot, inherited.shape], ["string", "Vector3", "CFrame", "Enum.PartType"])
 
     check("classes: a class satisfies a shape but is not a table", classCheck([
         `const function nameOf(x: { Name: string }): string return x.Name end`,
@@ -278,6 +278,56 @@ const rel = (path: string | undefined): string | undefined =>
         `end`,
     ].join("\n")).bindings
     check("classes: typeof narrows between classes and tables", [narrowed.i, narrowed.t], ["Instance", "{ n: number }"])
+
+    // --- what the whole Roblox API needs ---------------------------------------
+    const callbacks = classCheck([
+        `const function takes(cb: (name: string, count: number) -> ()) end`,
+        `takes(function(n, c) end)`,
+        `const handler: (flag: boolean) -> () = function(f) end`,
+        `const Players = game:GetService("Players")`,
+        `Players.PlayerAdded:Connect(function(player) end)`,
+        `const remote = Instance.new("RemoteFunction")`,
+        `remote.OnServerInvoke = function(invoker) return 1 end`,
+    ].join("\n")).bindings
+    check("callbacks: an unannotated parameter takes its type from where the function is written",
+        [callbacks.n, callbacks.c, callbacks.f, callbacks.player, callbacks.invoker],
+        ["string", "number", "boolean", "Player", "Player"])
+
+    const packs = classCheck([
+        `type Signal<T... = ...any> = { Connect: (self: Signal<T...>, cb: (T...) -> ()) -> (), Wait: (self: Signal<T...>) -> T... }`,
+        `declare two: Signal<string, number>`,
+        `declare none: Signal<()>`,
+        `declare loose: Signal`,
+        `const a, b = two:Wait()`,
+        `two:Connect(function(x, y) end)`,
+        `loose:Connect(function(z) end)`,
+    ].join("\n")).bindings
+    check("packs: `T...` binds every type argument from its position on",
+        [packs.a, packs.b, packs.x, packs.y, packs.z], ["string", "number", "string", "number", "any"])
+
+    const operators = classCheck([
+        `const v = Vector3.new(1, 2, 3)`,
+        `const sum = v + v`,
+        `const scaled = 2 * v`,
+        `const negated = -v`,
+        `const moved = CFrame.new() * v`,
+        `const turned = CFrame.new() * CFrame.new()`,
+    ].join("\n"))
+    check("operators: a metamethod gives the result, from either operand",
+        [operators.bindings.sum, operators.bindings.scaled, operators.bindings.negated, operators.bindings.moved, operators.bindings.turned],
+        ["Vector3", "Vector3", "Vector3", "Vector3", "CFrame"])
+    check("operators: an operand the metamethod does not accept is reported",
+        classCheck(`const bad = Vector3.new() + "x"`).diagnostics,
+        [`Operator '+' cannot be applied to types 'Vector3' and '"x"'`])
+
+    const enums = classCheck([
+        `const material: Enum.Material = Enum.Material.Neon`,
+        `const kind = typeof(material)`,
+        `const wrong: Enum.Material = Enum.KeyCode.E`,
+    ].join("\n"))
+    check("enums: `Enum.Material` names a type", [enums.bindings.material, enums.bindings.kind], ["Enum.Material", `"EnumItem"`])
+    check("enums: one enum's items are not another's", enums.diagnostics,
+        ["Type 'Enum.KeyCode' is not assignable to 'Enum.Material'"])
 
     check("classes: declaring one", classCheck([
         `declare class Animal { Name: string }`,

@@ -63,8 +63,8 @@ const collection: CollectionService = game:GetService("CollectionService")
 -- but wrong `Instance`.
 const notAService: unknown = game:GetService("SomeFutureService")
 
--- Likewise `Instance.new` is restricted to the concrete classes: the map it
--- indexes is `Omit<ClassMap, ...abstract classes>`.
+-- Likewise `Instance.new` is restricted to the classes that can be created:
+-- an abstract class such as `BasePart` is reported.
 const abstract: unknown = Instance.new("BasePart")
 
 const localPlayer: Player | nil = players.LocalPlayer

@@ -311,10 +311,18 @@ export function substitute(t: Type, subst: Map<string, Type>): Type {
             const inner = t.typeParams
                 ? new Map([...subst].filter(([k]) => !t.typeParams!.includes(k)))
                 : subst
+            let params = t.params.map(p => ({ ...p, type: substitute(p.type, inner) }))
+            let varargs = t.varargs && substitute(t.varargs, inner)
+            // `(T...) -> ()` with `T` bound to a pack: the pack's values are the
+            // parameters.
+            if (varargs?.kind === "tuple" && varargs.isPack) {
+                params = [...params, ...varargs.elements.map(type => ({ type }))]
+                varargs = undefined
+            }
             return {
                 kind: "function",
-                params: t.params.map(p => ({ ...p, type: substitute(p.type, inner) })),
-                varargs: t.varargs && substitute(t.varargs, inner),
+                params,
+                varargs,
                 returns: substitute(t.returns, inner),
                 typeParams: t.typeParams,
                 predicate: t.predicate && {

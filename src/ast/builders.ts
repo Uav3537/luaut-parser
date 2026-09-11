@@ -440,12 +440,25 @@ export class Parser {
         return { type: "DeclareStatement", name: nameTok.value as string, id: tokenIdentifier(nameTok), valueType, ...spanFrom(start, this.previous()) }
     }
 
+    /** A declared type's name. It may be qualified once — `Enum.Material` —
+     *  which is how a definitions file names types under a namespace, and how
+     *  they are then written (`const m: Enum.Material`). */
+    private parseTypeName(): Identifier {
+        const first = this.expectIdentifier()
+        if (this.checkPunctuator(".") && this.peek(1).type === "Identifier") {
+            this.advance()
+            const second = this.expectIdentifier()
+            return { type: "Identifier", name: `${first.value}.${second.value}`, ...spanFrom(first, second) }
+        }
+        return tokenIdentifier(first)
+    }
+
     // `declare class Name extends Base { member: T, ... }`
     private parseDeclareClassStatement(): DeclareClassStatement {
         const start = this.current()
         this.advance() // 'declare'
         this.advance() // 'class'
-        const name = tokenIdentifier(this.expectIdentifier())
+        const name = this.parseTypeName()
         let superclass: TypeReference | undefined
         if (this.checkIdentifierValue("extends")) {
             this.advance()
@@ -829,8 +842,7 @@ export class Parser {
     private parseTypeAliasStatement(): TypeAliasStatement {
         const start = this.current()
         this.advance()
-        const nameTok = this.expectIdentifier()
-        const name: Identifier = { type: "Identifier", name: nameTok.value as string, ...spanFrom(nameTok, nameTok) }
+        const name = this.parseTypeName()
 
         let generics: GenericTypeParameter[] = []
         if (this.checkOperator("<")) {
