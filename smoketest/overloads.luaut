@@ -6,9 +6,9 @@ function len(x: string | unknown[]): number
     return #x
 end
 
-const function reverse(x: string): string
-const function reverse(x: number[]): number[]
-const function reverse(x)
+function reverse(x: string): string
+function reverse(x: number[]): number[]
+function reverse(x)
     return x
 end
 

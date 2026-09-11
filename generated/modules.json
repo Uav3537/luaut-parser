@@ -480,7 +480,6 @@
         "type": "ExportStatement",
         "declaration": {
           "type": "FunctionDeclaration",
-          "kind": "const",
           "name": {
             "type": "Identifier",
             "name": "distance",
@@ -489,8 +488,8 @@
               "end": 11
             },
             "column": {
-              "start": 23,
-              "end": 31
+              "start": 17,
+              "end": 25
             }
           },
           "func": {
@@ -509,8 +508,8 @@
                     "end": 11
                   },
                   "column": {
-                    "start": 35,
-                    "end": 40
+                    "start": 29,
+                    "end": 34
                   }
                 },
                 "line": {
@@ -518,8 +517,8 @@
                   "end": 11
                 },
                 "column": {
-                  "start": 32,
-                  "end": 40
+                  "start": 26,
+                  "end": 34
                 }
               },
               {
@@ -534,8 +533,8 @@
                     "end": 11
                   },
                   "column": {
-                    "start": 45,
-                    "end": 50
+                    "start": 39,
+                    "end": 44
                   }
                 },
                 "line": {
@@ -543,8 +542,8 @@
                   "end": 11
                 },
                 "column": {
-                  "start": 42,
-                  "end": 50
+                  "start": 36,
+                  "end": 44
                 }
               }
             ],
@@ -558,8 +557,8 @@
                 "end": 11
               },
               "column": {
-                "start": 53,
-                "end": 59
+                "start": 47,
+                "end": 53
               }
             },
             "body": {
@@ -929,7 +928,7 @@
               "end": 14
             },
             "column": {
-              "start": 31,
+              "start": 25,
               "end": 4
             }
           },
@@ -1052,7 +1051,6 @@
       },
       {
         "type": "FunctionDeclaration",
-        "kind": "const",
         "name": {
           "type": "Identifier",
           "name": "main",
@@ -1061,8 +1059,8 @@
             "end": 18
           },
           "column": {
-            "start": 16,
-            "end": 20
+            "start": 10,
+            "end": 14
           }
         },
         "func": {
@@ -1240,7 +1238,7 @@
             "end": 20
           },
           "column": {
-            "start": 20,
+            "start": 14,
             "end": 4
           }
         },

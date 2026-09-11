@@ -2,7 +2,7 @@
 
 export const VERSION = 3
 
-export const function helper(x: number): number
+export function helper(x: number): number
     return x
 end
 

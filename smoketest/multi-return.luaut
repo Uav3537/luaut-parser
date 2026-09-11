@@ -6,7 +6,7 @@
 -- `string.find` and `next` usable, so the checker follows it rather than
 -- treating a multi-return as a single tuple value.
 
-const function two(): (number, string)
+function two(): (number, string)
     return 1, "a"
 end
 
@@ -27,7 +27,7 @@ const truncated: number = (two())
 
 -- A `while` exits when its condition fails, so what the condition ruled out
 -- holds afterwards — unless a `break` can skip that.
-const function firstNonNil(v: string | nil)
+function firstNonNil(v: string | nil)
     while v == nil do
         v = "fallback"
     end
@@ -35,7 +35,7 @@ const function firstNonNil(v: string | nil)
     return settled
 end
 
-const function mightBreak(v: string | nil)
+function mightBreak(v: string | nil)
     while v == nil do
         break
     end

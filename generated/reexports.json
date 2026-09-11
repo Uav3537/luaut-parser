@@ -348,7 +348,6 @@
       },
       {
         "type": "FunctionDeclaration",
-        "kind": "const",
         "name": {
           "type": "Identifier",
           "name": "area",
@@ -357,8 +356,8 @@
             "end": 14
           },
           "column": {
-            "start": 16,
-            "end": 20
+            "start": 10,
+            "end": 14
           }
         },
         "func": {
@@ -377,8 +376,8 @@
                   "end": 14
                 },
                 "column": {
-                  "start": 24,
-                  "end": 28
+                  "start": 18,
+                  "end": 22
                 }
               },
               "line": {
@@ -386,8 +385,8 @@
                 "end": 14
               },
               "column": {
-                "start": 21,
-                "end": 28
+                "start": 15,
+                "end": 22
               }
             }
           ],
@@ -401,8 +400,8 @@
               "end": 14
             },
             "column": {
-              "start": 31,
-              "end": 37
+              "start": 25,
+              "end": 31
             }
           },
           "body": {
@@ -518,7 +517,7 @@
             "end": 16
           },
           "column": {
-            "start": 20,
+            "start": 14,
             "end": 4
           }
         },

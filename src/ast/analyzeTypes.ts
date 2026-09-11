@@ -92,7 +92,7 @@ export interface ExportedType {
 
 /** What a module makes available to `import`. See `moduleExports`. */
 export interface ModuleExports {
-    /** `export const` / `export let` / `export const function` names. */
+    /** `export const` / `export let` / `export function` names. */
     readonly values: ReadonlyMap<string, Type>
     /** `export type` names. */
     readonly types: ReadonlyMap<string, ExportedType>
@@ -586,6 +586,14 @@ class TypeAnalyzer {
             if (stmt.type !== "ImportStatement") continue
             const exports = this.moduleFor(stmt.source.value)
             if (!exports) continue
+            // `import * as Shapes`: every exported type, as `Shapes.Circle`.
+            if (stmt.namespaceImport) {
+                for (const [name, exported] of exports.types) {
+                    const qualified = `${stmt.namespaceImport.name}.${name}`
+                    this.importedTypes.set(qualified, exported)
+                    this.aliases.set(qualified, exported.type)
+                }
+            }
             for (const s of stmt.specifiers) {
                 const exported = exports.types.get(s.imported.name)
                 if (exported) {
@@ -830,6 +838,17 @@ class TypeAnalyzer {
         return subst
     }
 
+    /** An imported type, with its type arguments applied. */
+    private importedType(imported: ExportedType, typeArguments: readonly (TypeNode | TypePackNode)[]): Type {
+        if (!imported.params.length) return imported.type
+        const subst = new Map<string, Type>()
+        imported.params.forEach((name, i) => {
+            const arg = typeArguments[i]
+            subst.set(name, arg ? this.resolveType(arg) : unknownType)
+        })
+        return this.reduceType(substitute(imported.type, subst))
+    }
+
     // --------------------------------------------------------
     // TypeNode -> Type
     // --------------------------------------------------------
@@ -880,17 +899,12 @@ class TypeAnalyzer {
                         })
                     }
                     const imported = this.importedTypes.get(node.base)
-                    if (imported) {
-                        if (!imported.params.length) return imported.type
-                        const subst = new Map<string, Type>()
-                        imported.params.forEach((name, i) => {
-                            const arg = node.typeArguments[i]
-                            subst.set(name, arg ? this.resolveType(arg) : unknownType)
-                        })
-                        return this.reduceType(substitute(imported.type, subst))
-                    }
+                    if (imported) return this.importedType(imported, node.typeArguments)
                     const lib = this.options.libTypes?.[node.base]
                     if (lib) return lib
+                } else if (this.importedTypes.has(name)) {
+                    // `Shapes.Circle` through `import * as Shapes`.
+                    return this.importedType(this.importedTypes.get(name)!, node.typeArguments)
                 } else if (this.aliasDefs.has(name)) {
                     // A qualified name a definitions file declared: `Enum.Material`.
                     return this.expand({
@@ -1608,6 +1622,16 @@ class TypeAnalyzer {
                 // reliable to offer yet; read it as `any` and report nothing.
                 const usable = exports && !exports.partial ? exports : undefined
 
+                if (stmt.namespaceImport) {
+                    // The module's exports as one read-only object.
+                    const id = this.bindingIdByName(stmt.namespaceImport.name, stmt.namespaceImport)
+                    if (id !== undefined) {
+                        const members: [string, ObjectProperty][] = [...(usable?.values ?? [])]
+                            .map(([name, type]) => [name, { type, optional: false, readonly: true }])
+                        if (usable?.default) members.push(["default", { type: usable.default, optional: false, readonly: true }])
+                        this.bindingType.set(id, usable ? objectType(members) : anyType)
+                    }
+                }
                 if (stmt.defaultImport) {
                     if (usable && usable.default === undefined) {
                         report(stmt.defaultImport, `Module '${specifier}' has no default export`)
@@ -1811,7 +1835,10 @@ class TypeAnalyzer {
     private applyContext(expr: Expression, expected: Type | undefined): void {
         let e = expr
         while (e.type === "ParenthesizedExpression") e = e.expression
-        if (e.type !== "FunctionExpression" || !expected) return
+        if (!expected) return
+        if (e.type === "ArrayExpression") return this.applyArrayContext(e, expected)
+        if (e.type === "TableExpression") return this.applyTableContext(e, expected)
+        if (e.type !== "FunctionExpression") return
         const members = expected.kind === "union" ? expected.types : [expected]
         const signatures = members.flatMap(m => this.overloadsOf(this.expand(m)))
         if (!signatures.length) return
@@ -1828,6 +1855,50 @@ class TypeAnalyzer {
             // need those inferred first; say nothing rather than guess.
             this.contextualParams.set(p, containsTypeParam(t) ? anyType : t)
         })
+    }
+
+    /** What an array literal is expected to be: an empty one takes that type
+     *  outright — `let queue: thread[] = []` is a `thread[]`, as in TypeScript
+     *  — and the elements of any other get the element type as their own
+     *  context. */
+    private readonly contextualArrays = new WeakMap<ArrayExpression, Type>()
+
+    private applyArrayContext(e: ArrayExpression, expected: Type): void {
+        const target = this.expectedMembers(expected).find(m => m.kind === "array" || m.kind === "tuple")
+        if (!target) return
+        if (!e.elements.length) {
+            if (!containsTypeParam(target)) this.contextualArrays.set(e, target)
+            return
+        }
+        e.elements.forEach((element, i) => {
+            if (element.type === "SpreadElement") return
+            const elementType = target.kind === "array" ? target.element : (target as Extract<Type, { kind: "tuple" }>).elements[i]
+            this.applyContext(element, elementType)
+        })
+    }
+
+    /** `{ list: [] }` where `{ list: thread[] }` is expected: each field's
+     *  value gets its property's type as context. */
+    private applyTableContext(e: TableExpression, expected: Type): void {
+        const objects = this.expectedMembers(expected).filter((m): m is ObjectType => m.kind === "object")
+        if (!objects.length) return
+        for (const field of e.fields) {
+            if (field.type !== "TableFieldNamed") continue
+            const key = field.key.type === "Identifier" ? field.key.name : field.key.value
+            const types = objects.flatMap(o => {
+                const property = o.properties.get(key)
+                return property ? [property.type] : o.indexer ? [o.indexer.value] : []
+            })
+            if (types.length) this.applyContext(field.value, union(types))
+        }
+    }
+
+    /** The members of an expected type worth matching a literal against:
+     *  aliases seen through, `nil` left out. */
+    private expectedMembers(expected: Type): Type[] {
+        const t = this.expand(expected)
+        const members = t.kind === "union" ? t.types : [t]
+        return members.map(m => this.expand(m)).filter(m => !(m.kind === "primitive" && m.name === "nil"))
     }
 
     /** The parameter type each written argument lands on, across `fns`. */
@@ -2525,8 +2596,9 @@ class TypeAnalyzer {
             case "SatisfiesExpression": {
                 // Validate against the contract but keep the inferred type —
                 // that is the whole point of `satisfies` over `as`.
-                const actual = this.infer(expr.expression, env)
                 const declared = this.resolveType(expr.typeAnnotation)
+                this.applyContext(expr.expression, declared)
+                const actual = this.infer(expr.expression, env)
                 if (this.emitDiagnostics && declared.kind !== "any" &&
                     !this.fitsAnnotation(expr.expression, declared, actual, env)) {
                     this.diagnostics.push({
@@ -2658,6 +2730,8 @@ class TypeAnalyzer {
     }
 
     private inferArray(expr: ArrayExpression, env: FlowEnv, asConst: boolean): Type {
+        const contextual = this.contextualArrays.get(expr)
+        if (contextual && !asConst) return contextual
         const elems: Type[] = []
         let hadSpread = false
         for (const el of expr.elements) {

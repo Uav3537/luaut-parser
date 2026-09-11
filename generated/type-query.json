@@ -568,7 +568,6 @@
       },
       {
         "type": "FunctionDeclaration",
-        "kind": "const",
         "name": {
           "type": "Identifier",
           "name": "clampTo",
@@ -577,8 +576,8 @@
             "end": 23
           },
           "column": {
-            "start": 16,
-            "end": 23
+            "start": 10,
+            "end": 17
           }
         },
         "func": {
@@ -597,8 +596,8 @@
                   "end": 23
                 },
                 "column": {
-                  "start": 31,
-                  "end": 37
+                  "start": 25,
+                  "end": 31
                 }
               },
               "line": {
@@ -606,8 +605,8 @@
                 "end": 23
               },
               "column": {
-                "start": 24,
-                "end": 37
+                "start": 18,
+                "end": 31
               }
             },
             {
@@ -623,8 +622,8 @@
                     "end": 23
                   },
                   "column": {
-                    "start": 53,
-                    "end": 58
+                    "start": 47,
+                    "end": 52
                   }
                 },
                 "line": {
@@ -632,8 +631,8 @@
                   "end": 23
                 },
                 "column": {
-                  "start": 46,
-                  "end": 58
+                  "start": 40,
+                  "end": 52
                 }
               },
               "line": {
@@ -641,8 +640,8 @@
                 "end": 23
               },
               "column": {
-                "start": 39,
-                "end": 58
+                "start": 33,
+                "end": 52
               }
             }
           ],
@@ -656,8 +655,8 @@
               "end": 23
             },
             "column": {
-              "start": 61,
-              "end": 67
+              "start": 55,
+              "end": 61
             }
           },
           "body": {
@@ -703,7 +702,7 @@
             "end": 25
           },
           "column": {
-            "start": 23,
+            "start": 17,
             "end": 4
           }
         },

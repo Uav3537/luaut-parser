@@ -58,8 +58,12 @@ export interface Binding {
      *  bindings are never given a `declarationNode` from assignment
      *  inference, since they're not really "defined" in this file. */
     isBuiltin?: boolean
-    /** True for a `const` binding — reassigning it is an error. */
+    /** True for a binding that cannot be reassigned: a `const`, an import, or
+     *  a function declaration. */
     isConst?: boolean
+    /** Set when the binding comes from something other than `const` / `let`,
+     *  which is also what an error about reassigning it names. */
+    declaredBy?: "import" | "namespace" | "function"
 }
 
 export interface ScopeDiagnostic {
@@ -160,7 +164,10 @@ class Analyzer {
 
     // ---------------- declaration / resolution primitives ----------------
 
-    private declare(scope: Scope, name: string, kind: BindingKind, node: DeclarationNode, isConst = false): BindingId {
+    private declare(
+        scope: Scope, name: string, kind: BindingKind, node: DeclarationNode, isConst = false,
+        declaredBy?: Binding["declaredBy"],
+    ): BindingId {
         // Redeclaration in the same lexical scope is an error (`const x` / `let x`
         // twice, a param named twice, ...). The later binding still wins so the
         // rest of analysis stays sane.
@@ -172,7 +179,7 @@ class Analyzer {
             })
         }
         const id = this.nextId++
-        this.bindings.set(id, { id, name, kind, declarationNode: node, references: [], isConst })
+        this.bindings.set(id, { id, name, kind, declarationNode: node, references: [], isConst, declaredBy })
         scope.declarations.set(name, id)
         return id
     }
@@ -231,12 +238,35 @@ class Analyzer {
         this.checkConstAssign(id, identifier)
     }
 
+    /** `Module.x = 1` through `import * as Module`: a module's exports belong
+     *  to it and are read-only, as in ES modules. Deeper writes (`Module.x.y`)
+     *  change the value, not the module, and are fine. */
+    private checkModuleWrite(target: Expression): void {
+        if (target.type !== "MemberExpression" && target.type !== "IndexExpression") return
+        if (target.object.type !== "Identifier") return
+        const id = this.bindingOf.get(target.object)
+        if (id !== undefined && this.bindings.get(id)!.declaredBy === "namespace") {
+            this.moduleWriteError(target.object.name, target)
+        }
+    }
+
+    private moduleWriteError(name: string, node: ScopeDiagnostic["node"]): void {
+        this.diagnostics.push({
+            node,
+            message: `Cannot assign to a member of '${name}' — a module's exports are read-only`,
+            kind: "const-assign",
+        })
+    }
+
     private checkConstAssign(id: BindingId, node: ScopeDiagnostic["node"]): void {
         const b = this.bindings.get(id)!
         if (b.isConst) {
             this.diagnostics.push({
                 node,
-                message: `Cannot assign to '${b.name}' — it is a const`,
+                message: `Cannot assign to '${b.name}' — it is ${
+                    b.declaredBy === "import" || b.declaredBy === "namespace" ? "an import"
+                        : b.declaredBy === "function" ? "a function"
+                        : "a const"}`,
                 kind: "const-assign",
             })
         }
@@ -332,7 +362,7 @@ class Analyzer {
             case "FunctionDeclaration": {
                 // Declared *before* visiting the body so recursive calls
                 // resolve to itself.
-                this.declare(scope, stmt.name.name, "local", stmt.name, stmt.kind === "const")
+                this.declare(scope, stmt.name.name, "local", stmt.name, true, "function")
                 for (const signature of stmt.signatures ?? []) this.visitSignature(signature, scope)
                 this.visitFunctionBody(stmt.func, scope)
                 return
@@ -346,6 +376,13 @@ class Analyzer {
                     this.referenceAsAssignmentTarget(scope, stmt.target.base)
                 } else {
                     this.reference(scope, stmt.target.base)
+                    // `function Module.f()` / `function Module:m()` defines a
+                    // member of the module itself.
+                    const id = this.bindingOf.get(stmt.target.base)
+                    const depth = stmt.target.path.length + (stmt.target.method ? 1 : 0)
+                    if (id !== undefined && depth === 1 && this.bindings.get(id)!.declaredBy === "namespace") {
+                        this.moduleWriteError(stmt.target.base.name, stmt.target)
+                    }
                 }
                 for (const signature of stmt.signatures ?? []) this.visitSignature(signature, scope)
                 this.visitFunctionBody(stmt.func, scope, stmt.isMethod)
@@ -364,6 +401,7 @@ class Analyzer {
                         // object is a reference, the property/index isn't
                         // (or is itself a full expression already handled).
                         this.visitExpression(target, scope)
+                        this.checkModuleWrite(target)
                     }
                 }
                 return
@@ -377,6 +415,7 @@ class Analyzer {
                     if (id !== undefined) this.checkConstAssign(id, stmt.target)
                 } else {
                     this.visitExpression(stmt.target, scope)
+                    this.checkModuleWrite(stmt.target)
                 }
                 return
             }
@@ -458,11 +497,15 @@ class Analyzer {
             case "ImportStatement": {
                 // `import Foo, { a, b as c } from "..."` introduces locals
                 // `Foo`, `a`, `c` in the current scope.
+                // Imports are read-only, as in ES modules.
                 if (stmt.defaultImport) {
-                    this.declare(scope, stmt.defaultImport.name, "local", stmt.defaultImport)
+                    this.declare(scope, stmt.defaultImport.name, "local", stmt.defaultImport, true, "import")
+                }
+                if (stmt.namespaceImport) {
+                    this.declare(scope, stmt.namespaceImport.name, "local", stmt.namespaceImport, true, "namespace")
                 }
                 for (const spec of stmt.specifiers) {
-                    this.declare(scope, spec.local.name, "local", spec.local)
+                    this.declare(scope, spec.local.name, "local", spec.local, true, "import")
                 }
                 return
             }

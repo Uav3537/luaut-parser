@@ -20,7 +20,7 @@ let count = 1
 const alsoNumber: typeof count = 2
 
 -- Parameters can refer to earlier parameters.
-const function clampTo(limit: number, value: typeof limit): number
+function clampTo(limit: number, value: typeof limit): number
     return value
 end
 

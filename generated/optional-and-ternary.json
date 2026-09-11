@@ -426,7 +426,6 @@
       },
       {
         "type": "FunctionDeclaration",
-        "kind": "const",
         "name": {
           "type": "Identifier",
           "name": "connect",
@@ -435,8 +434,8 @@
             "end": 27
           },
           "column": {
-            "start": 16,
-            "end": 23
+            "start": 10,
+            "end": 17
           }
         },
         "func": {
@@ -455,8 +454,8 @@
                   "end": 27
                 },
                 "column": {
-                  "start": 30,
-                  "end": 36
+                  "start": 24,
+                  "end": 30
                 }
               },
               "line": {
@@ -464,8 +463,8 @@
                 "end": 27
               },
               "column": {
-                "start": 24,
-                "end": 36
+                "start": 18,
+                "end": 30
               }
             },
             {
@@ -483,8 +482,8 @@
                       "end": 27
                     },
                     "column": {
-                      "start": 47,
-                      "end": 53
+                      "start": 41,
+                      "end": 47
                     }
                   },
                   {
@@ -496,8 +495,8 @@
                       "end": 27
                     },
                     "column": {
-                      "start": 56,
-                      "end": 59
+                      "start": 50,
+                      "end": 53
                     }
                   }
                 ],
@@ -506,8 +505,8 @@
                   "end": 27
                 },
                 "column": {
-                  "start": 47,
-                  "end": 59
+                  "start": 41,
+                  "end": 53
                 }
               },
               "line": {
@@ -515,8 +514,8 @@
                 "end": 27
               },
               "column": {
-                "start": 38,
-                "end": 59
+                "start": 32,
+                "end": 53
               }
             },
             {
@@ -531,8 +530,8 @@
                   "end": 27
                 },
                 "column": {
-                  "start": 68,
-                  "end": 74
+                  "start": 62,
+                  "end": 68
                 }
               },
               "optional": true,
@@ -541,8 +540,8 @@
                 "end": 27
               },
               "column": {
-                "start": 61,
-                "end": 74
+                "start": 55,
+                "end": 68
               }
             }
           ],
@@ -760,7 +759,7 @@
             "end": 32
           },
           "column": {
-            "start": 23,
+            "start": 17,
             "end": 4
           }
         },
@@ -1282,7 +1281,6 @@
       },
       {
         "type": "FunctionDeclaration",
-        "kind": "const",
         "name": {
           "type": "Identifier",
           "name": "describe",
@@ -1291,8 +1289,8 @@
             "end": 47
           },
           "column": {
-            "start": 16,
-            "end": 24
+            "start": 10,
+            "end": 18
           }
         },
         "func": {
@@ -1311,8 +1309,8 @@
                   "end": 47
                 },
                 "column": {
-                  "start": 28,
-                  "end": 34
+                  "start": 22,
+                  "end": 28
                 }
               },
               "line": {
@@ -1320,8 +1318,8 @@
                 "end": 47
               },
               "column": {
-                "start": 25,
-                "end": 34
+                "start": 19,
+                "end": 28
               }
             },
             {
@@ -1336,8 +1334,8 @@
                   "end": 47
                 },
                 "column": {
-                  "start": 42,
-                  "end": 49
+                  "start": 36,
+                  "end": 43
                 }
               },
               "line": {
@@ -1345,8 +1343,8 @@
                 "end": 47
               },
               "column": {
-                "start": 36,
-                "end": 49
+                "start": 30,
+                "end": 43
               }
             }
           ],
@@ -1696,7 +1694,7 @@
             "end": 52
           },
           "column": {
-            "start": 24,
+            "start": 18,
             "end": 4
           }
         },
@@ -1711,7 +1709,6 @@
       },
       {
         "type": "FunctionDeclaration",
-        "kind": "const",
         "name": {
           "type": "Identifier",
           "name": "orElse",
@@ -1720,8 +1717,8 @@
             "end": 55
           },
           "column": {
-            "start": 16,
-            "end": 22
+            "start": 10,
+            "end": 16
           }
         },
         "func": {
@@ -1743,8 +1740,8 @@
                       "end": 55
                     },
                     "column": {
-                      "start": 26,
-                      "end": 32
+                      "start": 20,
+                      "end": 26
                     }
                   },
                   {
@@ -1756,8 +1753,8 @@
                       "end": 55
                     },
                     "column": {
-                      "start": 35,
-                      "end": 38
+                      "start": 29,
+                      "end": 32
                     }
                   }
                 ],
@@ -1766,8 +1763,8 @@
                   "end": 55
                 },
                 "column": {
-                  "start": 26,
-                  "end": 38
+                  "start": 20,
+                  "end": 32
                 }
               },
               "line": {
@@ -1775,8 +1772,8 @@
                 "end": 55
               },
               "column": {
-                "start": 23,
-                "end": 38
+                "start": 17,
+                "end": 32
               }
             }
           ],
@@ -1917,7 +1914,7 @@
             "end": 58
           },
           "column": {
-            "start": 22,
+            "start": 16,
             "end": 4
           }
         },
@@ -2059,7 +2056,6 @@
       },
       {
         "type": "FunctionDeclaration",
-        "kind": "const",
         "name": {
           "type": "Identifier",
           "name": "choose",
@@ -2068,8 +2064,8 @@
             "end": 63
           },
           "column": {
-            "start": 16,
-            "end": 22
+            "start": 10,
+            "end": 16
           }
         },
         "func": {
@@ -2088,8 +2084,8 @@
                   "end": 63
                 },
                 "column": {
-                  "start": 29,
-                  "end": 36
+                  "start": 23,
+                  "end": 30
                 }
               },
               "line": {
@@ -2097,8 +2093,8 @@
                 "end": 63
               },
               "column": {
-                "start": 23,
-                "end": 36
+                "start": 17,
+                "end": 30
               }
             },
             {
@@ -2113,8 +2109,8 @@
                   "end": 63
                 },
                 "column": {
-                  "start": 41,
-                  "end": 48
+                  "start": 35,
+                  "end": 42
                 }
               },
               "line": {
@@ -2122,8 +2118,8 @@
                 "end": 63
               },
               "column": {
-                "start": 38,
-                "end": 48
+                "start": 32,
+                "end": 42
               }
             },
             {
@@ -2138,8 +2134,8 @@
                   "end": 63
                 },
                 "column": {
-                  "start": 57,
-                  "end": 64
+                  "start": 51,
+                  "end": 58
                 }
               },
               "line": {
@@ -2147,8 +2143,8 @@
                 "end": 63
               },
               "column": {
-                "start": 50,
-                "end": 64
+                "start": 44,
+                "end": 58
               }
             }
           ],
@@ -2417,7 +2413,7 @@
             "end": 67
           },
           "column": {
-            "start": 22,
+            "start": 16,
             "end": 4
           }
         },

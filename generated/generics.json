@@ -1127,7 +1127,6 @@
       },
       {
         "type": "FunctionDeclaration",
-        "kind": "const",
         "name": {
           "type": "Identifier",
           "name": "identity",
@@ -1136,8 +1135,8 @@
             "end": 14
           },
           "column": {
-            "start": 16,
-            "end": 24
+            "start": 10,
+            "end": 18
           }
         },
         "func": {
@@ -1154,8 +1153,8 @@
                   "end": 14
                 },
                 "column": {
-                  "start": 25,
-                  "end": 26
+                  "start": 19,
+                  "end": 20
                 }
               },
               "isPack": false,
@@ -1164,8 +1163,8 @@
                 "end": 14
               },
               "column": {
-                "start": 25,
-                "end": 26
+                "start": 19,
+                "end": 20
               }
             }
           ],
@@ -1182,8 +1181,8 @@
                   "end": 14
                 },
                 "column": {
-                  "start": 31,
-                  "end": 32
+                  "start": 25,
+                  "end": 26
                 }
               },
               "line": {
@@ -1191,8 +1190,8 @@
                 "end": 14
               },
               "column": {
-                "start": 28,
-                "end": 32
+                "start": 22,
+                "end": 26
               }
             }
           ],
@@ -1206,8 +1205,8 @@
               "end": 14
             },
             "column": {
-              "start": 35,
-              "end": 36
+              "start": 29,
+              "end": 30
             }
           },
           "body": {
@@ -1253,7 +1252,7 @@
             "end": 16
           },
           "column": {
-            "start": 24,
+            "start": 18,
             "end": 4
           }
         },
@@ -1268,7 +1267,6 @@
       },
       {
         "type": "FunctionDeclaration",
-        "kind": "const",
         "name": {
           "type": "Identifier",
           "name": "first",
@@ -1277,8 +1275,8 @@
             "end": 18
           },
           "column": {
-            "start": 16,
-            "end": 21
+            "start": 10,
+            "end": 15
           }
         },
         "func": {
@@ -1295,8 +1293,8 @@
                   "end": 18
                 },
                 "column": {
-                  "start": 22,
-                  "end": 23
+                  "start": 16,
+                  "end": 17
                 }
               },
               "isPack": false,
@@ -1305,8 +1303,8 @@
                 "end": 18
               },
               "column": {
-                "start": 22,
-                "end": 23
+                "start": 16,
+                "end": 17
               }
             }
           ],
@@ -1325,8 +1323,8 @@
                     "end": 18
                   },
                   "column": {
-                    "start": 29,
-                    "end": 30
+                    "start": 23,
+                    "end": 24
                   }
                 },
                 "line": {
@@ -1334,8 +1332,8 @@
                   "end": 18
                 },
                 "column": {
-                  "start": 29,
-                  "end": 32
+                  "start": 23,
+                  "end": 26
                 }
               },
               "line": {
@@ -1343,8 +1341,8 @@
                 "end": 18
               },
               "column": {
-                "start": 25,
-                "end": 32
+                "start": 19,
+                "end": 26
               }
             }
           ],
@@ -1358,8 +1356,8 @@
               "end": 18
             },
             "column": {
-              "start": 35,
-              "end": 36
+              "start": 29,
+              "end": 30
             }
           },
           "body": {
@@ -1429,7 +1427,7 @@
             "end": 20
           },
           "column": {
-            "start": 21,
+            "start": 15,
             "end": 4
           }
         },
@@ -1444,7 +1442,6 @@
       },
       {
         "type": "FunctionDeclaration",
-        "kind": "const",
         "name": {
           "type": "Identifier",
           "name": "pair",
@@ -1453,8 +1450,8 @@
             "end": 22
           },
           "column": {
-            "start": 16,
-            "end": 20
+            "start": 10,
+            "end": 14
           }
         },
         "func": {
@@ -1471,8 +1468,8 @@
                   "end": 22
                 },
                 "column": {
-                  "start": 21,
-                  "end": 22
+                  "start": 15,
+                  "end": 16
                 }
               },
               "isPack": false,
@@ -1481,8 +1478,8 @@
                 "end": 22
               },
               "column": {
-                "start": 21,
-                "end": 22
+                "start": 15,
+                "end": 16
               }
             },
             {
@@ -1496,8 +1493,8 @@
                   "end": 22
                 },
                 "column": {
-                  "start": 24,
-                  "end": 25
+                  "start": 18,
+                  "end": 19
                 }
               },
               "isPack": false,
@@ -1506,8 +1503,8 @@
                 "end": 22
               },
               "column": {
-                "start": 24,
-                "end": 25
+                "start": 18,
+                "end": 19
               }
             }
           ],
@@ -1518,6 +1515,31 @@
               "typeAnnotation": {
                 "type": "TypeReference",
                 "base": "A",
+                "typeArguments": [],
+                "line": {
+                  "start": 22,
+                  "end": 22
+                },
+                "column": {
+                  "start": 24,
+                  "end": 25
+                }
+              },
+              "line": {
+                "start": 22,
+                "end": 22
+              },
+              "column": {
+                "start": 21,
+                "end": 25
+              }
+            },
+            {
+              "type": "FunctionParameter",
+              "name": "b",
+              "typeAnnotation": {
+                "type": "TypeReference",
+                "base": "B",
                 "typeArguments": [],
                 "line": {
                   "start": 22,
@@ -1536,31 +1558,6 @@
                 "start": 27,
                 "end": 31
               }
-            },
-            {
-              "type": "FunctionParameter",
-              "name": "b",
-              "typeAnnotation": {
-                "type": "TypeReference",
-                "base": "B",
-                "typeArguments": [],
-                "line": {
-                  "start": 22,
-                  "end": 22
-                },
-                "column": {
-                  "start": 36,
-                  "end": 37
-                }
-              },
-              "line": {
-                "start": 22,
-                "end": 22
-              },
-              "column": {
-                "start": 33,
-                "end": 37
-              }
             }
           ],
           "hasVarargs": false,
@@ -1577,8 +1574,8 @@
                   "end": 22
                 },
                 "column": {
-                  "start": 45,
-                  "end": 46
+                  "start": 39,
+                  "end": 40
                 }
               },
               {
@@ -1590,8 +1587,8 @@
                   "end": 22
                 },
                 "column": {
-                  "start": 48,
-                  "end": 49
+                  "start": 42,
+                  "end": 43
                 }
               }
             ],
@@ -1600,8 +1597,8 @@
               "end": 22
             },
             "column": {
-              "start": 40,
-              "end": 50
+              "start": 34,
+              "end": 44
             }
           },
           "body": {
@@ -1702,7 +1699,7 @@
             "end": 24
           },
           "column": {
-            "start": 20,
+            "start": 14,
             "end": 4
           }
         },

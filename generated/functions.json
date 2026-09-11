@@ -5,7 +5,6 @@
     "statements": [
       {
         "type": "FunctionDeclaration",
-        "kind": "const",
         "name": {
           "type": "Identifier",
           "name": "makeEnemy",
@@ -14,8 +13,8 @@
             "end": 3
           },
           "column": {
-            "start": 16,
-            "end": 25
+            "start": 10,
+            "end": 19
           }
         },
         "func": {
@@ -38,8 +37,8 @@
                         "end": 3
                       },
                       "column": {
-                        "start": 28,
-                        "end": 32
+                        "start": 22,
+                        "end": 26
                       }
                     },
                     "computed": false,
@@ -51,8 +50,8 @@
                         "end": 3
                       },
                       "column": {
-                        "start": 28,
-                        "end": 32
+                        "start": 22,
+                        "end": 26
                       }
                     },
                     "shorthand": true,
@@ -61,8 +60,8 @@
                       "end": 3
                     },
                     "column": {
-                      "start": 28,
-                      "end": 32
+                      "start": 22,
+                      "end": 26
                     }
                   },
                   {
@@ -75,8 +74,8 @@
                         "end": 3
                       },
                       "column": {
-                        "start": 34,
-                        "end": 36
+                        "start": 28,
+                        "end": 30
                       }
                     },
                     "computed": false,
@@ -88,8 +87,8 @@
                         "end": 3
                       },
                       "column": {
-                        "start": 34,
-                        "end": 36
+                        "start": 28,
+                        "end": 30
                       }
                     },
                     "default": {
@@ -101,8 +100,8 @@
                         "end": 3
                       },
                       "column": {
-                        "start": 39,
-                        "end": 42
+                        "start": 33,
+                        "end": 36
                       }
                     },
                     "shorthand": true,
@@ -111,8 +110,8 @@
                       "end": 3
                     },
                     "column": {
-                      "start": 34,
-                      "end": 42
+                      "start": 28,
+                      "end": 36
                     }
                   },
                   {
@@ -125,8 +124,8 @@
                         "end": 3
                       },
                       "column": {
-                        "start": 44,
-                        "end": 47
+                        "start": 38,
+                        "end": 41
                       }
                     },
                     "computed": false,
@@ -143,8 +142,8 @@
                               "end": 3
                             },
                             "column": {
-                              "start": 51,
-                              "end": 52
+                              "start": 45,
+                              "end": 46
                             }
                           },
                           "computed": false,
@@ -156,8 +155,8 @@
                               "end": 3
                             },
                             "column": {
-                              "start": 51,
-                              "end": 52
+                              "start": 45,
+                              "end": 46
                             }
                           },
                           "default": {
@@ -169,8 +168,8 @@
                               "end": 3
                             },
                             "column": {
-                              "start": 55,
-                              "end": 56
+                              "start": 49,
+                              "end": 50
                             }
                           },
                           "shorthand": true,
@@ -179,8 +178,8 @@
                             "end": 3
                           },
                           "column": {
-                            "start": 51,
-                            "end": 56
+                            "start": 45,
+                            "end": 50
                           }
                         },
                         {
@@ -193,8 +192,8 @@
                               "end": 3
                             },
                             "column": {
-                              "start": 58,
-                              "end": 59
+                              "start": 52,
+                              "end": 53
                             }
                           },
                           "computed": false,
@@ -206,8 +205,8 @@
                               "end": 3
                             },
                             "column": {
-                              "start": 58,
-                              "end": 59
+                              "start": 52,
+                              "end": 53
                             }
                           },
                           "default": {
@@ -219,8 +218,8 @@
                               "end": 3
                             },
                             "column": {
-                              "start": 62,
-                              "end": 63
+                              "start": 56,
+                              "end": 57
                             }
                           },
                           "shorthand": true,
@@ -229,8 +228,8 @@
                             "end": 3
                           },
                           "column": {
-                            "start": 58,
-                            "end": 63
+                            "start": 52,
+                            "end": 57
                           }
                         }
                       ],
@@ -239,8 +238,8 @@
                         "end": 3
                       },
                       "column": {
-                        "start": 49,
-                        "end": 65
+                        "start": 43,
+                        "end": 59
                       }
                     },
                     "shorthand": false,
@@ -249,8 +248,8 @@
                       "end": 3
                     },
                     "column": {
-                      "start": 44,
-                      "end": 65
+                      "start": 38,
+                      "end": 59
                     }
                   }
                 ],
@@ -259,8 +258,8 @@
                   "end": 3
                 },
                 "column": {
-                  "start": 26,
-                  "end": 67
+                  "start": 20,
+                  "end": 61
                 }
               },
               "line": {
@@ -268,8 +267,8 @@
                 "end": 3
               },
               "column": {
-                "start": 26,
-                "end": 67
+                "start": 20,
+                "end": 61
               }
             }
           ],
@@ -426,7 +425,7 @@
             "end": 5
           },
           "column": {
-            "start": 25,
+            "start": 19,
             "end": 4
           }
         },
@@ -441,7 +440,6 @@
       },
       {
         "type": "FunctionDeclaration",
-        "kind": "const",
         "name": {
           "type": "Identifier",
           "name": "sum",
@@ -450,8 +448,8 @@
             "end": 7
           },
           "column": {
-            "start": 16,
-            "end": 19
+            "start": 10,
+            "end": 13
           }
         },
         "func": {
@@ -474,8 +472,8 @@
                         "end": 7
                       },
                       "column": {
-                        "start": 21,
-                        "end": 22
+                        "start": 15,
+                        "end": 16
                       }
                     },
                     "line": {
@@ -483,8 +481,8 @@
                       "end": 7
                     },
                     "column": {
-                      "start": 21,
-                      "end": 22
+                      "start": 15,
+                      "end": 16
                     }
                   },
                   {
@@ -497,8 +495,8 @@
                         "end": 7
                       },
                       "column": {
-                        "start": 24,
-                        "end": 25
+                        "start": 18,
+                        "end": 19
                       }
                     },
                     "line": {
@@ -506,8 +504,8 @@
                       "end": 7
                     },
                     "column": {
-                      "start": 24,
-                      "end": 25
+                      "start": 18,
+                      "end": 19
                     }
                   },
                   {
@@ -520,8 +518,8 @@
                         "end": 7
                       },
                       "column": {
-                        "start": 27,
-                        "end": 28
+                        "start": 21,
+                        "end": 22
                       }
                     },
                     "default": {
@@ -533,8 +531,8 @@
                         "end": 7
                       },
                       "column": {
-                        "start": 31,
-                        "end": 32
+                        "start": 25,
+                        "end": 26
                       }
                     },
                     "line": {
@@ -542,8 +540,8 @@
                       "end": 7
                     },
                     "column": {
-                      "start": 27,
-                      "end": 32
+                      "start": 21,
+                      "end": 26
                     }
                   }
                 ],
@@ -552,8 +550,8 @@
                   "end": 7
                 },
                 "column": {
-                  "start": 20,
-                  "end": 33
+                  "start": 14,
+                  "end": 27
                 }
               },
               "typeAnnotation": {
@@ -567,8 +565,8 @@
                     "end": 7
                   },
                   "column": {
-                    "start": 35,
-                    "end": 41
+                    "start": 29,
+                    "end": 35
                   }
                 },
                 "line": {
@@ -576,8 +574,8 @@
                   "end": 7
                 },
                 "column": {
-                  "start": 35,
-                  "end": 43
+                  "start": 29,
+                  "end": 37
                 }
               },
               "line": {
@@ -585,8 +583,8 @@
                 "end": 7
               },
               "column": {
-                "start": 20,
-                "end": 43
+                "start": 14,
+                "end": 37
               }
             }
           ],
@@ -600,8 +598,8 @@
               "end": 7
             },
             "column": {
-              "start": 46,
-              "end": 52
+              "start": 40,
+              "end": 46
             }
           },
           "body": {
@@ -695,7 +693,7 @@
             "end": 9
           },
           "column": {
-            "start": 19,
+            "start": 13,
             "end": 4
           }
         },

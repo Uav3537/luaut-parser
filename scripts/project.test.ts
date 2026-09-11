@@ -7,7 +7,8 @@
 import { join, resolve } from "node:path"
 import {
     findConfig, loadConfig, resolveTypeLibraries, resolveModulePath, sourceMapTypes,
-    type ProjectHost,
+    parse, analyzeScopes, analyzeTypes, moduleExports, formatType,
+    type ProjectHost, type ModuleExports,
 } from "../src/index.js"
 
 const ROOT = resolve("/luaut-project")
@@ -112,12 +113,13 @@ const rel = (path: string | undefined): string | undefined =>
     check("types: a library brings its dependencies first", libraries(["roblox"]).files, [LUAU, ROBLOX])
     check("types: a library listed twice loads once", libraries(["luau", "roblox"]).files, [LUAU, ROBLOX])
     check("types: a full package name", libraries(["@luaut/roblox"]).files, [LUAU, ROBLOX])
-    check("types: a plain package when there is no @luaut one", libraries(["plain"]).files, ["node_modules/plain/index.d.luaut"])
+    check("types: a name is only looked for under @luaut", libraries(["plain"]),
+        { files: [], problems: ["Cannot find type library '@luaut/plain'. Install it with: npm i -D @luaut/plain"] })
     check("types: a folder and a file by relative path",
         libraries(["./local/types", "./local/defs.d.luaut"]).files, ["local/types/index.d.luaut", "local/defs.d.luaut"])
     check("types: node_modules is searched upward from a nested config", libraries(["luau"], "nested/").files, [LUAU])
     check("types: a missing library says how to install it", libraries(["nope"]),
-        { files: [], problems: ["Cannot find type library 'nope'. Install it with: npm i -D @luaut/nope"] })
+        { files: [], problems: ["Cannot find type library '@luaut/nope'. Install it with: npm i -D @luaut/nope"] })
 }
 
 // --- import paths -----------------------------------------------------------
@@ -174,6 +176,71 @@ const rel = (path: string | undefined): string | undefined =>
         types!.scriptFor(join(ROOT, "src/other.luaut")), undefined)
     check("sourcemap: invalid JSON is reported",
         sourceMapTypes("{ nope", join(ROOT, "sourcemap.json"), { classes }).problem?.startsWith("Invalid sourcemap"), true)
+}
+
+// --- the language -----------------------------------------------------------
+{
+    /** Scope and type errors of `code`, importing from the modules in `modules`. */
+    const analyze = (code: string, modules: Record<string, string> = {}) => {
+        const program = parse(code)
+        const scopes = analyzeScopes(program)
+        const resolveModule = (specifier: string): ModuleExports | undefined => {
+            const source = modules[specifier]
+            if (source === undefined) return undefined
+            const p = parse(source)
+            const s = analyzeScopes(p)
+            return moduleExports(p, s, analyzeTypes(p, s))
+        }
+        const types = analyzeTypes(program, scopes, { resolveModule })
+        const bindings: Record<string, string> = {}
+        for (const [id, type] of types.bindingType) bindings[scopes.bindings.get(id)!.name] = formatType(type)
+        return {
+            errors: [...scopes.diagnostics, ...types.diagnostics].map(d => d.message),
+            bindings,
+        }
+    }
+    const parseError = (code: string): string | undefined => {
+        try {
+            parse(code)
+            return undefined
+        } catch (error) {
+            return (error as Error).message.replace(/ \(\d+:\d+\).*$/, "").replace(/, got .*$/, "")
+        }
+    }
+
+    // Functions have no `const` / `let`: `function f()` declares `f`.
+    check("functions: `function name()` declares a function", analyze("function twice(n: number): number return n * 2 end\nconst four = twice(2)").bindings.four, "number")
+    check("functions: its name cannot be reassigned", analyze("function f() end\nf = nil").errors, ["Cannot assign to 'f' — it is a function"])
+    check("functions: `const function` is not luaut", parseError("const function f() end"),
+        "A function is declared as 'function name()'; 'const' does not apply to functions")
+    check("functions: exported with `export function`", analyze(`import { twice } from "./m"\nconst n = twice(1)`,
+        { "./m": "export function twice(n: number): number return n * 2 end" }).bindings.n, "number")
+
+    // `import * as`
+    const namespace = analyze(
+        `import * as Shapes from "./shapes"\nconst area = Shapes.area(2)\nconst c: Shapes.Circle = { r: 1 }\nconst d = Shapes.default`,
+        { "./shapes": "export type Circle = { r: number }\nexport function area(r: number): number return r * r end\nexport default 3" })
+    check("imports: `import * as` holds the module's exports", [namespace.bindings.area, namespace.bindings.c, namespace.bindings.d], ["number", "{ r: number }", "3"])
+    check("imports: and its types, by qualified name", namespace.errors, [])
+
+    // Imports are read-only.
+    check("imports: an imported name cannot be assigned",
+        analyze(`import { value } from "./m"\nvalue = 2`, { "./m": "export const value = 1" }).errors, ["Cannot assign to 'value' — it is an import"])
+    check("imports: nor can a module's exports through its namespace",
+        analyze(`import * as M from "./m"\nM.value = 2\nfunction M.extra() end`, { "./m": "export const value = 1" }).errors,
+        ["Cannot assign to a member of 'M' — a module's exports are read-only", "Cannot assign to a member of 'M' — a module's exports are read-only"])
+
+    // An empty array takes its type from where it is written.
+    check("arrays: an empty array fits an annotation", analyze([
+        "let waiting: thread[] = []",
+        "const config: { list: number[], nested: { names: string[] } } = { list: [], nested: { names: [] } }",
+        "function take(xs: string[]) end",
+        "take([])",
+        "let later: number[] = [1]",
+        "later = []",
+        "const grid: number[][] = [[], [1]]",
+    ].join("\n")).errors, [])
+    check("arrays: and still checks what it holds", analyze(`const wrong: number[] = ["a"]`).errors, ["Type 'string[]' is not assignable to 'number[]'"])
 }
 
 for (const failure of failures) console.log(`FAIL ${failure}`)

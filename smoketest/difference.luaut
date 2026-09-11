@@ -11,7 +11,7 @@
 --   opaque    keep                                     unknown - 1
 
 -- The motivating case ---------------------------------------------------------
-const function classify(a: unknown)
+function classify(a: unknown)
     if a == 1 then
         const one: 1 = a
         return one
@@ -21,7 +21,7 @@ const function classify(a: unknown)
 
     -- and the subtraction accumulates
     if a == 2 then
-        const two: 2 = a
+        const two = a
         return two
     end
     const neither: unknown - (1 | 2) = a
@@ -30,7 +30,7 @@ end
 
 -- Truthiness on an unknown is the same idea: the true branch is everything
 -- that is not falsy. (In Luau only `nil` and `false` are falsy.)
-const function truthiness(b: unknown)
+function truthiness(b: unknown)
     if b then
         const kept: unknown - (nil | false) = b
         return kept
@@ -40,7 +40,7 @@ const function truthiness(b: unknown)
 end
 
 -- Narrowing continues through a subtraction --------------------------------
-const function refine(v: unknown)
+function refine(v: unknown)
     if v ~= nil then
         const present: unknown - nil = v
         return present

@@ -3,10 +3,10 @@
  *
  * Nothing is loaded by default. An entry names a type library:
  *
- *   "luau"            the package `@luaut/luau`, then a package named `luau`
- *   "@luaut/roblox"   that package
- *   "./types"         a folder (its `package.json`, or `index.d.luaut`)
- *   "./defs.d.luaut"  that file
+ *   "roblox"          the package `@luaut/roblox` — any name, looked up there
+ *   "@luaut/roblox"   the same
+ *   "./types"         a folder of the project (its `package.json`, or `index.d.luaut`)
+ *   "./defs.d.luaut"  a file of the project
  *
  * A package is looked for in `node_modules` from the config's folder upward.
  * Its definitions file is `luaut.types` in its `package.json`, or
@@ -63,13 +63,13 @@ export function resolveTypeLibraries(config: LuautConfig, host: ProjectHost = no
             continue
         }
 
-        const names = entry.startsWith("@") || entry.includes("/") ? [entry] : [`@luaut/${entry}`, entry]
-        const found = names.map(name => findPackage(name, config.directory, host)).find(Boolean)
+        const name = entry.startsWith("@luaut/") ? entry : `@luaut/${entry}`
+        const found = findPackage(name, config.directory, host)
         if (found) addPackage(found.directory, found.file, new Set())
         else {
             problems.push({
                 file: config.path,
-                message: `Cannot find type library '${entry}'. Install it with: npm i -D ${names[0]}`,
+                message: `Cannot find type library '${name}'. Install it with: npm i -D ${name}`,
                 ...entryPosition(config, entry),
             })
         }

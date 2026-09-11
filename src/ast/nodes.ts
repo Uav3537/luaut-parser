@@ -39,12 +39,14 @@ export interface ImportStatement extends BaseNode {
     type: "ImportStatement"
     /** `import Default from '...'` */
     defaultImport?: Identifier
+    /** `import * as Module from '...'` — the module's exports as one value. */
+    namespaceImport?: Identifier
     /** `import { a, b as c } from '...'` */
     specifiers: ImportSpecifier[]
     source: StringLiteral
 }
 
-/** `export const x = 1`, `export let y = 2`, `export const function f() end` */
+/** `export const x = 1`, `export let y = 2`, `export function f() end` */
 export interface ExportStatement extends BaseNode {
     type: "ExportStatement"
     declaration: VariableDeclaration | FunctionDeclaration
@@ -209,11 +211,12 @@ export interface ArrayPatternElement extends BaseNode {
     default?: Expression
 }
 
-/** `const function f() ... end` / `let function f() ... end` — a named,
- *  self-referential (recursive) function binding. */
+/** `function f() ... end` — declares `f` in the enclosing scope, visible to
+ *  its own body (so it can recurse). Like TypeScript's function declaration,
+ *  the name cannot be reassigned. `function a.b() end` and `function T:m() end`
+ *  assign to a member instead: see `FunctionDeclarationStatement`. */
 export interface FunctionDeclaration extends BaseNode {
     type: "FunctionDeclaration"
-    kind: "const" | "let"
     name: Identifier
     func: FunctionBody
     attributes?: string[]
@@ -221,6 +224,7 @@ export interface FunctionDeclaration extends BaseNode {
     signatures?: FunctionSignature[]
 }
 
+/** `function a.b() end` / `function T:m() end` — defines a member. */
 export interface FunctionDeclarationStatement extends BaseNode {
     type: "FunctionDeclarationStatement"
     target: FunctionName

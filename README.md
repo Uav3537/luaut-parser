@@ -71,10 +71,10 @@ npm i -D @luaut/roblox        # or just @luaut/luau
 - **Which config applies** — the nearest one in the file's folder or above.
   `luaut.config.json` and `luaut.config.jsonc` in the same folder is an error.
   Both forms accept comments and trailing commas.
-- **`types`** — `"luau"` is looked up as `@luaut/luau`, then as a package named
-  `luau`, in `node_modules` from the config upward. A full package name or a
-  relative path (`"./types"`, `"./defs.d.luaut"`) works too. A type library's
-  own type-library dependencies load first.
+- **`types`** — any name, looked up as the package `@luaut/<name>` in
+  `node_modules` from the config upward; one that is not installed is an
+  error. A relative path (`"./types"`, `"./defs.d.luaut"`) loads the project's
+  own definitions. A type library's own type-library dependencies load first.
 - **`paths`** — tsconfig rules: an exact pattern wins, then the `*` pattern
   with the longest prefix; targets resolve from `baseUrl` (default: the
   config's folder).
@@ -105,6 +105,17 @@ TypeScript syntax and semantics wherever they fit, Lua semantics where they
 must.
 
 **Declarations** — `const` and `let` only; Lua's `local` is gone.
+
+**Functions** — `function name() ... end` declares `name` in the enclosing
+scope; like a TypeScript function declaration it cannot be reassigned.
+`const` and `let` do not apply to functions. `function T.name()` and
+`function T:name()` define a member.
+
+**Modules** — `import { a, b as c } from "./m"`, `import D from "./m"` and
+`import * as M from "./m"`; `export const`, `export function`, `export default`,
+`export { a as b }`, `export { a } from "./m"` and `export * from "./m"`.
+Imports are read-only: assigning to an imported name, or to a member of a
+namespace (`M.x = 1`), is an error.
 
 **Optionality** — there is no `T?` shorthand. `?` in type position always
 belongs to a conditional type, and in expression position to a ternary.
@@ -149,6 +160,10 @@ operand and then the right one, as Luau does. So `Vector3 + Vector3` and
 **Qualified type names** — a definitions file may declare `Enum.Material`
 (`declare class Enum.Material extends EnumItem {}`), and code writes it the
 same way.
+
+**Contextual typing** — an expression takes its type from where it is
+written, as in TypeScript: `let queue: thread[] = []` is a `thread[]`, and so
+is `[]` passed where one is expected, including inside an object literal.
 
 **Calls** — every argument is checked against its parameter, and a generic
 parameter against its constraint (`GetService<K extends keyof Services>`

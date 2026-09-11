@@ -6,20 +6,20 @@
 -- if/else where every branch does.
 
 -- Early return, both directions ---------------------------------------------
-const function orEmpty(v: string | nil): string
+function orEmpty(v: string | nil): string
     if v == nil then return "" end
     const present: string = v
     return present
 end
 
-const function onlyNil(v: string | nil): string
+function onlyNil(v: string | nil): string
     if v ~= nil then return v end
     const absent: nil = v
     return ""
 end
 
 -- A `do` block that returns still exits.
-const function viaDoBlock(v: string | nil): string
+function viaDoBlock(v: string | nil): string
     if v == nil then
         do return "" end
     end
@@ -29,7 +29,7 @@ end
 
 -- Loops ----------------------------------------------------------------------
 -- `continue` skips the rest of the iteration, so the code below it is narrowed.
-const function lengths(items: (string | nil)[]): number
+function lengths(items: (string | nil)[]): number
     let total = 0
     for _, item in items do
         if item == nil then continue end
@@ -40,7 +40,7 @@ const function lengths(items: (string | nil)[]): number
 end
 
 -- `break` leaves the loop, so the code after it in the body is narrowed too.
-const function firstNil(items: (string | nil)[]): number
+function firstNil(items: (string | nil)[]): number
     let seen = 0
     for _, item in items do
         if item == nil then break end
@@ -52,7 +52,7 @@ end
 
 -- A `while` is left either because its condition failed or by a `break`, and
 -- the state after it is the join of those. `while true` has only the second.
-const function settle(v: string | nil): string
+function settle(v: string | nil): string
     while true do
         if v ~= nil then break end
         v = "fallback"
@@ -62,7 +62,7 @@ const function settle(v: string | nil): string
 end
 
 -- `repeat` runs its body at least once, so afterwards the `until` holds.
-const function untilSet(v: string | nil): string
+function untilSet(v: string | nil): string
     repeat
         v = "fallback"
     until v ~= nil

@@ -1,11 +1,11 @@
 -- Imported by modules.luaut.
 
-export const function clamp(x: number, lo: number, hi: number): number
+export function clamp(x: number, lo: number, hi: number): number
     if x < lo then return lo end
     if x > hi then return hi end
     return x
 end
 
-export const function lerp(a: number, b: number, t: number): number
+export function lerp(a: number, b: number, t: number): number
     return a + (b - a) * t
 end

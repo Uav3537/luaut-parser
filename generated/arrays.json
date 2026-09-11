@@ -765,7 +765,6 @@
       },
       {
         "type": "FunctionDeclaration",
-        "kind": "const",
         "name": {
           "type": "Identifier",
           "name": "firstTwo",
@@ -774,8 +773,8 @@
             "end": 18
           },
           "column": {
-            "start": 16,
-            "end": 24
+            "start": 10,
+            "end": 18
           }
         },
         "func": {
@@ -796,8 +795,8 @@
                     "end": 18
                   },
                   "column": {
-                    "start": 29,
-                    "end": 35
+                    "start": 23,
+                    "end": 29
                   }
                 },
                 "line": {
@@ -805,8 +804,8 @@
                   "end": 18
                 },
                 "column": {
-                  "start": 29,
-                  "end": 37
+                  "start": 23,
+                  "end": 31
                 }
               },
               "line": {
@@ -814,8 +813,8 @@
                 "end": 18
               },
               "column": {
-                "start": 25,
-                "end": 37
+                "start": 19,
+                "end": 31
               }
             }
           ],
@@ -831,8 +830,8 @@
                 "end": 18
               },
               "column": {
-                "start": 40,
-                "end": 46
+                "start": 34,
+                "end": 40
               }
             },
             "line": {
@@ -840,8 +839,8 @@
               "end": 18
             },
             "column": {
-              "start": 40,
-              "end": 48
+              "start": 34,
+              "end": 42
             }
           },
           "body": {
@@ -960,7 +959,7 @@
             "end": 20
           },
           "column": {
-            "start": 24,
+            "start": 18,
             "end": 4
           }
         },
@@ -1141,23 +1140,70 @@
           "start": 1,
           "end": 61
         }
+      },
+      {
+        "type": "TypeAliasStatement",
+        "name": {
+          "type": "Identifier",
+          "name": "A",
+          "line": {
+            "start": 24,
+            "end": 24
+          },
+          "column": {
+            "start": 6,
+            "end": 7
+          }
+        },
+        "generics": [],
+        "definition": {
+          "type": "TypeofTypeNode",
+          "expression": {
+            "type": "Identifier",
+            "name": "matrix",
+            "line": {
+              "start": 24,
+              "end": 24
+            },
+            "column": {
+              "start": 17,
+              "end": 23
+            }
+          },
+          "line": {
+            "start": 24,
+            "end": 24
+          },
+          "column": {
+            "start": 10,
+            "end": 23
+          }
+        },
+        "line": {
+          "start": 24,
+          "end": 24
+        },
+        "column": {
+          "start": 1,
+          "end": 23
+        }
       }
     ],
     "line": {
       "start": 3,
-      "end": 22
+      "end": 24
     },
     "column": {
       "start": 1,
-      "end": 61
+      "end": 23
     }
   },
   "line": {
     "start": 3,
-    "end": 22
+    "end": 24
   },
   "column": {
     "start": 1,
-    "end": 61
+    "end": 23
   }
 }

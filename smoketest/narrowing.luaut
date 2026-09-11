@@ -4,7 +4,7 @@ type Shape =
     | { kind: "circle", radius: number }
     | { kind: "rect", w: number, h: number }
 
-const function area(shape: Shape): number
+function area(shape: Shape): number
     if shape.kind == "circle" then
         return 3.14159 * shape.radius * shape.radius
     else
@@ -12,7 +12,7 @@ const function area(shape: Shape): number
     end
 end
 
-const function firstWord(s?: string): string
+function firstWord(s?: string): string
     -- truthiness narrows `string | nil -> string`
     if not s then
         return ""
@@ -27,7 +27,7 @@ print(area({ kind: "circle", radius: 2 }), firstWord(nil), verbose)
 
 -- `or` refines only the false branch, where every operand's outcome is known.
 -- The true branch must keep the un-narrowed type.
-const function branches(a: string | number)
+function branches(a: string | number)
     if a == 1 or a == "x" then
         -- not refinable: `string | number`
         const inOr = a
@@ -38,7 +38,7 @@ end
 
 -- A binding assigned in only one branch keeps the other path's type after the
 -- `if` — here `flag` is `boolean` again, not the literal `true`.
-const function mergePaths(cond: boolean)
+function mergePaths(cond: boolean)
     let flag: boolean = false
     if cond then
         flag = true
@@ -48,7 +48,7 @@ end
 
 -- A declared property wins over the catch-all indexer for a known key.
 type Bag = { [string]: number, label: string }
-const function readBag(bag: Bag): string
+function readBag(bag: Bag): string
     return bag["label"]
 end
 

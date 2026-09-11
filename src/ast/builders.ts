@@ -333,23 +333,14 @@ export class Parser {
         if (t.type === "Punctuator" && (t as any).value === "@") {
             const { attributes, start } = this.parseAttributes()
             const next = this.current()
-            if (next.type === "Keyword" && ((next as any).value === "const" || (next as any).value === "let")) {
-                const stmt = this.parseVariableDeclaration()
-                if (stmt.type === "FunctionDeclaration") {
-                    stmt.attributes = attributes
-                    stmt.line.start = start.line.start
-                    stmt.column.start = start.column.start
-                }
-                return stmt
-            }
             if (next.type === "Keyword" && (next as any).value === "function") {
-                const stmt = this.parseFunctionDeclarationStatement()
+                const stmt = this.parseFunctionStatement()
                 stmt.attributes = attributes
                 stmt.line.start = start.line.start
                 stmt.column.start = start.column.start
                 return stmt
             }
-            throw new ParseError("Expected 'function', 'const', or 'let' after attribute", next.line.start, next.column.start)
+            throw new ParseError("Expected 'function' after an attribute", next.line.start, next.column.start)
         }
 
         if (t.type === "Keyword") {
@@ -361,7 +352,7 @@ export class Parser {
                 case "repeat": return this.parseRepeatStatement()
                 case "do": return this.parseDoStatement()
                 case "for": return this.parseForStatement()
-                case "function": return this.parseFunctionDeclarationStatement()
+                case "function": return this.parseFunctionStatement()
                 case "return": return this.parseReturnStatement()
                 case "import": return this.parseImportStatement()
                 case "export": return this.parseExportStatement()
@@ -482,18 +473,26 @@ export class Parser {
         let defaultImport: Identifier | undefined
         const specifiers: ImportSpecifier[] = []
 
-        if (this.checkType("Identifier")) {
-            const nameTok = this.expectIdentifier()
-            defaultImport = { type: "Identifier", name: nameTok.value as string, ...spanFrom(nameTok, nameTok) }
-            if (this.matchPunctuator(",")) {
-                this.expectPunctuator("{")
-                this.parseImportSpecifierList(specifiers)
-                this.expectPunctuator("}")
+        let namespaceImport: Identifier | undefined
+        // `{ a, b as c }` or `* as Module`, after an optional default import.
+        const parseBindings = (): void => {
+            if (this.checkOperator("*")) {
+                this.advance()
+                if (!this.checkKeyword("as")) this.error("Expected 'as' after 'import *'")
+                this.advance()
+                namespaceImport = this.parseIdentifier()
+                return
             }
-        } else {
             this.expectPunctuator("{")
             this.parseImportSpecifierList(specifiers)
             this.expectPunctuator("}")
+        }
+        if (this.checkType("Identifier")) {
+            const nameTok = this.expectIdentifier()
+            defaultImport = { type: "Identifier", name: nameTok.value as string, ...spanFrom(nameTok, nameTok) }
+            if (this.matchPunctuator(",")) parseBindings()
+        } else {
+            parseBindings()
         }
 
         if (!this.checkKeyword("from")) {
@@ -513,7 +512,7 @@ export class Parser {
             ...spanFrom(sourceTok, sourceTok),
         }
 
-        return { type: "ImportStatement", defaultImport, specifiers, source, ...spanFrom(start, this.previous()) }
+        return { type: "ImportStatement", defaultImport, namespaceImport, specifiers, source, ...spanFrom(start, this.previous()) }
     }
 
     private parseImportSpecifierList(out: ImportSpecifier[]): void {
@@ -553,7 +552,7 @@ export class Parser {
         }
     }
 
-    // `export const ...` / `export let ...` / `export const function ...` /
+    // `export const ...` / `export let ...` / `export function ...` /
     // `export type ...` / `export default <expr>`
     private parseExportStatement():
         ExportStatement | ExportTypeAliasStatement | ExportDefaultStatement | ExportNamedStatement | ExportAllStatement {
@@ -574,6 +573,12 @@ export class Parser {
         if (this.checkKeyword("const") || this.checkKeyword("let")) {
             const declaration = this.parseVariableDeclaration()
             return { type: "ExportStatement", declaration, ...spanFrom(start, this.previous()) }
+        }
+
+        if (this.checkKeyword("function")) {
+            const declaration = this.parseFunctionStatement()
+            if (declaration.type !== "FunctionDeclaration") this.error("An exported function needs a plain name: 'export function name()'")
+            return { type: "ExportStatement", declaration: declaration as FunctionDeclaration, ...spanFrom(start, this.previous()) }
         }
 
         // `export { a, b as c }` / `export { a } from "./x"`
@@ -603,17 +608,17 @@ export class Parser {
             return { type: "ExportAllStatement", source, ...spanFrom(start, this.previous()) }
         }
 
-        this.error("Expected 'const', 'let', 'type', 'default', '{' or '*' after 'export'")
+        this.error("Expected 'const', 'let', 'function', 'type', 'default', '{' or '*' after 'export'")
     }
 
-    // `const x = ...` / `let x, y = ...` / `const function f() ... end`.
+    // `const x = ...` / `let x, y = ...`.
     // luaut has no `local` — `const` bindings are immutable, `let` mutable.
-    private parseVariableDeclaration(): VariableDeclaration | FunctionDeclaration {
+    private parseVariableDeclaration(): VariableDeclaration {
         const start = this.current()
         const kind = (this.advance() as any).value as "const" | "let"
 
-        if (this.matchKeyword("function")) {
-            return this.parseFunctionDeclarationRest(start, kind)
+        if (this.checkKeyword("function")) {
+            this.error(`A function is declared as 'function name()'; '${kind}' does not apply to functions`)
         }
 
         const names = [this.parseBindingTarget(true)]
@@ -629,29 +634,6 @@ export class Parser {
         }
 
         return { type: "VariableDeclaration", kind, names, init, ...spanFrom(start, this.previous()) }
-    }
-
-    /** `const/let function` — `function` already consumed. Collects TS-style
-     *  overload signatures. */
-    private parseFunctionDeclarationRest(start: Token, kind: "const" | "let"): FunctionDeclaration {
-        const name = this.parseIdentifier()
-        const signatures: FunctionSignature[] = []
-        while (true) {
-            const head = this.parseFunctionHead()
-            if (this.isOverloadContinuation(name.name, kind)) {
-                signatures.push(this.headToSignature(head))
-                this.advance() // consume 'const' / 'let'
-                this.expectKeyword("function")
-                this.parseIdentifier() // consume the repeated name
-                continue
-            }
-            const func = this.headToBody(head)
-            return {
-                type: "FunctionDeclaration", kind, name, func,
-                signatures: signatures.length ? signatures : undefined,
-                ...spanFrom(start, this.previous()),
-            }
-        }
     }
 
     private parseIfStatement(): IfStatement {
@@ -750,7 +732,9 @@ export class Parser {
         }
     }
 
-    private parseFunctionDeclarationStatement(): FunctionDeclarationStatement {
+    /** `function name() end` declares `name`; `function a.b() end` and
+     *  `function T:m() end` define a member. */
+    private parseFunctionStatement(): FunctionDeclaration | FunctionDeclarationStatement {
         const start = this.current()
         this.expectKeyword("function")
         const target = this.parseFunctionName()
@@ -769,6 +753,13 @@ export class Parser {
                 continue
             }
             const func = this.headToBody(head)
+            if (simpleName !== undefined) {
+                return {
+                    type: "FunctionDeclaration", name: target.base, func,
+                    signatures: signatures.length ? signatures : undefined,
+                    ...spanFrom(start, this.previous()),
+                }
+            }
             if (isMethod) {
                 // `function T:m(a)` is `function T.m(self, a)`. The `self`
                 // parameter is made real here so every later pass — scopes,
@@ -786,14 +777,8 @@ export class Parser {
 
     /** After a bodyless function head, is the next token the start of another
      *  declaration for the same simple `name` (making the head an overload
-     *  signature rather than an implementation)? `kind` is set for a
-     *  `const/let function` group, undefined for a bare `function` group. */
-    private isOverloadContinuation(name: string, kind?: "const" | "let"): boolean {
-        if (kind) {
-            return this.checkKeyword(kind) &&
-                this.peek(1).type === "Keyword" && (this.peek(1) as any).value === "function" &&
-                this.peek(2).type === "Identifier" && (this.peek(2) as any).value === name
-        }
+     *  signature rather than an implementation)? */
+    private isOverloadContinuation(name: string): boolean {
         return this.checkKeyword("function") &&
             this.peek(1).type === "Identifier" && (this.peek(1) as any).value === name
     }

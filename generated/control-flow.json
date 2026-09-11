@@ -5,7 +5,6 @@
     "statements": [
       {
         "type": "FunctionDeclaration",
-        "kind": "const",
         "name": {
           "type": "Identifier",
           "name": "orEmpty",
@@ -14,8 +13,8 @@
             "end": 9
           },
           "column": {
-            "start": 16,
-            "end": 23
+            "start": 10,
+            "end": 17
           }
         },
         "func": {
@@ -37,8 +36,8 @@
                       "end": 9
                     },
                     "column": {
-                      "start": 27,
-                      "end": 33
+                      "start": 21,
+                      "end": 27
                     }
                   },
                   {
@@ -50,8 +49,8 @@
                       "end": 9
                     },
                     "column": {
-                      "start": 36,
-                      "end": 39
+                      "start": 30,
+                      "end": 33
                     }
                   }
                 ],
@@ -60,8 +59,8 @@
                   "end": 9
                 },
                 "column": {
-                  "start": 27,
-                  "end": 39
+                  "start": 21,
+                  "end": 33
                 }
               },
               "line": {
@@ -69,8 +68,8 @@
                 "end": 9
               },
               "column": {
-                "start": 24,
-                "end": 39
+                "start": 18,
+                "end": 33
               }
             }
           ],
@@ -84,8 +83,8 @@
               "end": 9
             },
             "column": {
-              "start": 42,
-              "end": 48
+              "start": 36,
+              "end": 42
             }
           },
           "body": {
@@ -282,7 +281,7 @@
             "end": 13
           },
           "column": {
-            "start": 23,
+            "start": 17,
             "end": 4
           }
         },
@@ -297,7 +296,6 @@
       },
       {
         "type": "FunctionDeclaration",
-        "kind": "const",
         "name": {
           "type": "Identifier",
           "name": "onlyNil",
@@ -306,8 +304,8 @@
             "end": 15
           },
           "column": {
-            "start": 16,
-            "end": 23
+            "start": 10,
+            "end": 17
           }
         },
         "func": {
@@ -329,8 +327,8 @@
                       "end": 15
                     },
                     "column": {
-                      "start": 27,
-                      "end": 33
+                      "start": 21,
+                      "end": 27
                     }
                   },
                   {
@@ -342,8 +340,8 @@
                       "end": 15
                     },
                     "column": {
-                      "start": 36,
-                      "end": 39
+                      "start": 30,
+                      "end": 33
                     }
                   }
                 ],
@@ -352,8 +350,8 @@
                   "end": 15
                 },
                 "column": {
-                  "start": 27,
-                  "end": 39
+                  "start": 21,
+                  "end": 33
                 }
               },
               "line": {
@@ -361,8 +359,8 @@
                 "end": 15
               },
               "column": {
-                "start": 24,
-                "end": 39
+                "start": 18,
+                "end": 33
               }
             }
           ],
@@ -376,8 +374,8 @@
               "end": 15
             },
             "column": {
-              "start": 42,
-              "end": 48
+              "start": 36,
+              "end": 42
             }
           },
           "body": {
@@ -574,7 +572,7 @@
             "end": 19
           },
           "column": {
-            "start": 23,
+            "start": 17,
             "end": 4
           }
         },
@@ -589,7 +587,6 @@
       },
       {
         "type": "FunctionDeclaration",
-        "kind": "const",
         "name": {
           "type": "Identifier",
           "name": "viaDoBlock",
@@ -598,8 +595,8 @@
             "end": 22
           },
           "column": {
-            "start": 16,
-            "end": 26
+            "start": 10,
+            "end": 20
           }
         },
         "func": {
@@ -621,8 +618,8 @@
                       "end": 22
                     },
                     "column": {
-                      "start": 30,
-                      "end": 36
+                      "start": 24,
+                      "end": 30
                     }
                   },
                   {
@@ -634,8 +631,8 @@
                       "end": 22
                     },
                     "column": {
-                      "start": 39,
-                      "end": 42
+                      "start": 33,
+                      "end": 36
                     }
                   }
                 ],
@@ -644,8 +641,8 @@
                   "end": 22
                 },
                 "column": {
-                  "start": 30,
-                  "end": 42
+                  "start": 24,
+                  "end": 36
                 }
               },
               "line": {
@@ -653,8 +650,8 @@
                 "end": 22
               },
               "column": {
-                "start": 27,
-                "end": 42
+                "start": 21,
+                "end": 36
               }
             }
           ],
@@ -668,8 +665,8 @@
               "end": 22
             },
             "column": {
-              "start": 45,
-              "end": 51
+              "start": 39,
+              "end": 45
             }
           },
           "body": {
@@ -890,7 +887,7 @@
             "end": 28
           },
           "column": {
-            "start": 26,
+            "start": 20,
             "end": 4
           }
         },
@@ -905,7 +902,6 @@
       },
       {
         "type": "FunctionDeclaration",
-        "kind": "const",
         "name": {
           "type": "Identifier",
           "name": "lengths",
@@ -914,8 +910,8 @@
             "end": 32
           },
           "column": {
-            "start": 16,
-            "end": 23
+            "start": 10,
+            "end": 17
           }
         },
         "func": {
@@ -941,8 +937,8 @@
                           "end": 32
                         },
                         "column": {
-                          "start": 32,
-                          "end": 38
+                          "start": 26,
+                          "end": 32
                         }
                       },
                       {
@@ -954,8 +950,8 @@
                           "end": 32
                         },
                         "column": {
-                          "start": 41,
-                          "end": 44
+                          "start": 35,
+                          "end": 38
                         }
                       }
                     ],
@@ -964,8 +960,8 @@
                       "end": 32
                     },
                     "column": {
-                      "start": 32,
-                      "end": 44
+                      "start": 26,
+                      "end": 38
                     }
                   },
                   "line": {
@@ -973,8 +969,8 @@
                     "end": 32
                   },
                   "column": {
-                    "start": 31,
-                    "end": 45
+                    "start": 25,
+                    "end": 39
                   }
                 },
                 "line": {
@@ -982,8 +978,8 @@
                   "end": 32
                 },
                 "column": {
-                  "start": 31,
-                  "end": 47
+                  "start": 25,
+                  "end": 41
                 }
               },
               "line": {
@@ -991,8 +987,8 @@
                 "end": 32
               },
               "column": {
-                "start": 24,
-                "end": 47
+                "start": 18,
+                "end": 41
               }
             }
           ],
@@ -1006,8 +1002,8 @@
               "end": 32
             },
             "column": {
-              "start": 50,
-              "end": 56
+              "start": 44,
+              "end": 50
             }
           },
           "body": {
@@ -1369,7 +1365,7 @@
             "end": 40
           },
           "column": {
-            "start": 23,
+            "start": 17,
             "end": 4
           }
         },
@@ -1384,7 +1380,6 @@
       },
       {
         "type": "FunctionDeclaration",
-        "kind": "const",
         "name": {
           "type": "Identifier",
           "name": "firstNil",
@@ -1393,8 +1388,8 @@
             "end": 43
           },
           "column": {
-            "start": 16,
-            "end": 24
+            "start": 10,
+            "end": 18
           }
         },
         "func": {
@@ -1420,8 +1415,8 @@
                           "end": 43
                         },
                         "column": {
-                          "start": 33,
-                          "end": 39
+                          "start": 27,
+                          "end": 33
                         }
                       },
                       {
@@ -1433,8 +1428,8 @@
                           "end": 43
                         },
                         "column": {
-                          "start": 42,
-                          "end": 45
+                          "start": 36,
+                          "end": 39
                         }
                       }
                     ],
@@ -1443,8 +1438,8 @@
                       "end": 43
                     },
                     "column": {
-                      "start": 33,
-                      "end": 45
+                      "start": 27,
+                      "end": 39
                     }
                   },
                   "line": {
@@ -1452,8 +1447,8 @@
                     "end": 43
                   },
                   "column": {
-                    "start": 32,
-                    "end": 46
+                    "start": 26,
+                    "end": 40
                   }
                 },
                 "line": {
@@ -1461,8 +1456,8 @@
                   "end": 43
                 },
                 "column": {
-                  "start": 32,
-                  "end": 48
+                  "start": 26,
+                  "end": 42
                 }
               },
               "line": {
@@ -1470,8 +1465,8 @@
                 "end": 43
               },
               "column": {
-                "start": 25,
-                "end": 48
+                "start": 19,
+                "end": 42
               }
             }
           ],
@@ -1485,8 +1480,8 @@
               "end": 43
             },
             "column": {
-              "start": 51,
-              "end": 57
+              "start": 45,
+              "end": 51
             }
           },
           "body": {
@@ -1848,7 +1843,7 @@
             "end": 51
           },
           "column": {
-            "start": 24,
+            "start": 18,
             "end": 4
           }
         },
@@ -1863,7 +1858,6 @@
       },
       {
         "type": "FunctionDeclaration",
-        "kind": "const",
         "name": {
           "type": "Identifier",
           "name": "settle",
@@ -1872,8 +1866,8 @@
             "end": 55
           },
           "column": {
-            "start": 16,
-            "end": 22
+            "start": 10,
+            "end": 16
           }
         },
         "func": {
@@ -1895,8 +1889,8 @@
                       "end": 55
                     },
                     "column": {
-                      "start": 26,
-                      "end": 32
+                      "start": 20,
+                      "end": 26
                     }
                   },
                   {
@@ -1908,8 +1902,8 @@
                       "end": 55
                     },
                     "column": {
-                      "start": 35,
-                      "end": 38
+                      "start": 29,
+                      "end": 32
                     }
                   }
                 ],
@@ -1918,8 +1912,8 @@
                   "end": 55
                 },
                 "column": {
-                  "start": 26,
-                  "end": 38
+                  "start": 20,
+                  "end": 32
                 }
               },
               "line": {
@@ -1927,8 +1921,8 @@
                 "end": 55
               },
               "column": {
-                "start": 23,
-                "end": 38
+                "start": 17,
+                "end": 32
               }
             }
           ],
@@ -1942,8 +1936,8 @@
               "end": 55
             },
             "column": {
-              "start": 41,
-              "end": 47
+              "start": 35,
+              "end": 41
             }
           },
           "body": {
@@ -2201,7 +2195,7 @@
             "end": 62
           },
           "column": {
-            "start": 22,
+            "start": 16,
             "end": 4
           }
         },
@@ -2216,7 +2210,6 @@
       },
       {
         "type": "FunctionDeclaration",
-        "kind": "const",
         "name": {
           "type": "Identifier",
           "name": "untilSet",
@@ -2225,8 +2218,8 @@
             "end": 65
           },
           "column": {
-            "start": 16,
-            "end": 24
+            "start": 10,
+            "end": 18
           }
         },
         "func": {
@@ -2248,8 +2241,8 @@
                       "end": 65
                     },
                     "column": {
-                      "start": 28,
-                      "end": 34
+                      "start": 22,
+                      "end": 28
                     }
                   },
                   {
@@ -2261,8 +2254,8 @@
                       "end": 65
                     },
                     "column": {
-                      "start": 37,
-                      "end": 40
+                      "start": 31,
+                      "end": 34
                     }
                   }
                 ],
@@ -2271,8 +2264,8 @@
                   "end": 65
                 },
                 "column": {
-                  "start": 28,
-                  "end": 40
+                  "start": 22,
+                  "end": 34
                 }
               },
               "line": {
@@ -2280,8 +2273,8 @@
                 "end": 65
               },
               "column": {
-                "start": 25,
-                "end": 40
+                "start": 19,
+                "end": 34
               }
             }
           ],
@@ -2295,8 +2288,8 @@
               "end": 65
             },
             "column": {
-              "start": 43,
-              "end": 49
+              "start": 37,
+              "end": 43
             }
           },
           "body": {
@@ -2494,7 +2487,7 @@
             "end": 71
           },
           "column": {
-            "start": 24,
+            "start": 18,
             "end": 4
           }
         },
