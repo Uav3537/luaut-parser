@@ -412,6 +412,24 @@ const rel = (path: string | undefined): string | undefined =>
         ], ["print", "a", "b", "part", "n", "c", "s", "d"]])
     }
 
+    // `export type X = typeof value` reads the value, as a plain alias does.
+    const classes = [
+        "export const DefaultClass = [\"Sans\", \"Asgore\"] as const",
+        "export type DefaultClassType = typeof DefaultClass",
+        "export type DefaultClassName = (typeof DefaultClass)[number]",
+    ].join("\n")
+    const exportedQuery = analyze([
+        "import type { DefaultClassType, DefaultClassName } from \"./classes\"",
+        "declare tuple: DefaultClassType",
+        "declare name: DefaultClassName",
+        "const t = tuple",
+        "const n = name",
+        "const bad: DefaultClassName = \"Nope\"",
+    ].join("\n"), { "./classes": classes })
+    check("type queries: an exported alias of `typeof` a value, imported elsewhere",
+        [exportedQuery.bindings.t, exportedQuery.bindings.n, exportedQuery.errors],
+        ["DefaultClassType", "DefaultClassName", [`Type '"Nope"' is not assignable to '"Sans" | "Asgore"'`]])
+
     // `--@luaut-...` comments switch checking off.
     const directed = (code: string) => {
         const { program, directives } = parseWithRecovery(code)

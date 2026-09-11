@@ -510,7 +510,7 @@ class Analyzer {
                 // Type-level names live in a separate namespace from value
                 // bindings, but a `typeof x` inside the definition reads a
                 // value.
-                this.visitType((stmt as { definition?: TypeNode }).definition, scope)
+                this.visitType(stmt.type === "TypeAliasStatement" ? stmt.definition : stmt.alias.definition, scope)
                 return
 
             case "ImportStatement": {
