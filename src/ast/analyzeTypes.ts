@@ -444,6 +444,48 @@ function unwrapParens(e: Expression): Expression {
     return e
 }
 
+/** How a diagnostic names an expression: `a.b:c("x")`. `undefined` for
+ *  anything too complex to name briefly. */
+function expressionLabel(e: Expression, depth = 0): string | undefined {
+    if (depth > 6) return undefined
+    const args = (list: Expression[]): string => {
+        const parts = list.map(a =>
+            a.type === "StringLiteral" ? JSON.stringify(a.value)
+            : a.type === "NumberLiteral" ? a.raw
+            : a.type === "Identifier" ? a.name
+            : undefined)
+        return parts.every(p => p !== undefined) && parts.join(", ").length <= 40 ? `(${parts.join(", ")})` : "(...)"
+    }
+    switch (e.type) {
+        case "Identifier": return e.name
+        case "MemberExpression": {
+            const o = expressionLabel(e.object, depth + 1)
+            return o === undefined ? undefined : `${o}${e.optional ? "?." : "."}${e.property.name}`
+        }
+        case "MethodCallExpression": {
+            const o = expressionLabel(e.object, depth + 1)
+            return o === undefined ? undefined : `${o}${e.optional ? "?:" : ":"}${e.method.name}${args(e.arguments)}`
+        }
+        case "CallExpression": {
+            const o = expressionLabel(e.callee, depth + 1)
+            return o === undefined ? undefined : `${o}${args(e.arguments)}`
+        }
+        case "IndexExpression": {
+            const o = expressionLabel(e.object, depth + 1)
+            const i = e.index.type === "StringLiteral" ? JSON.stringify(e.index.value)
+                : e.index.type === "NumberLiteral" ? e.index.raw
+                : e.index.type === "Identifier" ? e.index.name
+                : "..."
+            return o === undefined ? undefined : `${o}[${i}]`
+        }
+        case "ParenthesizedExpression": {
+            const inner = expressionLabel(e.expression, depth + 1)
+            return inner === undefined ? undefined : `(${inner})`
+        }
+        default: return undefined
+    }
+}
+
 /** `t` with `nil` removed: what an optional link reads from. */
 function withoutNil(t: Type): Type {
     if (t.kind !== "union") return t.kind === "primitive" && t.name === "nil" ? neverType : t
@@ -2887,8 +2929,40 @@ class TypeAnalyzer {
         const full = this.infer(object, env)
         const inChain = this.chainValue.get(object)
         let type = inChain ?? full
-        if (link.optional) type = withoutNil(type)
+        if (link.optional) {
+            type = withoutNil(type)
+        } else if (this.includesNil(type)) {
+            // `a.b` on an `A | nil`: the read fails when `a` is nil. Say so, and
+            // read on from `A` — the error is the nil, not the rest.
+            this.reportNilAccess(object, type)
+            type = withoutNil(this.expand(type))
+        }
         return { type, shortCircuits: inChain !== undefined || link.optional === true }
+    }
+
+    /** Objects already reported as possibly nil: a loop body is visited more
+     *  than once. */
+    private readonly nilAccessReported = new WeakSet<Expression>()
+
+    private includesNil(raw: Type): boolean {
+        const t = this.expand(raw)
+        if (t.kind === "primitive") return t.name === "nil"
+        return t.kind === "union" && t.types.some(m => m.kind === "primitive" && m.name === "nil")
+    }
+
+    private reportNilAccess(object: Expression, type: Type): void {
+        if (!this.emitDiagnostics || this.nilAccessReported.has(object)) return
+        this.nilAccessReported.add(object)
+        const label = expressionLabel(object)
+        const t = this.expand(type)
+        const nilOnly = t.kind === "primitive" && t.name === "nil"
+        const subject = label === undefined ? "Object" : `'${label}'`
+        this.diagnostics.push({
+            node: object,
+            message: nilOnly
+                ? `${subject} is nil`
+                : `${subject} is possibly nil. Check it first, or use '?.' / '?:'`,
+        })
     }
 
     private chainResult(link: Expression, value: Type, shortCircuits: boolean): Type {

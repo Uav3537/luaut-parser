@@ -188,6 +188,12 @@ rather than just variables, discriminated unions at any depth, `and`/`or`,
 early return, `break`/`continue`, `error()` (declared `-> never`), user type
 guards (`v is T`), and assertion signatures (`asserts v`).
 
+Reading a member of, indexing or calling a value that may be nil is an error
+until a check narrows the nil away, as with TypeScript's `strictNullChecks`:
+`FindFirstChild("A"):FindFirstChild("B")` reports that the first call is
+possibly nil. Use `?.` / `?:`, or check first. The read is still typed from the
+non-nil part.
+
 Only `nil` and `false` are falsy — `0` and `""` are truthy, unlike JavaScript.
 
 **Types** — unions, intersections, tuples `[A, B]`, type packs `(A, B)` (the

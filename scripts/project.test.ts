@@ -343,6 +343,42 @@ const rel = (path: string | undefined): string | undefined =>
         "const s: Partial<number> = \"x\"",
     ].join("\n")).errors, [])
 
+    // Reading through a value that may be nil is an error, as in TypeScript.
+    const nilAccess = analyze([
+        "type Node = { Name: string, find: (self: Node, name: string) -> Node | nil, Parent: Node | nil, box?: { n: number } }",
+        "declare root: Node",
+        "declare call: (() -> number) | nil",
+        "declare function error(message: string): never",
+        "const bad = root:find(\"a\"):find(\"b\")",
+        "const parentName = root.Parent.Name",
+        "const n = root.box.n",
+        "const called = call()",
+        "const safe = root:find(\"a\")?:find(\"b\")",
+        "function checked(x: Node | nil, y: Node | nil, z: Node | nil)",
+        "    if x then const a = x.Name end",
+        "    const b = x and x.Name",
+        "    if not y then return end",
+        "    const c = y.Name",
+        "    if z == nil then error(\"no\") end",
+        "    const d = z.Name",
+        "end",
+        "function looped(list: (Node | nil)[])",
+        "    for i = 1, #list do",
+        "        const item = list[i]",
+        "        const e = item.Name",
+        "    end",
+        "end",
+    ].join("\n"))
+    check("nil access: reading through a possibly-nil value is an error", nilAccess.errors, [
+        `'root:find("a")' is possibly nil. Check it first, or use '?.' / '?:'`,
+        "'root.Parent' is possibly nil. Check it first, or use '?.' / '?:'",
+        "'root.box' is possibly nil. Check it first, or use '?.' / '?:'",
+        "'call' is possibly nil. Check it first, or use '?.' / '?:'",
+        "'item' is possibly nil. Check it first, or use '?.' / '?:'",
+    ])
+    check("nil access: the read still has the member's type", [nilAccess.bindings.bad, nilAccess.bindings.parentName, nilAccess.bindings.n, nilAccess.bindings.called],
+        ["Node | nil", "string", "number", "number"])
+
     // Optional chaining: `a?.b` and `a?:m()` are nil when `a` is.
     const chains = parse("const x = a?.b.c\nconst y = a?:m(1)?.n\nconst z = c ?a:b")
     const [cx, cy, cz] = chains.body.statements.map(s => (s as { init: any[] }).init[0])
