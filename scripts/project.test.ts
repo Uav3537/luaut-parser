@@ -503,6 +503,26 @@ const rel = (path: string | undefined): string | undefined =>
             ["9: 'later' is used before its definition"])
     }
 
+    // An alias that names a `typeof` alias waits for it, as that one waits for the value.
+    {
+        const dependent = analyze([
+            "export type ResourceType = ReturnType<typeof Load>",
+            "export type RemoteMapType = ResourceType[\"RemoteMap\"]",
+            "export type ClassMapType = ResourceType[\"ClassMap\"]",
+            "let Resource: ResourceType | nil",
+            "declare peek: ClassMapType",
+            "function Load()",
+            "    const RemoteMap = { Char: 1 } as const",
+            "    const ClassMap = { Sans: { Thumbnail: \"id\" } } as const",
+            "    return { RemoteMap, ClassMap }",
+            "end",
+            "const seen = peek",
+        ].join("\n"))
+        check("type queries: aliases built on a `typeof` alias, a declare, and a binding above the function",
+            [dependent.errors, dependent.bindings.seen, dependent.bindings.Resource],
+            [[], "ClassMapType", "ResourceType | nil"])
+    }
+
     // `export type X = typeof value` reads the value, as a plain alias does.
     const classes = [
         "export const DefaultClass = [\"Sans\", \"Asgore\"] as const",
@@ -519,7 +539,7 @@ const rel = (path: string | undefined): string | undefined =>
     ].join("\n"), { "./classes": classes })
     check("type queries: an exported alias of `typeof` a value, imported elsewhere",
         [exportedQuery.bindings.t, exportedQuery.bindings.n, exportedQuery.errors],
-        ["DefaultClassType", "DefaultClassName", [`Type '"Nope"' is not assignable to '"Sans" | "Asgore"'`]])
+        [`["Sans", "Asgore"]`, `"Sans" | "Asgore"`, [`Type '"Nope"' is not assignable to '"Sans" | "Asgore"'`]])
 
     // `--@luaut-...` comments switch checking off.
     const directed = (code: string) => {

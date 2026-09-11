@@ -34,7 +34,7 @@ import type {
     Program, Block, Statement, Expression, TypeNode, TypePackNode,
     Identifier, FunctionBody, FunctionSignature, BindingTarget, GenericTypeParameter,
     ObjectPattern, ArrayPattern,
-    TableExpression, ArrayExpression, IfStatement, TypePredicateNode, DeclareClassStatement,
+    TableExpression, ArrayExpression, IfStatement, TypePredicateNode, DeclareClassStatement, DeclareStatement,
 } from "./nodes"
 import type { ScopeAnalysis, BindingId } from "./analyzeScopes"
 import { preludeProgram } from "./prelude"
@@ -579,16 +579,19 @@ class TypeAnalyzer {
         for (const lib of this.options.libs ?? []) this.registerAliasDefs(lib.body)
         this.registerAliasDefs(this.program.body)
         for (const lib of this.options.libs ?? []) this.harvestDeclares(lib.body)
-        // A `declare` in the program itself seeds a global type too, and wins
-        // over a lib's declaration of the same name.
-        this.harvestDeclares(this.program.body)
         // Imported type names must be known before any annotation resolves.
         this.registerImportedTypes()
         this.resolveAllAliases()
+        // A `declare` in the program itself seeds a global type too, and wins
+        // over a lib's declaration of the same name. Its type may name the
+        // file's imports and aliases, so it is read after them — and one that
+        // needs a value's type (`declare r: typeof x`) when first used.
+        this.harvestDeclares(this.program.body, true)
         this.indexDeclarations()
 
         // Seed global binding types.
         for (const [name, id] of this.scopes.globalsByName) {
+            if (this.deferredDeclares.has(name) && !this.options.globalTypes?.[name]) continue
             const t = this.options.globalTypes?.[name] ?? this.libGlobalTypes.get(name) ?? anyType
             this.bindingType.set(id, t)
         }
@@ -598,6 +601,7 @@ class TypeAnalyzer {
         try {
             const env: FlowEnv = new Map()
             this.visitBlock(this.program.body, env)
+            this.resolveDeferredDeclares()
         } finally {
             setAliasExpander(undefined)
         }
@@ -793,9 +797,17 @@ class TypeAnalyzer {
      *  string. Any other value is simply redeclared: a sourcemap's
      *  `declare script: <this file's instance>` replaces the library's
      *  `declare script: LuaSourceContainer`. */
-    private harvestDeclares(block: Block): void {
+    /** Program `declare`s whose type depends on a value's, by name. */
+    private readonly deferredDeclares = new Map<string, DeclareStatement>()
+
+    private harvestDeclares(block: Block, own = false): void {
         for (const stmt of block.statements) {
             if (stmt.type !== "DeclareStatement") continue
+            if (own && (containsTypeQuery(stmt.valueType) ||
+                referencedTypeNames(stmt.valueType).some(name => this.dependsOnTypeQuery(name)))) {
+                this.deferredDeclares.set(stmt.name, stmt)
+                continue
+            }
             const t = this.resolveType(stmt.valueType)
             const prev = this.libGlobalTypes.get(stmt.name)
             const overload = prev && stmt.valueType.type === "FunctionTypeNode" &&
@@ -817,16 +829,43 @@ class TypeAnalyzer {
             }
             // `type Config = typeof defaults` needs `defaults` to have a type,
             // which only happens once the statements are walked. Such an alias
-            // resolves on first use (through `expand`) or at the end instead.
-            if (containsTypeQuery(def.node)) continue
+            // resolves on first use (through `expand`) or at the end instead —
+            // and so does one that names it: `type Part = Config["part"]`
+            // resolved now would read `Config` before it can be known.
+            if (this.dependsOnTypeQuery(name)) continue
             this.withTypeParams(def.params, () => {
                 this.aliases.set(name, this.resolveDef(def))
             })
         }
     }
 
+    private readonly typeQueryDependents = new Map<string, boolean>()
+
+    /** Does alias `name` contain a `typeof`, itself or through an alias it
+     *  names? */
+    private dependsOnTypeQuery(name: string, visiting = new Set<string>()): boolean {
+        const known = this.typeQueryDependents.get(name)
+        if (known !== undefined) return known
+        const def = this.aliasDefs.get(name)
+        if (!def || def.class || visiting.has(name)) return false
+        visiting.add(name)
+        const result = containsTypeQuery(def.node) ||
+            referencedTypeNames(def.node).some(other => other !== name && this.dependsOnTypeQuery(other, visiting))
+        visiting.delete(name)
+        this.typeQueryDependents.set(name, result)
+        return result
+    }
+
     /** The aliases `resolveAllAliases` left for later, now that every binding
      *  has its type. */
+    /** Deferred `declare`s nothing used, typed now for tools that ask. */
+    private resolveDeferredDeclares(): void {
+        for (const name of this.deferredDeclares.keys()) {
+            const id = this.scopes.globalsByName.get(name)
+            if (id !== undefined && !this.bindingType.has(id)) this.bindingType.set(id, this.declaredAhead(id) ?? anyType)
+        }
+    }
+
     private resolveDeferredAliases(): Map<string, Type> {
         for (const [name, def] of this.aliasDefs) {
             if (this.aliases.has(name)) continue
@@ -3734,7 +3773,9 @@ class TypeAnalyzer {
         try {
             const { statement, index } = found
             let type: Type | undefined
-            if (statement.type === "FunctionDeclaration") {
+            if (statement.type === "DeclareStatement") {
+                type = this.resolveType(statement.valueType)
+            } else if (statement.type === "FunctionDeclaration") {
                 type = statement.signatures?.length
                     ? intersection(statement.signatures.map(sig => this.signatureToFnType(sig)))
                     : this.inferFunctionBody(statement.func, new Map())
@@ -3784,6 +3825,10 @@ class TypeAnalyzer {
             }
         }
         visit(this.program.body)
+        for (const [name, statement] of this.deferredDeclares) {
+            const id = this.scopes.globalsByName.get(name)
+            if (id !== undefined) out.set(id, { statement, index: 0 })
+        }
         return out
     }
 
@@ -3816,6 +3861,23 @@ class TypeAnalyzer {
         return this.bindingByDecl.get(node as object) ??
             this.bindingByPos.get(posKey(name, node.line.start, node.column.start))
     }
+}
+
+/** Every type name a type node mentions: `Config`, `Enum.Material`. */
+function referencedTypeNames(node: unknown, out: string[] = []): string[] {
+    if (!node || typeof node !== "object") return out
+    if (Array.isArray(node)) {
+        for (const item of node) referencedTypeNames(item, out)
+        return out
+    }
+    const record = node as { type?: unknown; base?: unknown; namespace?: unknown }
+    if (record.type === "TypeReference" && typeof record.base === "string") {
+        out.push(typeof record.namespace === "string" ? `${record.namespace}.${record.base}` : record.base)
+    }
+    for (const [key, value] of Object.entries(node)) {
+        if (key !== "line" && key !== "column" && value && typeof value === "object") referencedTypeNames(value, out)
+    }
+    return out
 }
 
 /** Does a type contain a `typeof x`? Such a type depends on a value's type,
