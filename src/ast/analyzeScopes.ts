@@ -70,7 +70,7 @@ export interface ScopeDiagnostic {
     /** the offending node (redeclaration site, or assignment target) */
     node: { line: { start: number; end: number }; column: { start: number; end: number } }
     message: string
-    kind: "redeclare" | "const-assign" | "type-only" | "undeclared"
+    kind: "redeclare" | "const-assign" | "type-only" | "undeclared" | "use-before-define"
 }
 
 export interface ScopeAnalysis {
@@ -159,13 +159,95 @@ class Analyzer {
     }
 
     run(program: Program): ScopeAnalysis {
-        this.visitBlock(program.body, childScope(this.globalScope))
+        this.moduleScope = childScope(this.globalScope)
+        this.visitBlock(program.body, this.moduleScope)
+        this.resolveForwardReferences()
         if (this.options.reportUndeclared) this.reportUndeclared(program)
         return {
             bindingOf: this.bindingOf,
             bindings: this.bindings,
             diagnostics: this.diagnostics,
             globalsByName: this.globalScope.declarations,
+        }
+    }
+
+    // ---------------- hoisting ----------------
+    //
+    // As in TypeScript, and as the bundle runs a module:
+    //
+    // - a function declaration is visible to its whole block, before it too;
+    // - a name the module declares at its top level is visible to code that
+    //   runs later — function bodies, and `typeof` in a type — even where that
+    //   code is written above the declaration. A bundle declares every
+    //   top-level name before any of the module runs, so this is what happens.
+    //
+    // A read of a later `const` straight in the module's own flow is not
+    // resolved to it: that still reads what was there before.
+
+    private moduleScope: Scope = this.globalScope
+    /** How many function bodies enclose the walk. */
+    private functionDepth = 0
+    /** Function declarations already declared by their block's hoisting, with
+     *  the function depth of that block. */
+    private readonly hoisted = new Map<Identifier, number>()
+    /** Names that resolved to a global from code that runs later. */
+    private readonly deferredGlobals: { node: Identifier; assignment: boolean }[] = []
+
+    private hoistFunctions(block: Block, scope: Scope): void {
+        for (const statement of block.statements) {
+            const declaration = statement.type === "ExportStatement" ? statement.declaration : statement
+            if (declaration.type !== "FunctionDeclaration") continue
+            this.declare(scope, declaration.name.name, "local", declaration.name, true, "function")
+            this.hoisted.set(declaration.name, scope === this.moduleScope ? -1 : this.functionDepth)
+        }
+    }
+
+    /** Inside a function, a function declared further down its block is
+     *  hoisted only as a name: code that runs later (another function's body)
+     *  can call it, but a call straight in the block before the declaration
+     *  finds nothing there yet. At a module's top level the whole function is
+     *  hoisted, and this does not apply. */
+    private checkUseBeforeDefine(identifier: Identifier, id: BindingId): void {
+        const binding = this.bindings.get(id)!
+        if (binding.declaredBy !== "function" || this.typeQueryDepth > 0) return
+        const declaration = binding.declarationNode as Identifier | undefined
+        const depth = declaration && this.hoisted.get(declaration)
+        if (depth === undefined || depth !== this.functionDepth) return
+        const before = identifier.line.start < declaration!.line.start ||
+            (identifier.line.start === declaration!.line.start && identifier.column.start < declaration!.column.start)
+        if (!before) return
+        this.diagnostics.push({
+            node: identifier,
+            message: `'${binding.name}' is used before its definition: inside a function, a function declared further down is only there once its declaration has run`,
+            kind: "use-before-define",
+        })
+    }
+
+    private noteDeferred(identifier: Identifier, id: BindingId, assignment: boolean): void {
+        if (this.functionDepth === 0 && this.typeQueryDepth === 0) return
+        if (this.bindings.get(id)!.kind !== "global") return
+        this.deferredGlobals.push({ node: identifier, assignment })
+    }
+
+    /** Point each deferred read of a global at the module's own declaration
+     *  of that name, where there turned out to be one. */
+    private resolveForwardReferences(): void {
+        for (const { node, assignment } of this.deferredGlobals) {
+            const localId = this.moduleScope.declarations.get(node.name)
+            const globalId = this.bindingOf.get(node)
+            if (localId === undefined || globalId === undefined || localId === globalId) continue
+            const global = this.bindings.get(globalId)!
+            const at = global.references.indexOf(node)
+            if (at >= 0) global.references.splice(at, 1)
+            if (global.declarationNode === node) global.declarationNode = undefined
+            if (!global.isBuiltin && !global.references.length && global.declarationNode === undefined) {
+                this.bindings.delete(globalId)
+                this.globalScope.declarations.delete(node.name)
+            }
+            this.bindingOf.set(node, localId)
+            this.bindings.get(localId)!.references.push(node)
+            if (assignment) this.checkConstAssign(localId, node)
+            else if (this.typeQueryDepth === 0) this.checkTypeOnly(localId, node)
         }
     }
 
@@ -243,6 +325,8 @@ class Analyzer {
         this.bindingOf.set(identifier, id)
         this.bindings.get(id)!.references.push(identifier)
         if (this.typeQueryDepth === 0) this.checkTypeOnly(id, identifier)
+        this.checkUseBeforeDefine(identifier, id)
+        this.noteDeferred(identifier, id, false)
     }
 
     /** Inside `typeof x` in a type, where a type-only import may be named. */
@@ -277,6 +361,7 @@ class Analyzer {
         this.recordPossibleGlobalDefinition(id, identifier)
         this.checkTypeOnly(id, identifier)
         this.checkConstAssign(id, identifier)
+        this.noteDeferred(identifier, id, true)
     }
 
     /** `Module.x = 1` through `import * as Module`: a module's exports belong
@@ -381,6 +466,7 @@ class Analyzer {
     // ---------------- blocks / statements ----------------
 
     private visitBlock(block: Block, scope: Scope): void {
+        this.hoistFunctions(block, scope)
         for (const stmt of block.statements) this.visitStatement(stmt, scope)
     }
 
@@ -404,9 +490,9 @@ class Analyzer {
             }
 
             case "FunctionDeclaration": {
-                // Declared *before* visiting the body so recursive calls
-                // resolve to itself.
-                this.declare(scope, stmt.name.name, "local", stmt.name, true, "function")
+                // Declared when its block started (hoisting), so calls from
+                // anywhere in the block, its own body included, resolve to it.
+                if (!this.hoisted.has(stmt.name)) this.declare(scope, stmt.name.name, "local", stmt.name, true, "function")
                 for (const signature of stmt.signatures ?? []) this.visitSignature(signature, scope)
                 this.visitFunctionBody(stmt.func, scope)
                 return
@@ -612,7 +698,12 @@ class Analyzer {
         })
         this.visitType(func.varargTypeAnnotation, fnScope)
         this.visitType(func.returnType, fnScope)
-        this.visitBlock(func.body, fnScope)
+        this.functionDepth++
+        try {
+            this.visitBlock(func.body, fnScope)
+        } finally {
+            this.functionDepth--
+        }
     }
 
     /** An overload signature: no body and no bindings, but its types can hold

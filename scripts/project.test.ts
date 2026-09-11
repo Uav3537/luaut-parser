@@ -464,6 +464,45 @@ const rel = (path: string | undefined): string | undefined =>
         check("undeclared: off unless asked for", analyzeScopes(program).diagnostics, [])
     }
 
+    // Hoisting: functions, and a module's names seen from code that runs later.
+    {
+        const program = parse([
+            "let Resource: ResourceType | nil",
+            "let Direct: ReturnType<typeof Load> | nil",
+            "const early = parity(4)",
+            "function Load()",
+            "    return { level: Config.level }",
+            "end",
+            "export type ResourceType = ReturnType<typeof Load>",
+            "function parity(n: number): string",
+            "    const direct = later()",
+            "    function isEven(k: number): boolean",
+            "        if k == 0 then return true end",
+            "        return isOdd(k - 1)",
+            "    end",
+            "    function isOdd(k: number): boolean",
+            "        if k == 0 then return false end",
+            "        return isEven(k - 1)",
+            "    end",
+            "    function later() return 1 end",
+            "    return if isEven(n) then \"even\" else \"odd\"",
+            "end",
+            "function bump() counter = counter + 1 end",
+            "const Config = { level: 3 }",
+            "let counter = 0",
+        ].join("\n"))
+        const scopes = analyzeScopes(program, { reportUndeclared: true })
+        const types = analyzeTypes(program, scopes)
+        const bindings: Record<string, string> = {}
+        for (const [id, type] of types.bindingType) bindings[scopes.bindings.get(id)!.name] = formatType(type)
+        check("hoisting: types written above a function see it",
+            [bindings.Resource, bindings.Direct, bindings.early],
+            ["ResourceType | nil", "{ level: number } | nil", "string"])
+        check("hoisting: only a direct call above a nested function is an error",
+            [...scopes.diagnostics, ...types.diagnostics].map(d => `${d.node.line.start}: ${d.message.split(":")[0]}`),
+            ["9: 'later' is used before its definition"])
+    }
+
     // `export type X = typeof value` reads the value, as a plain alias does.
     const classes = [
         "export const DefaultClass = [\"Sans\", \"Asgore\"] as const",

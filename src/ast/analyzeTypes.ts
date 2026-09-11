@@ -3706,7 +3706,85 @@ class TypeAnalyzer {
     /** The type a binding has *here*: its flow-narrowed type if the current
      *  environment has one, else its declared/inferred type. */
     private currentType(id: BindingId, env: FlowEnv): Type {
-        return env.get(bindKey(id)) ?? this.bindingType.get(id) ?? anyType
+        return env.get(bindKey(id)) ?? this.bindingType.get(id) ?? this.declaredAhead(id) ?? anyType
+    }
+
+    // --------------------------------------------------------
+    // Hoisting
+    // --------------------------------------------------------
+    //
+    // Scope analysis lets code see a function declared later in its block,
+    // and a module's top-level names from function bodies and `typeof` written
+    // above them. The walk has not reached those declarations yet when such a
+    // reference is met, so their type is worked out from the declaration on
+    // the spot — its annotation, or its body or initializer — as TypeScript
+    // does. The walk reaching the declaration later types it for real.
+
+    /** Declarations a reference may meet before the walk does. */
+    private aheadDeclarations?: Map<BindingId, { statement: Statement; index: number }>
+    private readonly computingAhead = new Set<BindingId>()
+
+    private declaredAhead(id: BindingId): Type | undefined {
+        this.aheadDeclarations ??= this.indexAheadDeclarations()
+        const found = this.aheadDeclarations.get(id)
+        if (!found || this.computingAhead.has(id)) return undefined
+        this.computingAhead.add(id)
+        const wasEmitting = this.emitDiagnostics
+        this.emitDiagnostics = false
+        try {
+            const { statement, index } = found
+            let type: Type | undefined
+            if (statement.type === "FunctionDeclaration") {
+                type = statement.signatures?.length
+                    ? intersection(statement.signatures.map(sig => this.signatureToFnType(sig)))
+                    : this.inferFunctionBody(statement.func, new Map())
+            } else if (statement.type === "VariableDeclaration") {
+                const target = statement.names[index]
+                if (target.type === "IdentifierPattern" && target.typeAnnotation) {
+                    type = this.resolveType(target.typeAnnotation)
+                } else if (statement.init[index]) {
+                    const value = this.infer(statement.init[index], new Map())
+                    type = statement.kind === "const" ? value : widen(value)
+                }
+            }
+            if (type) this.bindingType.set(id, type)
+            return type
+        } finally {
+            this.emitDiagnostics = wasEmitting
+            this.computingAhead.delete(id)
+        }
+    }
+
+    /** Every function declaration, and every plain name the module declares
+     *  at its top level. */
+    private indexAheadDeclarations(): Map<BindingId, { statement: Statement; index: number }> {
+        const out = new Map<BindingId, { statement: Statement; index: number }>()
+        for (const statement of this.program.body.statements) {
+            const declaration = statement.type === "ExportStatement" ? statement.declaration : statement
+            if (declaration.type !== "VariableDeclaration") continue
+            declaration.names.forEach((target, index) => {
+                if (target.type !== "IdentifierPattern") return
+                const id = this.bindingIdByName(target.name, target)
+                if (id !== undefined) out.set(id, { statement: declaration, index })
+            })
+        }
+        const visit = (node: unknown): void => {
+            if (!node || typeof node !== "object") return
+            if (Array.isArray(node)) {
+                for (const item of node) visit(item)
+                return
+            }
+            const record = node as { type?: string; name?: Identifier }
+            if (record.type === "FunctionDeclaration" && record.name) {
+                const id = this.bindingIdByName(record.name.name, record.name)
+                if (id !== undefined) out.set(id, { statement: node as Statement, index: 0 })
+            }
+            for (const [key, value] of Object.entries(node)) {
+                if (key !== "line" && key !== "column" && value && typeof value === "object") visit(value)
+            }
+        }
+        visit(this.program.body)
+        return out
     }
 
     /** Bind or rebind a whole variable: any narrowing recorded for a path

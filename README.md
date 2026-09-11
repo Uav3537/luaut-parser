@@ -119,6 +119,15 @@ scope; like a TypeScript function declaration it cannot be reassigned.
 `const` and `let` do not apply to functions. `function T.name()` and
 `function T:name()` define a member.
 
+**Hoisting** — a function declaration is visible to its whole block, above
+itself too, so `let r: ReturnType<typeof load>` may come before `function
+load()`. A module's top-level names are visible to code that runs later —
+function bodies and `typeof` — wherever that code is written, since a bundle
+declares them all before the module runs. At the top level the whole function
+is hoisted, and can be called above its declaration. Inside a function only
+the name is: other functions can call it, but a call straight in the block
+above the declaration is an error, because nothing is there yet.
+
 **Modules** — `import { a, b as c } from "./m"`, `import D from "./m"` and
 `import * as M from "./m"`; `export const`, `export function`, `export default`,
 `export { a as b }`, `export { a } from "./m"` and `export * from "./m"`.
