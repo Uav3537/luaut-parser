@@ -127,8 +127,7 @@ analyzeTypes(program, scopes, {
   (`export { a } from`) and `export * from` are.
 - `setmetatable` and metatables are not modelled.
 - Accessing a property a type does not have yields `unknown` rather than an
-  error; assigning to a `readonly` property is not reported; generic
-  constraints are not checked at call sites.
+  error; assigning to a `readonly` property is not reported.
 
 ## Development
 

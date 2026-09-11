@@ -68,6 +68,12 @@ export interface TypeAnalysis {
      *  `typeof x`, a property's type inside `{ ... }`. Inside a generic alias or
      *  function its parameters stay unresolved (`T`). */
     readonly typeOfTypeNode: Map<TypeNode | TypePackNode, Type>
+    /** What each call argument is expected to be: the parameter it lands on,
+     *  with the signature's type parameters replaced by their constraints — a
+     *  union when an overload set disagrees. Recorded even for a call that does
+     *  not type-check, since that is exactly when an editor wants to offer the
+     *  values that would. */
+    readonly expectedTypeOf: Map<Expression, Type>
     /** Top-level type aliases, resolved — and the type names this module
      *  imports, so tooling treats both alike. */
     readonly aliases: Map<string, Type>
@@ -372,6 +378,7 @@ class TypeAnalyzer {
     private readonly bindingType = new Map<BindingId, Type>()
     private readonly narrowedTypeOf = new Map<Identifier, Type>()
     private readonly typeOfTypeNode = new Map<TypeNode | TypePackNode, Type>()
+    private readonly expectedTypeOf = new Map<Expression, Type>()
     /** Public: each alias resolved once (generic aliases keep their params as
      *  `typeParam` nodes in the body). */
     private readonly aliases = new Map<string, Type>()
@@ -455,6 +462,7 @@ class TypeAnalyzer {
             bindingType: this.bindingType,
             narrowedTypeOf: this.narrowedTypeOf,
             typeOfTypeNode: this.typeOfTypeNode,
+            expectedTypeOf: this.expectedTypeOf,
             aliases: this.resolveDeferredAliases(),
             diagnostics: this.diagnostics,
         }
@@ -1635,18 +1643,92 @@ class TypeAnalyzer {
     }
 
     /** Can this signature be called with these argument types? The signature's
-     *  own generic parameters act as wildcards — they are what the call would
-     *  infer, so they must not make the match fail. */
+     *  own type parameters stand for what the call would infer, so each is
+     *  checked only against its constraint — `<K extends keyof Services>`
+     *  accepts `"Players"` but not `""`. */
     private overloadAccepts(f: FunctionType, argTypes: Type[]): boolean {
         if (!f.varargs && argTypes.length > f.params.length) return false
-        const wildcards = new Map<string, Type>((f.typeParams ?? []).map(n => [n, anyType]))
+        const params = this.boundParams(f)
         return f.params.every((p, i) => {
             // Only `?` (or a default) makes an argument omissible. A parameter
             // typed `T | nil` still has to be passed something — `nil`, if
             // that is what you mean — exactly as in TypeScript.
             if (argTypes[i] === undefined) return p.optional === true
-            return isAssignable(argTypes[i], substitute(p.type, wildcards))
+            return isAssignable(argTypes[i], params[i])
         })
+    }
+
+    /** A signature's parameter types as a call site sees them before inference:
+     *  each type parameter replaced by its constraint, or by `any` when it has
+     *  none — or when the constraint mentions another type parameter, which a
+     *  lone argument cannot be checked against without false errors. */
+    private boundParams(f: FunctionType): Type[] {
+        if (!f.typeParams?.length) return f.params.map(p => p.type)
+        const bounds = new Map<string, Type>(f.typeParams.map(name => [name, anyType]))
+        const seen = new WeakSet<object>()
+        const walk = (value: unknown): void => {
+            if (!value || typeof value !== "object" || seen.has(value)) return
+            seen.add(value)
+            if (value instanceof Map) {
+                value.forEach(walk)
+                return
+            }
+            const t = value as { kind?: unknown; name?: unknown; constraint?: Type }
+            if (t.kind === "typeParam" && typeof t.name === "string" && bounds.has(t.name)
+                && t.constraint && !containsTypeParam(t.constraint)) {
+                bounds.set(t.name, this.reduceType(t.constraint))
+            }
+            for (const child of Object.values(value)) walk(child)
+        }
+        for (const p of f.params) walk(p.type)
+        return f.params.map(p => substitute(p.type, bounds))
+    }
+
+    /** Record what each written argument is expected to be — see
+     *  `TypeAnalysis.expectedTypeOf`. */
+    private recordExpected(
+        written: readonly Expression[],
+        fns: FunctionType[],
+        selfOf: (f: FunctionType) => number,
+    ): void {
+        written.forEach((arg, j) => {
+            const candidates: Type[] = []
+            for (const f of fns) {
+                const i = j + selfOf(f)
+                const param = i < f.params.length ? this.boundParams(f)[i] : f.varargs
+                if (param) candidates.push(param)
+            }
+            if (candidates.length) this.expectedTypeOf.set(arg, union(candidates))
+        })
+    }
+
+    /** No signature accepts the call, and the argument count is not the
+     *  problem: say which argument is wrong, the way TypeScript does. */
+    private reportArguments(
+        call: Expression,
+        written: readonly Expression[],
+        fns: FunctionType[],
+        argsFor: (f: FunctionType) => Type[],
+        selfOf: (f: FunctionType) => number,
+    ): void {
+        if (!this.emitDiagnostics) return
+        if (fns.length > 1) {
+            this.diagnostics.push({ node: call, message: "No overload matches this call" })
+            return
+        }
+        const f = fns[0]
+        const args = argsFor(f)
+        const params = this.boundParams(f)
+        const self = selfOf(f)
+        for (let i = 0; i < f.params.length; i++) {
+            const arg = args[i]
+            if (arg === undefined || isAssignable(arg, params[i])) continue
+            this.diagnostics.push({
+                node: written[i - self] ?? call,
+                message: `Argument of type '${formatType(arg)}' is not assignable to parameter of type '${briefType(params[i])}'`,
+            })
+            return
+        }
     }
 
     /** A required parameter may not follow an optional one — otherwise the
@@ -1683,16 +1765,18 @@ class TypeAnalyzer {
     }
 
     /** Report a call that passes too few or too many arguments. Only fires
-     *  when *no* overload accepts the call, so an overload set still reports
-     *  once, against its first signature. */
-    private checkArity(node: Expression, fns: FunctionType[], argCount: number, selfArgs: number): void {
-        if (!this.emitDiagnostics || !fns.length) return
+     *  when *no* overload accepts the count, so an overload set still reports
+     *  once, against its first signature. Returns whether the count fits, so
+     *  an argument's type is only complained about when its count is right. */
+    private checkArity(node: Expression, fns: FunctionType[], argCount: number, selfArgs: number): boolean {
+        if (!fns.length) return true
         const fits = fns.some(f => {
             const { min, max } = this.arityOf(f)
             const n = argCount + selfArgs
             return n >= min && (max === undefined || n <= max)
         })
-        if (fits) return
+        if (fits) return true
+        if (!this.emitDiagnostics) return false
         const { min, max } = this.arityOf(fns[0])
         const need = max === undefined ? `at least ${min - selfArgs}`
             : min === max ? `${min - selfArgs}`
@@ -1701,6 +1785,7 @@ class TypeAnalyzer {
             node,
             message: `Expected ${need} argument${need === "1" ? "" : "s"}, got ${argCount}`,
         })
+        return false
     }
 
     private signatureToFnType(sig: FunctionSignature): Type {
@@ -2191,11 +2276,13 @@ class TypeAnalyzer {
                 const argTypes = expr.arguments.map(a => this.infer(a, env))
                 const fns = this.overloadsOf(callee)
                 if (fns.length) {
-                    this.checkArity(expr, fns, argTypes.length, 0)
+                    this.recordExpected(expr.arguments, fns, () => 0)
+                    const arityFits = this.checkArity(expr, fns, argTypes.length, 0)
                     const picked = this.pickOverload(fns, argTypes)
                     if (picked) {
                         return this.callReturn(picked, this.constArgs(picked, expr.arguments, argTypes, env))
                     }
+                    if (arityFits) this.reportArguments(expr, expr.arguments, fns, () => argTypes, () => 0)
                     // Nothing accepts these arguments — the union of what any
                     // signature could return is the most we can honestly say.
                     return union(fns.map(f => this.callReturn(f, argTypes)))
@@ -2214,15 +2301,18 @@ class TypeAnalyzer {
                     // called with `:` must not have its arguments shifted.
                     const withSelf = (f: FunctionType): Type[] =>
                         this.takesSelf(f) ? [objType, ...argTypes] : argTypes
+                    const selfOf = (f: FunctionType): number => (this.takesSelf(f) ? 1 : 0)
+                    this.recordExpected(expr.arguments, fns, selfOf)
                     // The receiver fills the `self` slot, so it does not count
                     // against what the caller wrote.
-                    this.checkArity(expr, fns, argTypes.length, this.takesSelf(fns[0]) ? 1 : 0)
+                    const arityFits = this.checkArity(expr, fns, argTypes.length, this.takesSelf(fns[0]) ? 1 : 0)
                     const picked = this.pickOverload(fns, argTypes, withSelf)
                     if (picked) {
                         const self = this.takesSelf(picked) ? 1 : 0
                         const written = this.constArgs(picked, expr.arguments, argTypes, env, self)
                         return this.callReturn(picked, this.takesSelf(picked) ? [objType, ...written] : written)
                     }
+                    if (arityFits) this.reportArguments(expr, expr.arguments, fns, withSelf, selfOf)
                     return union(fns.map(f => this.callReturn(f, withSelf(f))))
                 }
                 return objType.kind === "any" ? anyType : unknownType
@@ -2764,4 +2854,14 @@ function containsTypeQuery(node: unknown): boolean {
     if (Array.isArray(node)) return node.some(containsTypeQuery)
     if ((node as { type?: unknown }).type === "TypeofTypeNode") return true
     return Object.values(node).some(containsTypeQuery)
+}
+
+/** A type for a message. A long union of literals — every service name — is
+ *  cut short the way TypeScript does, so the message stays readable. */
+function briefType(t: Type): string {
+    if (t.kind === "union" && t.types.length > 8) {
+        const shown = t.types.slice(0, 6).map(formatType).join(" | ")
+        return `${shown} | ... ${t.types.length - 6} more`
+    }
+    return formatType(t)
 }
