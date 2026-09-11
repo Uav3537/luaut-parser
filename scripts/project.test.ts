@@ -412,6 +412,27 @@ const rel = (path: string | undefined): string | undefined =>
         ], ["print", "a", "b", "part", "n", "c", "s", "d"]])
     }
 
+    // An overload set with a union argument picks per member.
+    const perMember = analyze([
+        "declare class Instance {}",
+        "declare function kind(value: nil): \"nil\"",
+        "declare function kind(value: number): \"number\"",
+        "declare function kind(value: Instance): \"Instance\"",
+        "declare function kind<T>(value: T): string",
+        "declare function whole(value: number | nil): \"both\"",
+        "declare function whole(value: number): \"number\"",
+        "function f(v: Instance | nil, n: number | nil, x: unknown, b: boolean | Instance)",
+        "    const k1 = kind(v)",
+        "    const k2 = kind(n)",
+        "    const k3 = kind(x)",
+        "    const k4 = kind(b)",
+        "    const w = whole(n)",
+        "end",
+    ].join("\n"))
+    check("overloads: a union argument returns what each member's signature returns",
+        [perMember.bindings.k1, perMember.bindings.k2, perMember.bindings.k3, perMember.bindings.k4, perMember.bindings.w],
+        [`"Instance" | "nil"`, `"number" | "nil"`, "string", "string", `"both"`])
+
     // The language's utility types need no type library.
     const utilities = analyze([
         "type User = { id: number, name: string, email: string | nil }",

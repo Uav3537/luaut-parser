@@ -2106,6 +2106,40 @@ class TypeAnalyzer {
         return undefined
     }
 
+    /** An overload set called with a union argument, one member at a time.
+     *
+     *  One signature for the whole union is often only the catch-all:
+     *  `typeof(v)` with `v: Part | nil` accepts nothing more specific than
+     *  `typeof<T>(value: T): string`. Each member on its own picks `"Instance"`
+     *  and `"nil"`, and that union is what the call returns — whenever every
+     *  member picks a signature listed ahead of the whole union's. Otherwise
+     *  (a signature taking the union as it is, or a member nothing accepts)
+     *  this returns `undefined` and the ordinary pick stands. */
+    private distributedReturn(
+        fns: FunctionType[],
+        argTypes: Type[],
+        picked: FunctionType | undefined,
+        argsFor: (f: FunctionType, args: Type[]) => Type[],
+    ): Type | undefined {
+        if (fns.length < 2) return undefined
+        const position = argTypes.findIndex(t => this.expand(t).kind === "union")
+        if (position < 0) return undefined
+        const members = (this.expand(argTypes[position]) as Extract<Type, { kind: "union" }>).types
+        if (members.length > 32) return undefined
+        // The order `pickOverload` tries signatures in.
+        const rank = (f: FunctionType): number =>
+            ((f.typeParams?.length ?? 0) > 0 ? fns.length : 0) + fns.indexOf(f)
+        const limit = picked ? rank(picked) : Infinity
+        const results: Type[] = []
+        for (const member of members) {
+            const args = argTypes.map((t, i) => (i === position ? member : t))
+            const chosen = this.pickOverload(fns, args, f => argsFor(f, args))
+            if (!chosen || rank(chosen) >= limit) return undefined
+            results.push(this.callReturn(chosen, argsFor(chosen, args)))
+        }
+        return union(results)
+    }
+
     /** Can this signature be called with these argument types? The signature's
      *  own type parameters stand for what the call would infer, so each is
      *  checked only against its constraint — `<K extends keyof Services>`
@@ -2867,6 +2901,8 @@ class TypeAnalyzer {
             this.recordExpected(expr.arguments, fns, () => 0)
             const arityFits = this.checkArity(expr, fns, argTypes.length, 0)
             const picked = this.pickOverload(fns, argTypes)
+            const distributed = this.distributedReturn(fns, argTypes, picked, (_, args) => args)
+            if (distributed) return distributed
             if (picked) {
                 return this.callReturn(picked, this.constArgs(picked, expr.arguments, argTypes, env))
             }
@@ -2896,6 +2932,9 @@ class TypeAnalyzer {
             // against what the caller wrote.
             const arityFits = this.checkArity(expr, fns, argTypes.length, this.takesSelf(fns[0]) ? 1 : 0)
             const picked = this.pickOverload(fns, argTypes, withSelf)
+            const distributed = this.distributedReturn(fns, argTypes, picked,
+                (f, args) => (this.takesSelf(f) ? [objType, ...args] : args))
+            if (distributed) return distributed
             if (picked) {
                 const self = this.takesSelf(picked) ? 1 : 0
                 const written = this.constArgs(picked, expr.arguments, argTypes, env, self)
