@@ -443,6 +443,10 @@ class Analyzer {
                 this.visitType(stmt.valueType, scope)
                 return
 
+            case "DeclareClassStatement":
+                this.visitType(stmt.body, scope)
+                return
+
             case "TypeAliasStatement":
             case "ExportTypeAliasStatement":
                 // Type-level names live in a separate namespace from value

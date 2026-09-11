@@ -117,6 +117,21 @@ name: T | nil   -- must be written, but may be nil
 Omitting an argument requires `?` (or a default), as in TypeScript — a
 parameter typed `T | nil` still has to be passed something.
 
+**Classes** — types are structural, except for classes. A definitions file
+declares one with `declare class`, and it is nominal, as Roblox's classes are:
+
+```luau
+declare class BasePart extends PVInstance { Size: Vector3 }
+declare class Part extends BasePart { Shape: EnumItem }
+```
+
+A `Part` is a `BasePart` and an `Instance` because it extends them. A
+`ReplicatedStorage` is not a `Part`, and no table literal is an `Instance`,
+however alike their members. A class still fits a shape that names members it
+has (`{ Name: string }`). It is not a table, though, so `typeof(part)` picks
+the `"Instance"` overload, not `"table"`. Members are inherited, and a subclass
+may narrow one (`Parent: SomeFolder`).
+
 **Calls** — every argument is checked against its parameter, and a generic
 parameter against its constraint (`GetService<K extends keyof Services>`
 rejects `""`).

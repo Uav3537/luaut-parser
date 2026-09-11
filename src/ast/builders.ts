@@ -7,7 +7,7 @@ import type {
     NumericForStatement, GenericForStatement, ReturnStatement,
     BreakStatement, ContinueStatement, TypeAliasStatement, ExportTypeAliasStatement,
     ImportStatement, ImportSpecifier, ExportStatement, ExportDefaultStatement, DeclareStatement,
-    ExportNamedStatement, ExportSpecifier, ExportAllStatement,
+    DeclareClassStatement, ExportNamedStatement, ExportSpecifier, ExportAllStatement,
     FunctionName, TypedIdentifier, GenericTypeParameter, FunctionSignature, TypePredicateNode,
     MappedTypeNode,
     BindingTarget, IdentifierPattern, ObjectPattern, ObjectPatternProperty,
@@ -383,6 +383,12 @@ export class Parser {
 
         if (t.type === "Identifier" && (t as any).value === "declare") {
             const p1 = this.peek(1)
+            // `class` is a soft keyword: `declare class: T` still declares a
+            // global named `class`.
+            if (p1.type === "Identifier" && (p1 as any).value === "class" &&
+                this.peek(2).type === "Identifier") {
+                return this.parseDeclareClassStatement()
+            }
             if (p1.type === "Identifier" ||
                 (p1.type === "Keyword" && (p1 as any).value === "function")) {
                 return this.parseDeclareStatement()
@@ -432,6 +438,25 @@ export class Parser {
         this.expectPunctuator(":")
         const valueType = this.parseType()
         return { type: "DeclareStatement", name: nameTok.value as string, id: tokenIdentifier(nameTok), valueType, ...spanFrom(start, this.previous()) }
+    }
+
+    // `declare class Name extends Base { member: T, ... }`
+    private parseDeclareClassStatement(): DeclareClassStatement {
+        const start = this.current()
+        this.advance() // 'declare'
+        this.advance() // 'class'
+        const name = tokenIdentifier(this.expectIdentifier())
+        let superclass: TypeReference | undefined
+        if (this.checkIdentifierValue("extends")) {
+            this.advance()
+            const base = this.parseType()
+            if (base.type !== "TypeReference") this.error("A class can only extend another class, written by name")
+            superclass = base as TypeReference
+        }
+        if (!this.checkPunctuator("{")) this.error("Expected '{' to start the class body")
+        const body = this.parseTableType()
+        if (body.type !== "TableTypeNode") this.error("A class body lists members ('name: T'), not a mapped type")
+        return { type: "DeclareClassStatement", name, superclass, body: body as TableTypeNode, ...spanFrom(start, this.previous()) }
     }
 
     // `import { a, b as c } from '...'` / `import Default from '...'` /

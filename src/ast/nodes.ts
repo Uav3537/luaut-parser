@@ -109,6 +109,7 @@ export type Statement =
     | ExportNamedStatement
     | ExportAllStatement
     | DeclareStatement
+    | DeclareClassStatement
     | ErrorStatement
 
 /** `declare game: DataModel` / `declare function require(m: string): unknown`
@@ -121,6 +122,19 @@ export interface DeclareStatement extends BaseNode {
     id: Identifier
     /** the declared value's type (function form is lowered to a FunctionTypeNode) */
     valueType: TypeNode
+}
+
+/** `declare class Part extends BasePart { Shape: EnumItem }` — a *nominal*
+ *  type for a definitions file, the way Roblox's own classes are: a `Part` is
+ *  an `Instance` because it extends one, not because it has the same members,
+ *  and no table literal is ever a `Part`. The body lists the members the class
+ *  adds; it inherits the rest. Declares a type only, no value. */
+export interface DeclareClassStatement extends BaseNode {
+    type: "DeclareClassStatement"
+    name: Identifier
+    /** `extends Base` — another class. */
+    superclass?: TypeReference
+    body: TableTypeNode
 }
 
 /** A statement position that could not be parsed. Only produced when parsing

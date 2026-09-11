@@ -72,6 +72,27 @@ export interface ObjectType {
     /** The alias this object was resolved from — display only, ignored by
      *  `isAssignable` (the type is structural). Dropped on `widen`/`substitute`. */
     name?: string
+    /** Set on a `declare class` — the type is then *nominal*. See `ClassInfo`. */
+    class?: ClassInfo
+}
+
+/** What makes an object a class instance. `properties` then holds every
+ *  member, inherited ones included. Only the class itself and the classes
+ *  extending it are assignable to it — no table literal, no structurally
+ *  identical class. Going the other way, a class satisfies a shape naming
+ *  members it has (`{ Name: string }`) but is not a table: never a
+ *  `{ [K]: V }` or `{}`, which is what keeps `typeof(part)` from matching the
+ *  `{ [unknown]: unknown }` overload. */
+export interface ClassInfo {
+    name: string
+    /** The class it directly extends, if any. */
+    superclass?: string
+    /** The class itself, then each class it extends, nearest first. */
+    ancestors: readonly string[]
+}
+
+export function isClassType(t: Type): t is ObjectType & { class: ClassInfo } {
+    return t.kind === "object" && t.class !== undefined
 }
 
 export interface FunctionParam { name?: string; type: Type; optional?: boolean }
@@ -383,7 +404,11 @@ export function unify(param: Type, arg: Type, vars: Set<string>, out: Map<string
             }
             return
         case "object":
-            if (arg.kind === "object") {
+            // A class binds nothing: it is never generic, and a class argument
+            // does not match a table shape. Its members also refer back to
+            // the class itself, so walking them would never end.
+            if (param.class) return
+            if (arg.kind === "object" && !arg.class) {
                 for (const [k, pv] of param.properties) {
                     const av = arg.properties.get(k)
                     if (av) unify(pv.type, av.type, vars, out)
@@ -509,7 +534,7 @@ export function widen(t: Type): Type {
         case "tuple":
             return tuple(t.elements.map(widen), t.isPack)
         case "object": {
-            if (t.frozen) return t
+            if (t.frozen || t.class) return t
             const entries: [string, ObjectProperty][] = []
             for (const [k, v] of t.properties) entries.push([k, { ...v, type: widen(v.type) }])
             const w = objectType(entries, t.indexer && { key: t.indexer.key, value: widen(t.indexer.value) })
@@ -565,6 +590,12 @@ export function isAssignable(rawA: Type, rawB: Type): boolean {
     if (expandAlias) {
         if (a.kind === "genericRef" && b.kind !== "genericRef") a = expandAlias(a)
         else if (b.kind === "genericRef" && a.kind !== "genericRef") b = expandAlias(b)
+        else if (a.kind === "genericRef" && b.kind === "genericRef" && a.name !== b.name) {
+            // Two different names can still be related — `Part` is an
+            // `Instance` — so compare what they stand for.
+            a = expandAlias(a)
+            b = expandAlias(b)
+        }
         if (a === b) return true
     }
 
@@ -634,6 +665,11 @@ function isAssignableInner(a: Type, b: Type): boolean {
     }
     if (a.kind === "object") {
         if (b.kind !== "object") return false
+        if (b.class) return a.class !== undefined && a.class.ancestors.includes(b.class.name)
+        // A class does satisfy a *shape* — `{ Name: string }` names members it
+        // has, as Luau allows — but it is not a table: never a `{ [K]: V }`,
+        // and not the empty `{}` either.
+        if (a.class && (b.indexer || b.properties.size === 0)) return false
         for (const [name, bp] of b.properties) {
             const ap = a.properties.get(name)
             if (!ap) {
@@ -835,6 +871,8 @@ function containsFreeTypeParam(t: Type, seen: Set<Type>, bound: Set<string>): bo
         case "union":
         case "intersection": return t.types.some(m => containsTypeParam(m, seen, bound))
         case "object":
+            // A class is never generic.
+            if (t.class) return false
             return [...t.properties.values()].some(v => containsTypeParam(v.type, seen, bound)) ||
                 (!!t.indexer && (containsTypeParam(t.indexer.key, seen, bound) ||
                     containsTypeParam(t.indexer.value, seen, bound)))
@@ -1070,7 +1108,9 @@ function mergeObjectMembers(types: readonly Type[]): ObjectType | undefined {
             return expanded !== undefined && expanded !== t && collect(expanded)
         }
         if (t.kind === "intersection") return t.types.every(collect)
-        if (t.kind === "object") {
+        // A class's members merged with anything else would be a plain
+        // table, which the class is not.
+        if (t.kind === "object" && !t.class) {
             objects.push(t)
             return true
         }

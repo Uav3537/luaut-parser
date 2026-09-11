@@ -34,11 +34,12 @@ import type {
     Program, Block, Statement, Expression, TypeNode, TypePackNode,
     Identifier, FunctionBody, FunctionSignature, BindingTarget, GenericTypeParameter,
     ObjectPattern, ArrayPattern,
-    TableExpression, ArrayExpression, IfStatement, TypePredicateNode,
+    TableExpression, ArrayExpression, IfStatement, TypePredicateNode, DeclareClassStatement,
 } from "./nodes"
 import type { ScopeAnalysis, BindingId } from "./analyzeScopes"
 import {
-    type Type, type ObjectProperty, type FunctionType, type TypePredicate,
+    type Type, type ObjectProperty, type ObjectType, type FunctionType, type TypePredicate,
+    type GenericRefType,
     anyType, unknownType, neverType, nilType, booleanType, numberType, stringType,
     primitive, literal, arrayOf, tuple, objectType, fn, union, intersection, optional,
     typeParam, substitute, unify, containsTypeParam, matchInfer, setAliasExpander, difference,
@@ -52,7 +53,9 @@ import {
 // ============================================================
 
 export interface TypeDiagnostic {
-    node: Expression | Statement
+    /** Usually an expression or statement; a type where the type is wrong
+     *  (`declare class A extends NotAClass`). */
+    node: Expression | Statement | TypeNode
     message: string
 }
 
@@ -366,6 +369,14 @@ function keepsLiterals(paramType: Type): boolean {
     return members.some(m => m.kind === "literal")
 }
 
+/** A named type: a `type` alias, or a `declare class` (whose `node` is its
+ *  body). */
+interface AliasDef {
+    params: GenericTypeParameter[]
+    node: TypeNode
+    class?: DeclareClassStatement
+}
+
 function posKey(name: string, line: number, column: number): string {
     return `${name}@${line}:${column}`
 }
@@ -384,7 +395,10 @@ class TypeAnalyzer {
      *  `typeParam` nodes in the body). */
     private readonly aliases = new Map<string, Type>()
     /** Uninstantiated alias definitions, for `Name<Args>` instantiation. */
-    private readonly aliasDefs = new Map<string, { params: GenericTypeParameter[]; node: TypeNode }>()
+    private readonly aliasDefs = new Map<string, AliasDef>()
+    /** See `resolveClass`. */
+    private readonly classTypes = new WeakMap<DeclareClassStatement, ObjectType>()
+    private readonly classMembers = new WeakMap<ObjectType, () => { properties: Map<string, ObjectProperty>; indexer: ObjectType["indexer"] } | undefined>()
     /** Generic parameters currently in lexical scope (alias body / generic fn),
      *  with their `extends` constraints resolved. */
     private readonly typeParamScope: { name: string; constraint?: Type; isConst?: boolean }[] = []
@@ -525,18 +539,112 @@ class TypeAnalyzer {
                 : stmt.type === "ExportTypeAliasStatement" ? stmt.alias
                 : undefined
             if (alias) this.aliasDefs.set(alias.name.name, { params: alias.generics, node: alias.definition })
+            if (stmt.type === "DeclareClassStatement") {
+                this.aliasDefs.set(stmt.name.name, { params: [], node: stmt.body, class: stmt })
+            }
         }
     }
 
-    /** Seed global types from `declare` statements. Repeating a name builds an
-     *  *overload set* (an intersection, in declaration order) rather than
-     *  replacing — which is how `typeof` gets one signature per result string. */
+    /** A non-generic definition's type. */
+    private resolveDef(def: AliasDef): Type {
+        return def.class ? this.classType(def.class) : this.resolveType(def.node)
+    }
+
+    /** One type per class declaration, so every mention of a class is the same
+     *  object — its own members included, which refer back to it. */
+    private classType(stmt: DeclareClassStatement): ObjectType {
+        return this.classTypes.get(stmt) ?? this.resolveClass(stmt)
+    }
+
+    /** The class's own members come from its body; the inherited ones are read
+     *  from the superclass the first time anyone asks for `properties`.
+     *
+     *  That has to wait. Classes refer to one another constantly —
+     *  `Instance.IsA` mentions a map of every class, each of which extends
+     *  `Instance` — so while one class resolves, its superclass may itself be
+     *  half-resolved, and copying its members then would miss some for good.
+     *  By the time a member is actually looked up, every class is complete. */
+    private resolveClass(stmt: DeclareClassStatement): ObjectType {
+        const name = stmt.name.name
+        const { ancestors, cyclic } = this.classChain(stmt)
+        // A class that (indirectly) extends itself inherits nothing; the
+        // declaration is reported where it is written.
+        const superclass = !cyclic && ancestors.length > 1
+            ? this.aliasDefs.get(ancestors[1])?.class
+            : undefined
+
+        type Members = { properties: Map<string, ObjectProperty>; indexer: ObjectType["indexer"] }
+        let own: ObjectType | undefined
+        let complete: Members | undefined
+        // Every member, or `undefined` while this class or one it extends is
+        // still being resolved — asked again on the next access, not cached.
+        const members = (): Members | undefined => {
+            if (complete || !own) return complete
+            const base: Members | undefined = superclass ? this.classMembers.get(this.classType(superclass))?.() : undefined
+            if (superclass && !base) return undefined
+            return (complete = {
+                properties: new Map([...(base?.properties ?? []), ...own.properties]),
+                indexer: own.indexer ?? base?.indexer,
+            })
+        }
+
+        const type = { kind: "object", name, class: { name, superclass: superclass?.name.name, ancestors } } as unknown as ObjectType
+        Object.defineProperties(type, {
+            properties: { enumerable: true, get: () => members()?.properties ?? own?.properties ?? new Map() },
+            indexer: { enumerable: true, get: () => members()?.indexer ?? own?.indexer },
+        })
+        this.classTypes.set(stmt, type)
+        this.classMembers.set(type, members)
+        own = this.resolveType(stmt.body) as ObjectType
+        return type
+    }
+
+    /** `extends` must name a class, and the chain must end. */
+    private checkClass(stmt: DeclareClassStatement): void {
+        if (!stmt.superclass || !this.emitDiagnostics) return
+        const base = stmt.superclass.base
+        if (!this.aliasDefs.get(base)?.class) {
+            const known = this.aliasDefs.has(base) || this.importedTypes.has(base)
+            this.diagnostics.push({
+                node: stmt.superclass,
+                message: known
+                    ? `'${base}' is not a class; a class can only extend another class`
+                    : `Cannot find class '${base}'`,
+            })
+        } else if (this.classChain(stmt).cyclic) {
+            this.diagnostics.push({ node: stmt.superclass, message: `'${stmt.name.name}' cannot extend itself` })
+        }
+    }
+
+    /** The class and the classes it extends, nearest first, read from the
+     *  declarations — no type has to be resolved to know them. The walk stops
+     *  at a superclass that is not a class. */
+    private classChain(stmt: DeclareClassStatement): { ancestors: string[]; cyclic: boolean } {
+        const ancestors = [stmt.name.name]
+        for (let cls: DeclareClassStatement | undefined = stmt; cls?.superclass;) {
+            const base: string = cls.superclass.base
+            if (ancestors.includes(base)) return { ancestors, cyclic: true }
+            cls = this.aliasDefs.get(base)?.class
+            if (!cls) break
+            ancestors.push(base)
+        }
+        return { ancestors, cyclic: false }
+    }
+
+    /** Seed global types from `declare` statements. Repeating a function name
+     *  builds an *overload set* (an intersection, in declaration order) rather
+     *  than replacing — which is how `typeof` gets one signature per result
+     *  string. Any other value is simply redeclared: a sourcemap's
+     *  `declare script: <this file's instance>` replaces the library's
+     *  `declare script: LuaSourceContainer`. */
     private harvestDeclares(block: Block): void {
         for (const stmt of block.statements) {
             if (stmt.type !== "DeclareStatement") continue
             const t = this.resolveType(stmt.valueType)
             const prev = this.libGlobalTypes.get(stmt.name)
-            this.libGlobalTypes.set(stmt.name, prev ? intersection([prev, t]) : t)
+            const overload = prev && stmt.valueType.type === "FunctionTypeNode" &&
+                (prev.kind === "function" || prev.kind === "intersection")
+            this.libGlobalTypes.set(stmt.name, overload ? intersection([prev, t]) : t)
         }
     }
 
@@ -549,7 +657,7 @@ class TypeAnalyzer {
             // resolves on first use (through `expand`) or at the end instead.
             if (containsTypeQuery(def.node)) continue
             this.withTypeParams(def.params, () => {
-                this.aliases.set(name, this.resolveType(def.node))
+                this.aliases.set(name, this.resolveDef(def))
             })
         }
     }
@@ -560,7 +668,7 @@ class TypeAnalyzer {
         for (const [name, def] of this.aliasDefs) {
             if (this.aliases.has(name)) continue
             this.withTypeParams(def.params, () => {
-                this.aliases.set(name, this.resolveType(def.node))
+                this.aliases.set(name, this.resolveDef(def))
             })
         }
         return this.aliases
@@ -893,6 +1001,9 @@ class TypeAnalyzer {
                         t.predicate,
                     )
                 case "object": {
+                    // A class is concrete, and rebuilding it would drop what
+                    // makes it one.
+                    if (t.class) return t
                     const entries: [string, ObjectProperty][] = []
                     for (const [k, v] of t.properties) entries.push([k, { ...v, type: this.reduceType(v.type) }])
                     const reduced = objectType(entries, t.indexer && {
@@ -1043,6 +1154,7 @@ class TypeAnalyzer {
                     t.typeParams,
                 )
             case "object": {
+                if (t.class) return t
                 const entries: [string, ObjectProperty][] = []
                 for (const [k, v] of t.properties) entries.push([k, { ...v, type: this.stripInfer(v.type, bindings) }])
                 return objectType(entries, t.indexer && {
@@ -1374,6 +1486,10 @@ class TypeAnalyzer {
                 // Record the state at the jump: it is one of the ways the
                 // enclosing loop can be left, and it merges with the others.
                 this.breakStates[this.breakStates.length - 1]?.push(forkEnv(env))
+                return
+
+            case "DeclareClassStatement":
+                this.checkClass(stmt)
                 return
 
             case "ContinueStatement":
@@ -2082,7 +2198,7 @@ class TypeAnalyzer {
         try {
             const r = def.params.length
                 ? this.instantiateAlias(def, t.typeArguments)
-                : this.resolveType(def.node)
+                : this.resolveDef(def)
             // Display the alias name only for a plain alias. A *generic*
             // instantiation must keep its structure: `Pair` alone would not
             // say which `Pair`, and the point of `Partial<User>` is the

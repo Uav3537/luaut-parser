@@ -3,8 +3,9 @@
  *
  * `rojo sourcemap` writes the tree a project builds —
  * `{ name, className, filePaths?, children? }` all the way down. Each instance
- * becomes a type alias: its class, plus a member per child and `Parent` typed
- * as the parent instance. From that:
+ * becomes a class extending its Roblox class, with a member per child and
+ * `Parent` narrowed to the parent instance. It is still that class — a
+ * `Folder` in the tree passes wherever a `Folder` is expected. From that:
  *
  *   - a `DataModel` root declares `game`, and its `Workspace` child `workspace`;
  *   - a file the tree maps declares `script` as its own instance, so
@@ -39,7 +40,7 @@ export interface SourceMapOptions {
 }
 
 export interface SourceMapTypes {
-    /** The tree's type aliases, and `game` / `workspace` for a place. */
+    /** The tree's classes, and `game` / `workspace` for a place. */
     readonly program: Program
     /** `declare script: ...` for a file the tree maps, or `undefined`. */
     scriptFor(file: string): Program | undefined
@@ -66,9 +67,6 @@ export function sourceMapTypes(
     const lines: string[] = []
     const aliasOfFile = new Map<string, string>()
     const used = new Set<string>()
-    // Overriding `Parent` needs the class without it; without `Omit` in the
-    // libraries, `Parent` keeps the class's own type.
-    const canOmit = options.classes.has("Omit")
 
     const aliasOfNode = new Map<SourceMapNode, string>()
 
@@ -91,7 +89,7 @@ export function sourceMapTypes(
         const taken = options.membersOf?.(className) ?? INSTANCE_MEMBERS
 
         const members: string[] = []
-        if (parent && canOmit) members.push(`Parent: ${parent}`)
+        if (parent) members.push(`Parent: ${parent}`)
         const named = new Set<string>()
         for (const child of node.children ?? []) {
             if (!isNode(child)) continue
@@ -103,8 +101,7 @@ export function sourceMapTypes(
             members.push(`${child.name}: ${childAlias}`)
         }
 
-        const base = parent && canOmit ? `Omit<${className}, "Parent">` : className
-        lines.push(`type ${alias} = ${members.length ? `${base} & { ${members.join(", ")} }` : base}`)
+        lines.push(`declare class ${alias} extends ${className} { ${members.join(", ")} }`)
         return alias
     }
 

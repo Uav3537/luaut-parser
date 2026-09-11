@@ -9,7 +9,7 @@ import { readFileSync } from "node:fs"
 import { dirname, join, resolve } from "node:path"
 import { fileURLToPath } from "node:url"
 import {
-    parse, analyzeScopes, analyzeTypes,
+    parse, analyzeScopes, analyzeTypes, formatType,
     findConfig, loadConfig, resolveTypeLibraries, resolveModulePath, sourceMapTypes,
     type ProjectHost, type Program,
 } from "../src/index.js"
@@ -163,6 +163,7 @@ const rel = (path: string | undefined): string | undefined =>
         for (const s of lib.body.statements) {
             if (s.type === "TypeAliasStatement") classes.add(s.name.name)
             if (s.type === "ExportTypeAliasStatement") classes.add(s.alias.name.name)
+            if (s.type === "DeclareClassStatement") classes.add(s.name.name)
         }
     }
 
@@ -202,6 +203,11 @@ const rel = (path: string | undefined): string | undefined =>
         "const remotes: Folder = script.Parent.Remotes",
         "const storage: ReplicatedStorage = script.Parent.Parent",
     ].join("\n"), "src/shared/Util.luaut"), [])
+    check("sourcemap: an instance is not some other class", diagnose([
+        "const wrong: Part = game.ReplicatedStorage.Shared.Remotes",
+        "const kind = typeof(script)",
+        "const ok: \"Instance\" = kind",
+    ].join("\n"), "src/shared/Util.luaut"), ["Type 'SourceMap_Game_ReplicatedStorage_Shared_Remotes' is not assignable to 'Part'"])
     check("sourcemap: a child is really typed, not any",
         diagnose("const wrong: number = game.ReplicatedStorage.Shared.Remotes", "src/other.luaut").length, 1)
     check("sourcemap: a child named like a member leaves the member alone",
@@ -210,6 +216,87 @@ const rel = (path: string | undefined): string | undefined =>
         types!.scriptFor(join(ROOT, "src/other.luaut")), undefined)
     check("sourcemap: invalid JSON is reported",
         sourceMapTypes("{ nope", join(ROOT, "sourcemap.json"), { classes }).problem?.startsWith("Invalid sourcemap"), true)
+
+    // --- classes ----------------------------------------------------------
+    const classCheck = (code: string): { bindings: Record<string, string>; diagnostics: string[] } => {
+        const globals = libs.flatMap(l => l.body.statements.flatMap(s => (s.type === "DeclareStatement" ? [s.name] : [])))
+        const program = parse(code)
+        const scopes = analyzeScopes(program, { builtinGlobals: globals })
+        const analysis = analyzeTypes(program, scopes, { libs })
+        const bindings: Record<string, string> = {}
+        for (const [id, type] of analysis.bindingType) {
+            const binding = scopes.bindings.get(id)!
+            if (binding.kind !== "global") bindings[binding.name] = formatType(type)
+        }
+        return { bindings, diagnostics: analysis.diagnostics.map(d => d.message) }
+    }
+
+    const reported = classCheck([
+        `const storage = game:GetService("ReplicatedStorage")`,
+        `const a = typeof(storage)`,
+        `const b = type(storage)`,
+        `const c = typeof(Vector3.new())`,
+        `const d = typeof({ x: 1 })`,
+    ].join("\n")).bindings
+    check("classes: typeof an Instance is \"Instance\", not \"table\"",
+        [reported.a, reported.b, reported.c, reported.d], [`"Instance"`, `"userdata"`, `"Vector3"`, `"table"`])
+
+    check("classes: a subclass is its superclasses, and nothing else", classCheck([
+        `const part = Instance.new("Part")`,
+        `const asBase: BasePart = part`,
+        `const asInstance: Instance = part`,
+        `const asScript: Script = Instance.new("LocalScript")`,
+        `const wrong: Model = part`,
+        `const fake: Instance = { Name: "x", ClassName: "Part" }`,
+    ].join("\n")).diagnostics, [
+        "Type 'Part' is not assignable to 'Model'",
+        "Type '{ ClassName: string, Name: string }' is not assignable to 'Instance'",
+    ])
+
+    const inherited = classCheck([
+        `const part = Instance.new("Part")`,
+        `const name = part.Name`,
+        `const size = part.Size`,
+        `const pivot = part:GetPivot()`,
+        `const shape = part.Shape`,
+    ].join("\n")).bindings
+    check("classes: members are inherited",
+        [inherited.name, inherited.size, inherited.pivot, inherited.shape], ["string", "Vector3", "CFrame", "EnumItem"])
+
+    check("classes: a class satisfies a shape but is not a table", classCheck([
+        `const function nameOf(x: { Name: string }): string return x.Name end`,
+        `const function keys(t: { [string]: unknown }) end`,
+        `nameOf(workspace)`,
+        `keys(workspace)`,
+    ].join("\n")).diagnostics, ["Argument of type 'Workspace' is not assignable to parameter of type '{ [string]: unknown }'"])
+
+    const narrowed = classCheck([
+        `const function f(x: Instance | Vector3 | { n: number })`,
+        `    if typeof(x) == "Instance" then const i = x`,
+        `    elseif typeof(x) == "table" then const t = x end`,
+        `    if x:IsA("BasePart") then const p = x end`,
+        `end`,
+    ].join("\n")).bindings
+    check("classes: typeof narrows between classes and tables", [narrowed.i, narrowed.t], ["Instance", "{ n: number }"])
+
+    check("classes: declaring one", classCheck([
+        `declare class Animal { Name: string }`,
+        `declare class Dog extends Animal { Bark: (self: Dog) -> () }`,
+        `declare class Loop extends Loop {}`,
+        `declare class Odd extends Services {}`,
+        `declare class Lost extends Nowhere {}`,
+        `const function pet(a: Animal) end`,
+        `const function walk(d: Dog) end`,
+        `declare rex: Dog`,
+        `declare cat: Animal`,
+        `pet(rex)`,
+        `walk(cat)`,
+    ].join("\n")).diagnostics, [
+        "'Loop' cannot extend itself",
+        "'Services' is not a class; a class can only extend another class",
+        "Cannot find class 'Nowhere'",
+        "Argument of type 'Animal' is not assignable to parameter of type 'Dog'",
+    ])
 }
 
 for (const failure of failures) console.log(`FAIL ${failure}`)
