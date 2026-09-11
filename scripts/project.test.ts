@@ -255,6 +255,55 @@ const rel = (path: string | undefined): string | undefined =>
     check("import type: `import type from` is a default import named type",
         analyze(`import type from "./shapes"\nprint(type)`, shapes).errors, [])
 
+    // An indexer is a promise about every key it covers.
+    check("indexers: every property must hold the indexer's type", analyze([
+        "declare find: () -> string | nil",
+        "const bad: { [string]: number } = { a: find(), b: 1 }",
+        "const good: { [string]: number } = { a: 1, b: 2 }",
+    ].join("\n")).errors, ["Type '{ a: string | nil, b: number }' is not assignable to '{ [string]: number }'"])
+
+    // `pairs` over a record: literal keys, correlated with their values.
+    const record = analyze([
+        "type Event = { kind: \"event\" }",
+        "type Func = { kind: \"function\" }",
+        "declare remotes: { Char: Event, Settings: Func, Maybe: Event | nil }",
+        "function scan()",
+        "    for name, remote in pairs(remotes) do",
+        "        const anyName = name",
+        "        if remote == nil then return end",
+        "        if name == \"Settings\" then",
+        "            const settings = remote",
+        "        elseif name == \"Char\" then",
+        "            const char = remote",
+        "        else",
+        "            const rest = remote",
+        "            const restName = name",
+        "        end",
+        "        if remote.kind == \"function\" then",
+        "            const fromValue = name",
+        "        end",
+        "    end",
+        "end",
+    ].join("\n"))
+    check("pairs: a record's keys are its property names",
+        record.bindings.anyName, `"Char" | "Settings" | "Maybe"`)
+    check("pairs: testing the key narrows the value, and the other way round",
+        [record.bindings.settings, record.bindings.char, record.bindings.rest, record.bindings.restName, record.bindings.fromValue],
+        ["Func", "Event", "Event", `"Maybe"`, `"Settings"`])
+
+    const destructured = analyze([
+        "type Shape = { kind: \"circle\", radius: number } | { kind: \"rect\", w: number }",
+        "function f(shape: Shape)",
+        "    const { kind, radius } = shape",
+        "    if kind == \"circle\" then const r = radius end",
+        "end",
+        "function g({ kind, w }: Shape)",
+        "    if kind == \"rect\" then const width = w end",
+        "end",
+    ].join("\n"))
+    check("destructuring: names taken from one union member narrow together",
+        [destructured.bindings.r, destructured.bindings.width], ["number", "number"])
+
     // An empty array takes its type from where it is written.
     check("arrays: an empty array fits an annotation", analyze([
         "let waiting: thread[] = []",

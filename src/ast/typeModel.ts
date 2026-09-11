@@ -687,6 +687,18 @@ function isAssignableInner(a: Type, b: Type): boolean {
             }
             if (!isAssignable(ap.type, bp.type)) return false
         }
+        if (b.indexer) {
+            // `{ [string]: V }` promises that every key it covers holds a `V`:
+            // each such property of `a` must be one, and so must whatever `a`'s
+            // own indexer holds.
+            for (const [name, ap] of a.properties) {
+                if (b.properties.has(name) || !isAssignable(literal(name), b.indexer.key)) continue
+                if (!isAssignable(ap.type, b.indexer.value)) return false
+            }
+            if (a.indexer && isAssignable(a.indexer.key, b.indexer.key) && !isAssignable(a.indexer.value, b.indexer.value)) {
+                return false
+            }
+        }
         return true
     }
     if (a.kind === "function") {

@@ -438,6 +438,11 @@ class AliasMap extends Map<string, Type> {
     }
 }
 
+function unwrapParens(e: Expression): Expression {
+    while (e.type === "ParenthesizedExpression") e = e.expression
+    return e
+}
+
 /** The metamethod each binary operator calls. */
 const METAMETHODS: Record<string, string> = {
     "+": "__add", "-": "__sub", "*": "__mul", "/": "__div", "//": "__idiv",
@@ -1395,6 +1400,7 @@ class TypeAnalyzer {
                         : !isFreshLiteralExpr(source) ? "keep"
                         : stmt.kind === "const" ? "const" : "widen"
                     this.bindPattern(target, inferred, env, mode)
+                    if (stmt.kind === "const") this.correlateDestructuring(target, inferred, env)
                 })
                 return
             }
@@ -1476,6 +1482,7 @@ class TypeAnalyzer {
                     if (target.type === "Identifier") {
                         const id = this.bindingIdOf(target)
                         if (id !== undefined) {
+                            this.uncorrelate(id)
                             const next = isFreshLiteralExpr(source) ? widen(vt) : vt
                             if (this.annotated.has(id)) {
                                 const declared = this.bindingType.get(id)!
@@ -1567,10 +1574,26 @@ class TypeAnalyzer {
             case "GenericForStatement": {
                 const iterTypes = stmt.iterators.map(it => this.infer(it, env))
                 const bodyEnv = forkEnv(env)
-                const [keyT, valT] = this.iterationTypes(stmt.iterators[0], iterTypes[0], stmt.variables.length)
-                stmt.variables.forEach((v, i) => {
-                    this.bindPattern(v, i === 0 ? keyT : i === 1 ? valT : unknownType, bodyEnv, "widen")
-                })
+                const rows = stmt.variables.length >= 2
+                    ? this.iterationRows(stmt.iterators[0], iterTypes[0])
+                    : undefined
+                if (rows) {
+                    // `for name, value in pairs(record)`: the key is the union of
+                    // the property names, and the two stay correlated — testing
+                    // `name == "a"` narrows `value` to `a`'s type, and back.
+                    const [key, value] = stmt.variables
+                    this.bindPattern(key, union(rows.map(r => r[0])), bodyEnv, "keep")
+                    this.bindPattern(value, union(rows.map(r => r[1])), bodyEnv, "keep")
+                    stmt.variables.slice(2).forEach(v => this.bindPattern(v, unknownType, bodyEnv, "widen"))
+                    const keyId = key.type === "IdentifierPattern" ? this.bindingIdByName(key.name, key) : undefined
+                    const valueId = value.type === "IdentifierPattern" ? this.bindingIdByName(value.name, value) : undefined
+                    if (keyId !== undefined && valueId !== undefined) this.correlateBindings(bodyEnv, [keyId, valueId], rows)
+                } else {
+                    const [keyT, valT] = this.iterationTypes(stmt.iterators[0], iterTypes[0], stmt.variables.length)
+                    stmt.variables.forEach((v, i) => {
+                        this.bindPattern(v, i === 0 ? keyT : i === 1 ? valT : unknownType, bodyEnv, "widen")
+                    })
+                }
                 this.visitBlock(stmt.body, bodyEnv)
                 return
             }
@@ -1943,7 +1966,9 @@ class TypeAnalyzer {
         const env = forkEnv(outerEnv)
         for (const p of func.params) {
             if (p.pattern) {
-                this.bindPattern(p.pattern, this.paramType(p, env), env, "widen")
+                const type = this.paramType(p, env)
+                this.bindPattern(p.pattern, type, env, "widen")
+                this.correlateDestructuring(p.pattern, type, env)
                 continue
             }
             const id = this.bindingIdByName(p.name, p)
@@ -2280,6 +2305,92 @@ class TypeAnalyzer {
             this.emitDiagnostics = wasEmitting
             this.preVisitDepth--
         }
+    }
+
+    /** The `[key, value]` pairs iterating a record yields, one per property —
+     *  for `pairs(t)`, `next, t` and `for k, v in t` over an object type with
+     *  no indexer. `undefined` for anything else (an array, a dictionary, an
+     *  iterator function), whose keys have no names to list. */
+    private iterationRows(iterNode: Expression | undefined, iterType: Type): Type[][] | undefined {
+        let source: Type | undefined
+        if (iterNode?.type === "CallExpression" && iterNode.callee.type === "Identifier" && iterNode.arguments[0]) {
+            if (iterNode.callee.name !== "pairs" && iterNode.callee.name !== "next") return undefined
+            source = this.typeOf.get(iterNode.arguments[0])
+        } else {
+            source = iterType
+        }
+        const t = source && this.expand(source)
+        if (!t || t.kind !== "object" || t.class || t.indexer || !t.properties.size) return undefined
+        return [...t.properties].map(([name, property]) => [
+            literal(name),
+            property.optional ? optional(property.type) : property.type,
+        ])
+    }
+
+    /** Bindings that hold parts of one value: the key and value of a `pairs`
+     *  row, or the names destructured from one union member. By flow key.
+     *  Which rows are still possible is itself flow state, kept in `env` under
+     *  `group` as a union of tuples, so it narrows and merges like any type. */
+    private readonly correlations = new Map<RefKey, { group: RefKey; index: number; keys: RefKey[]; rows: Type[][] }>()
+
+    private correlateBindings(env: FlowEnv, ids: BindingId[], rows: Type[][]): void {
+        const keys = ids.map(bindKey)
+        const group = `rows(${keys.join(",")})`
+        keys.forEach((key, index) => this.correlations.set(key, { group, index, keys, rows }))
+        env.set(group, union(rows.map(row => tuple(row))))
+    }
+
+    /** `key` was just narrowed to `narrowed` in `env`: narrow that column of
+     *  every row, drop the rows it rules out, and give the other bindings what
+     *  the remaining rows hold. */
+    private correlate(env: FlowEnv, key: RefKey, narrowed: Type): void {
+        const entry = this.correlations.get(key)
+        if (!entry) return
+        const state = env.get(entry.group)
+        const current = state && (state.kind === "union" ? state.types : [state]).every(t => t.kind === "tuple")
+            ? (state.kind === "union" ? state.types : [state]).map(t => (t as Extract<Type, { kind: "tuple" }>).elements)
+            : entry.rows
+        const kept: Type[][] = []
+        for (const row of current) {
+            const column = narrowTo(row[entry.index], narrowed)
+            if (column.kind !== "never") kept.push(row.map((t, i) => (i === entry.index ? column : t)))
+        }
+        env.set(entry.group, kept.length ? union(kept.map(row => tuple(row))) : neverType)
+        entry.keys.forEach((other, j) => {
+            if (j !== entry.index) env.set(other, kept.length ? union(kept.map(row => row[j])) : neverType)
+        })
+    }
+
+    /** Stop correlating a binding once it is assigned: its value no longer
+     *  comes from the row. */
+    private uncorrelate(id: BindingId): void {
+        const entry = this.correlations.get(bindKey(id))
+        if (entry) for (const key of entry.keys) this.correlations.delete(key)
+    }
+
+    /** `const { kind, payload } = action` over a union of objects: one row per
+     *  member, so testing `kind` narrows `payload` (TypeScript's destructured
+     *  discriminated unions). Only plain `name` / `key: name` properties take
+     *  part. */
+    private correlateDestructuring(pattern: BindingTarget, source: Type, env: FlowEnv): void {
+        if (pattern.type !== "ObjectPattern") return
+        const members = this.expand(source)
+        if (members.kind !== "union") return
+        const objects = members.types.map(m => this.expand(m))
+        if (objects.length < 2 || objects.some(m => m.kind !== "object")) return
+        const ids: BindingId[] = []
+        const names: string[] = []
+        for (const property of pattern.properties) {
+            if (property.computed || property.default || property.value.type !== "IdentifierPattern") return
+            const name = property.key.type === "Identifier" ? property.key.name
+                : property.key.type === "StringLiteral" ? property.key.value : undefined
+            const id = this.bindingIdByName(property.value.name, property.value)
+            if (name === undefined || id === undefined) return
+            ids.push(id)
+            names.push(name)
+        }
+        if (ids.length < 2) return
+        this.correlateBindings(env, ids, objects.map(member => names.map(name => this.propertyType(member, name))))
     }
 
     /** `(keyType, valueType)` yielded by a generic-for iterator. Handles
@@ -2638,6 +2749,12 @@ class TypeAnalyzer {
                 }
                 const l = this.infer(expr.left, env)
                 const r = this.infer(expr.right, env)
+                if (op === "==" || op === "~=") {
+                    // `name == "..."`: the string is expected to be one of the
+                    // values `name` can hold — what an editor offers there.
+                    if (unwrapParens(expr.right).type === "StringLiteral") this.expectedTypeOf.set(unwrapParens(expr.right), l)
+                    if (unwrapParens(expr.left).type === "StringLiteral") this.expectedTypeOf.set(unwrapParens(expr.left), r)
+                }
                 switch (op) {
                     case "..": return this.operatorResult(expr, op, l, r) ?? stringType
                     case "==": case "~=": case "<": case ">": case "<=": case ">=":
@@ -3102,6 +3219,8 @@ class TypeAnalyzer {
         const { yes, no } = refine(cur)
         this.setRef(t, key, yes)
         this.setRef(f, key, no)
+        this.correlate(t, key, yes)
+        this.correlate(f, key, no)
 
         const inner = expr.type === "ParenthesizedExpression" ? expr.expression : expr
         if (inner.type !== "MemberExpression" && inner.type !== "IndexExpression") return
