@@ -7,7 +7,7 @@
 import { join, resolve } from "node:path"
 import {
     findConfig, loadConfig, resolveTypeLibraries, resolveModulePath, sourceMapTypes,
-    parse, parseWithRecovery, analyzeScopes, analyzeTypes, moduleExports, formatType,
+    parse, parseWithRecovery, analyzeScopes, analyzeTypes, moduleExports, formatType, applyDirectives,
     type ProjectHost, type ModuleExports,
 } from "../src/index.js"
 
@@ -411,6 +411,37 @@ const rel = (path: string | undefined): string | undefined =>
             "Unexpected token in expression",
         ], ["print", "a", "b", "part", "n", "c", "s", "d"]])
     }
+
+    // `--@luaut-...` comments switch checking off.
+    const directed = (code: string) => {
+        const { program, directives } = parseWithRecovery(code)
+        const scopes = analyzeScopes(program)
+        const types = analyzeTypes(program, scopes)
+        const all = [...scopes.diagnostics, ...types.diagnostics]
+        const { kept, unusedExpectErrors } = applyDirectives(directives, all, d => d.node.line.start)
+        return [...kept.map(d => `${d.node.line.start}: ${d.message}`), ...unusedExpectErrors.map(d => `${d.line}: unused`)]
+    }
+    check("directives: ignore and expect-error cover the next line of code", directed([
+        "const a: number = \"x\"",
+        "--@luaut-ignore",
+        "const b: number = \"x\"",
+        "-- @luaut-expect-error: the reason",
+        "",
+        "-- another comment",
+        "const c: number = \"x\"",
+        "--@luaut-expect-error",
+        "const d: number = 1",
+        "const e: number = \"x\" --@luaut-ignore",
+        "const f: number = \"x\"",
+    ].join("\n")), [
+        "1: Type '\"x\"' is not assignable to 'number'",
+        "10: Type '\"x\"' is not assignable to 'number'",
+        "8: unused",
+    ])
+    check("directives: nocheck before the code turns the file off", [
+        directed("-- header\n--@luaut-nocheck\nconst a: number = \"x\"\nnope = 1"),
+        directed("const a: number = \"x\"\n--@luaut-nocheck"),
+    ], [[], ["1: Type '\"x\"' is not assignable to 'number'"]])
 
     // An overload set with a union argument picks per member.
     const perMember = analyze([

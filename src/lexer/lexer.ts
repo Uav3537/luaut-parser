@@ -125,14 +125,28 @@ export class LexError extends Error {
 // Tokenizer
 // ============================================================
 
-/**
- * `errors` — when given, a malformed token is recorded there instead of
- * thrown, and lexing goes on: an unclosed string or comment ends at the end of
- * its line (a long bracket at the end of the source), and a character that
- * starts no token is skipped. An editor mid-keystroke still gets every other
- * token.
- */
-export function tokenize(source: string, errors?: LexError[]): Token[] {
+/** A `--` comment: its text after the dashes (a long comment's content), and
+ *  where it starts and ends. */
+export interface SourceComment {
+    text: string
+    line: number
+    column: number
+    endLine: number
+}
+
+export interface TokenizeOptions {
+    /** When given, a malformed token is recorded here instead of thrown, and
+     *  lexing goes on: an unclosed string or comment ends at the end of its
+     *  line (a long bracket at the end of the source), and a character that
+     *  starts no token is skipped. An editor mid-keystroke still gets every
+     *  other token. */
+    errors?: LexError[]
+    /** When given, every comment is collected here, in order. */
+    comments?: SourceComment[]
+}
+
+export function tokenize(source: string, options: TokenizeOptions = {}): Token[] {
+    const { errors, comments } = options
     const tokens: Token[] = []
     let cursor = 0
     let line = 1
@@ -257,16 +271,21 @@ export function tokenize(source: string, errors?: LexError[]): Token[] {
                 continue
             }
             if (ch === "-" && peek(1) === "-") {
+                const startLine = line
+                const startColumn = column
                 advance()
                 advance()
                 if (peek() === "[") {
                     const level = tryLongBracketOpen()
                     if (level !== null) {
-                        readLongBracketContent(level)
+                        const text = readLongBracketContent(level)
+                        comments?.push({ text, line: startLine, column: startColumn, endLine: line })
                         continue
                     }
                 }
+                const textStart = cursor
                 skipLineComment()
+                comments?.push({ text: source.slice(textStart, cursor).replace(/\r$/, ""), line: startLine, column: startColumn, endLine: startLine })
                 continue
             }
             break

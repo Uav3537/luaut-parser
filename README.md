@@ -221,6 +221,20 @@ declaration wins.
 
 **Modules** — `import` / `export`, export lists, re-exports and `export *`.
 
+**Directives** — comments that switch checking off, as TypeScript's
+`// @ts-...` do. They silence scope and type errors, never syntax errors:
+
+```luau
+--@luaut-nocheck          -- before the first line of code: the whole file
+--@luaut-ignore           -- the next line of code
+--@luaut-expect-error     -- the next line of code, which must have an error
+```
+
+`parseWithRecovery` returns them as `directives`; `directivesOf(source)` reads
+them for a caller that parsed some other way, and
+`applyDirectives(directives, diagnostics, lineOf)` filters a list and names
+each `expect-error` that had nothing to suppress.
+
 ## Options
 
 ```ts

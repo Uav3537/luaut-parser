@@ -1,6 +1,7 @@
 import { parse, parseTokens, parseExpressionFromSource, parseWithRecovery, ParseError } from '@ast/builders'
 export type { RecoverResult, ParserOptions } from '@ast/builders'
 import { tokenize, LexError } from '@lexer/lexer'
+export type { SourceComment, TokenizeOptions } from '@lexer/lexer'
 
 // Re-export every AST/token type so consumers can `import type { ... } from "luaut-parser"`.
 export * from '@lexer/token'
@@ -16,6 +17,10 @@ export * from '@ast/typeModel'
 // the project functions find and load them. See `findConfig` and
 // `resolveTypeLibraries`.
 export { PRELUDE_SOURCE } from '@ast/prelude'
+export {
+    readDirectives, directivesOf, applyDirectives, UNUSED_EXPECT_ERROR,
+    type Directive, type DirectiveKind, type Directives, type DirectiveOutcome,
+} from '@ast/directives'
 export * from './project'
 
 // This package is the luaut *front end* only: source -> luaut AST (+ scope

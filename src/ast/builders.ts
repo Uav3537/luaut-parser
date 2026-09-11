@@ -1,4 +1,5 @@
-import { tokenize, LexError, type Token } from "@lexer/lexer"
+import { tokenize, LexError, type Token, type SourceComment } from "@lexer/lexer"
+import { readDirectives, type Directives } from "./directives"
 import type {
     Program, Block, Statement, Expression, TypeNode,
     VariableDeclaration, FunctionDeclaration, FunctionDeclarationStatement,
@@ -2506,6 +2507,8 @@ export function parseExpressionFromSource(raw: string): Expression {
 export interface RecoverResult {
     program: Program
     errors: ParseError[]
+    /** The file's `--@luaut-...` comments; see `applyDirectives`. */
+    directives: Directives
 }
 
 /**
@@ -2520,7 +2523,8 @@ export interface RecoverResult {
  */
 export function parseWithRecovery(source: string): RecoverResult {
     const lexErrors: LexError[] = []
-    const tokens = tokenize(source, lexErrors)
+    const comments: SourceComment[] = []
+    const tokens = tokenize(source, { errors: lexErrors, comments })
     const lexed = lexErrors.map(e => new ParseError(e.message.replace(/ \(\d+:\d+\)$/, ""), e.line, e.column))
 
     const first = new Parser(tokens, { recover: true })
@@ -2537,5 +2541,5 @@ export function parseWithRecovery(source: string): RecoverResult {
         }
     }
     const all = [...lexed, ...errors].sort((a, b) => a.line - b.line || a.column - b.column)
-    return { program, errors: all }
+    return { program, errors: all, directives: readDirectives(comments, tokens) }
 }
