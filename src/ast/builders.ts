@@ -883,6 +883,7 @@ export class Parser {
             while (this.matchPunctuator(",")) {
                 targets.push(this.parseAssignTarget())
             }
+            for (const target of targets) this.rejectOptionalTarget(target)
             this.expectOperator("=")
             const values = this.parseExpressionList()
             return { type: "AssignmentStatement", targets, values, ...spanFrom(start, this.previous()) }
@@ -890,6 +891,7 @@ export class Parser {
 
         const t = this.current()
         if (t.type === "Operator" && COMPOUND_ASSIGN_OPS.has((t as any).value)) {
+            this.rejectOptionalTarget(first)
             const op = (this.advance() as any).value
             const value = this.parseExpression()
             return {
@@ -935,15 +937,41 @@ export class Parser {
      *  rather than the `:` of a ternary (`cond ? obj : other`)? Lua requires a
      *  method call to be called, so the answer is exact rather than heuristic:
      *  `:` Identifier followed by one of Lua's call forms. */
-    private startsMethodCall(): boolean {
-        if (this.peek(1).type !== "Identifier") return false
-        const after = this.peek(2)
+    private startsMethodCall(offset = 0): boolean {
+        if (this.peek(offset + 1).type !== "Identifier") return false
+        const after = this.peek(offset + 2)
         if (after.type === "Punctuator") {
             const v = String((after as { value?: unknown }).value)
             return v === "(" || v === "{"
         }
         if (after.type === "InterpolatedString") return true
         return after.type === "Literal" && (after as { kind?: unknown }).kind === "string"
+    }
+
+    /** Does the next token start right where the current one ends? */
+    private touchesNext(): boolean {
+        const current = this.current()
+        const next = this.peek(1)
+        return current.line.end === next.line.start && current.column.end === next.column.start
+    }
+
+    /** `a?.b = 1` cannot be written: there may be nothing to assign to. */
+    private rejectOptionalTarget(target: Expression | ObjectPattern | ArrayPattern): void {
+        for (let e: unknown = target; e && typeof e === "object";) {
+            const node = e as { type?: string; optional?: boolean; object?: unknown; callee?: unknown }
+            if (node.optional) {
+                const at = target as Expression
+                const err = new ParseError("An optional chain cannot be assigned to", at.line.start, at.column.start)
+                if (this.recover) {
+                    this.errors.push(err)
+                    throw new ParseRecover(err.message)
+                }
+                throw err
+            }
+            e = node.type === "MemberExpression" || node.type === "IndexExpression" || node.type === "MethodCallExpression"
+                ? node.object
+                : node.type === "CallExpression" ? node.callee : undefined
+        }
     }
 
     private isUnaryOperator(): string | null {
@@ -1157,6 +1185,31 @@ export class Parser {
         }
 
         while (true) {
+            // `a?.b` / `a?:m()`: the `?` must touch what follows it, as one
+            // token would. `?` alone still starts a ternary's middle.
+            if (this.checkPunctuator("?") && this.touchesNext()) {
+                const next = this.peek(1)
+                const punct = next.type === "Punctuator" ? String((next as { value?: unknown }).value) : undefined
+                if (punct === "." && this.peek(2).type === "Identifier") {
+                    this.advance()
+                    this.advance()
+                    const prop = this.parseIdentifier()
+                    base = { type: "MemberExpression", object: base, property: prop, optional: true, ...spanFrom(base, prop) }
+                    continue
+                }
+                if (punct === ":" && this.startsMethodCall(1)) {
+                    this.advance()
+                    this.advance()
+                    const method = this.parseIdentifier()
+                    const args = this.parseCallArguments()
+                    base = {
+                        type: "MethodCallExpression",
+                        object: base, method, arguments: args, optional: true,
+                        ...spanFrom(base, this.previous()),
+                    }
+                    continue
+                }
+            }
             if (this.matchPunctuator(".")) {
                 const prop = this.parseIdentifier()
                 base = { type: "MemberExpression", object: base, property: prop, ...spanFrom(base, prop) }

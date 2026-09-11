@@ -443,6 +443,12 @@ function unwrapParens(e: Expression): Expression {
     return e
 }
 
+/** `t` with `nil` removed: what an optional link reads from. */
+function withoutNil(t: Type): Type {
+    if (t.kind !== "union") return t.kind === "primitive" && t.name === "nil" ? neverType : t
+    return union(t.types.filter(m => !(m.kind === "primitive" && m.name === "nil")))
+}
+
 /** The metamethod each binary operator calls. */
 const METAMETHODS: Record<string, string> = {
     "+": "__add", "-": "__sub", "*": "__mul", "/": "__div", "//": "__idiv",
@@ -2766,69 +2772,28 @@ class TypeAnalyzer {
             }
 
             case "MemberExpression": {
-                const obj = this.infer(expr.object, env)
+                const { type: obj, shortCircuits } = this.chainObject(expr, expr.object, env)
                 const key = this.refKeyOf(expr)
                 const narrowed = key === undefined ? undefined : env.get(key)
-                return narrowed ?? this.propertyType(obj, expr.property.name)
+                return this.chainResult(expr, narrowed ?? this.propertyType(obj, expr.property.name), shortCircuits)
             }
 
             case "IndexExpression": {
-                const obj = this.infer(expr.object, env)
+                const { type: obj, shortCircuits } = this.chainObject(expr, expr.object, env)
                 const idx = this.infer(expr.index, env)
                 const key = this.refKeyOf(expr)
                 const narrowed = key === undefined ? undefined : env.get(key)
-                return narrowed ?? this.indexedType(obj, idx)
+                return this.chainResult(expr, narrowed ?? this.indexedType(obj, idx), shortCircuits)
             }
 
             case "CallExpression": {
-                const callee = this.infer(expr.callee, env)
-                const fns = this.overloadsOf(callee)
-                const expected = this.expectedArguments(expr.arguments, fns, () => 0)
-                expr.arguments.forEach((a, i) => this.applyContext(a, expected[i]))
-                const argTypes = expr.arguments.map(a => this.infer(a, env))
-                if (fns.length) {
-                    this.recordExpected(expr.arguments, fns, () => 0)
-                    const arityFits = this.checkArity(expr, fns, argTypes.length, 0)
-                    const picked = this.pickOverload(fns, argTypes)
-                    if (picked) {
-                        return this.callReturn(picked, this.constArgs(picked, expr.arguments, argTypes, env))
-                    }
-                    if (arityFits) this.reportArguments(expr, expr.arguments, fns, () => argTypes, () => 0)
-                    // Nothing accepts these arguments — the union of what any
-                    // signature could return is the most we can honestly say.
-                    return union(fns.map(f => this.callReturn(f, argTypes)))
-                }
-                return callee.kind === "any" ? anyType : unknownType
+                const { type: callee, shortCircuits } = this.chainObject(expr, expr.callee, env)
+                return this.chainResult(expr, this.inferCall(expr, callee, env), shortCircuits)
             }
 
             case "MethodCallExpression": {
-                const objType = this.infer(expr.object, env)
-                const fns = this.overloadsOf(this.propertyType(objType, expr.method.name))
-                const expected = this.expectedArguments(expr.arguments, fns, f => (this.takesSelf(f) ? 1 : 0))
-                expr.arguments.forEach((a, i) => this.applyContext(a, expected[i]))
-                const argTypes = expr.arguments.map(a => this.infer(a, env))
-                if (fns.length) {
-                    // `obj:m(a)` passes `obj` as the implicit first argument, but
-                    // only to a signature that actually declares a `self` slot —
-                    // a plain `{ f: (n: number) -> ... }` stored in a table and
-                    // called with `:` must not have its arguments shifted.
-                    const withSelf = (f: FunctionType): Type[] =>
-                        this.takesSelf(f) ? [objType, ...argTypes] : argTypes
-                    const selfOf = (f: FunctionType): number => (this.takesSelf(f) ? 1 : 0)
-                    this.recordExpected(expr.arguments, fns, selfOf)
-                    // The receiver fills the `self` slot, so it does not count
-                    // against what the caller wrote.
-                    const arityFits = this.checkArity(expr, fns, argTypes.length, this.takesSelf(fns[0]) ? 1 : 0)
-                    const picked = this.pickOverload(fns, argTypes, withSelf)
-                    if (picked) {
-                        const self = this.takesSelf(picked) ? 1 : 0
-                        const written = this.constArgs(picked, expr.arguments, argTypes, env, self)
-                        return this.callReturn(picked, this.takesSelf(picked) ? [objType, ...written] : written)
-                    }
-                    if (arityFits) this.reportArguments(expr, expr.arguments, fns, withSelf, selfOf)
-                    return union(fns.map(f => this.callReturn(f, withSelf(f))))
-                }
-                return objType.kind === "any" ? anyType : unknownType
+                const { type: objType, shortCircuits } = this.chainObject(expr, expr.object, env)
+                return this.chainResult(expr, this.inferMethodCall(expr, objType, env), shortCircuits)
             }
 
             case "IfElseExpression": {
@@ -2843,6 +2808,107 @@ class TypeAnalyzer {
                 branches.push(this.infer(expr.alternate, elseEnv))
                 return union(branches)
             }
+        }
+    }
+
+    private inferCall(expr: Extract<Expression, { type: "CallExpression" }>, callee: Type, env: FlowEnv): Type {
+        const fns = this.overloadsOf(callee)
+        const expected = this.expectedArguments(expr.arguments, fns, () => 0)
+        expr.arguments.forEach((a, i) => this.applyContext(a, expected[i]))
+        const argTypes = expr.arguments.map(a => this.infer(a, env))
+        if (fns.length) {
+            this.recordExpected(expr.arguments, fns, () => 0)
+            const arityFits = this.checkArity(expr, fns, argTypes.length, 0)
+            const picked = this.pickOverload(fns, argTypes)
+            if (picked) {
+                return this.callReturn(picked, this.constArgs(picked, expr.arguments, argTypes, env))
+            }
+            if (arityFits) this.reportArguments(expr, expr.arguments, fns, () => argTypes, () => 0)
+            // Nothing accepts these arguments — the union of what any
+            // signature could return is the most we can honestly say.
+            return union(fns.map(f => this.callReturn(f, argTypes)))
+        }
+        return callee.kind === "any" ? anyType : unknownType
+    }
+
+    private inferMethodCall(expr: Extract<Expression, { type: "MethodCallExpression" }>, objType: Type, env: FlowEnv): Type {
+        const fns = this.overloadsOf(this.propertyType(objType, expr.method.name))
+        const expected = this.expectedArguments(expr.arguments, fns, f => (this.takesSelf(f) ? 1 : 0))
+        expr.arguments.forEach((a, i) => this.applyContext(a, expected[i]))
+        const argTypes = expr.arguments.map(a => this.infer(a, env))
+        if (fns.length) {
+            // `obj:m(a)` passes `obj` as the implicit first argument, but
+            // only to a signature that actually declares a `self` slot —
+            // a plain `{ f: (n: number) -> ... }` stored in a table and
+            // called with `:` must not have its arguments shifted.
+            const withSelf = (f: FunctionType): Type[] =>
+                this.takesSelf(f) ? [objType, ...argTypes] : argTypes
+            const selfOf = (f: FunctionType): number => (this.takesSelf(f) ? 1 : 0)
+            this.recordExpected(expr.arguments, fns, selfOf)
+            // The receiver fills the `self` slot, so it does not count
+            // against what the caller wrote.
+            const arityFits = this.checkArity(expr, fns, argTypes.length, this.takesSelf(fns[0]) ? 1 : 0)
+            const picked = this.pickOverload(fns, argTypes, withSelf)
+            if (picked) {
+                const self = this.takesSelf(picked) ? 1 : 0
+                const written = this.constArgs(picked, expr.arguments, argTypes, env, self)
+                return this.callReturn(picked, this.takesSelf(picked) ? [objType, ...written] : written)
+            }
+            if (arityFits) this.reportArguments(expr, expr.arguments, fns, withSelf, selfOf)
+            return union(fns.map(f => this.callReturn(f, withSelf(f))))
+        }
+        return objType.kind === "any" ? anyType : unknownType
+    }
+
+    // --------------------------------------------------------
+    // Optional chains
+    // --------------------------------------------------------
+    //
+    // `a?.b.c`: when `a` is nil the whole chain is nil and `.c` never runs.
+    // So a link reads its object without the `nil` a `?.` earlier in the chain
+    // added — that nil has already left the chain — and the chain's outermost
+    // link carries it again. Parentheses end a chain: `(a?.b).c` reads `.c`
+    // from `B | nil`.
+
+    /** The type of a link's non-nil object, for each link that is past a `?.`:
+     *  what the chain holds when it has not short-circuited. */
+    private readonly chainValue = new WeakMap<Expression, Type>()
+
+    /** The object a link reads from, and whether the chain can short-circuit
+     *  by this link. */
+    private chainObject(
+        link: Expression & { optional?: boolean },
+        object: Expression,
+        env: FlowEnv,
+    ): { type: Type; shortCircuits: boolean } {
+        const full = this.infer(object, env)
+        const inChain = this.chainValue.get(object)
+        let type = inChain ?? full
+        if (link.optional) type = withoutNil(type)
+        return { type, shortCircuits: inChain !== undefined || link.optional === true }
+    }
+
+    private chainResult(link: Expression, value: Type, shortCircuits: boolean): Type {
+        if (!shortCircuits) return value
+        this.chainValue.set(link, value)
+        return union([value, nilType])
+    }
+
+    /** The chain around `cond` did not short-circuit — it produced a truthy
+     *  value, or any value but nil — so every object a `?.` in it tested is not
+     *  nil in `env`. */
+    private narrowOptionalLinks(cond: Expression, env: FlowEnv, into: FlowEnv): void {
+        for (let e: Expression = cond; ;) {
+            const link = e as Expression & { optional?: boolean; object?: Expression; callee?: Expression }
+            const object = e.type === "CallExpression" ? e.callee
+                : e.type === "MemberExpression" || e.type === "IndexExpression" || e.type === "MethodCallExpression" ? e.object
+                : undefined
+            if (!object) return
+            if (link.optional) {
+                const key = this.refKeyOf(object)
+                if (key !== undefined) this.setRef(into, key, withoutNil(this.typeAtRef(object, env)))
+            }
+            e = object
         }
     }
 
@@ -2963,14 +3029,16 @@ class TypeAnalyzer {
         // Luau built-ins declared the same way.
         if (cond.type === "CallExpression" || cond.type === "MethodCallExpression") {
             this.narrowByPredicateCall(cond, env, t, f)
-            return
+        } else {
+            // Bare truthiness — `if x then`, `if x.y then`, `if cfg["debug"] then`.
+            this.narrowRef(cond, env, t, f, cur => ({
+                yes: narrowTruthy(cur),
+                no: narrowFalsy(cur),
+            }))
         }
-
-        // Bare truthiness — `if x then`, `if x.y then`, `if cfg["debug"] then`.
-        this.narrowRef(cond, env, t, f, cur => ({
-            yes: narrowTruthy(cur),
-            no: narrowFalsy(cur),
-        }))
+        // A truthy optional chain did not short-circuit: `if a?.b then` means
+        // `a` is not nil in the true branch.
+        this.narrowOptionalLinks(cond, env, t)
     }
 
     /** `a == b` / `a ~= b`. Handles, in order: a declaration-driven
@@ -2996,11 +3064,16 @@ class TypeAnalyzer {
         // `x == <literal>` / `x == nil`, including a discriminant `x.tag == "..."`.
         for (const [ref, other] of [[left, right], [right, left]] as const) {
             const value = litOf(other)
-            if (value === undefined || this.refKeyOf(ref) === undefined) continue
-            this.narrowRef(ref, env, yes, no, cur => ({
-                yes: narrowTo(cur, value),
-                no: narrowExclude(cur, value),
-            }))
+            if (value === undefined) continue
+            if (this.refKeyOf(ref) !== undefined) {
+                this.narrowRef(ref, env, yes, no, cur => ({
+                    yes: narrowTo(cur, value),
+                    no: narrowExclude(cur, value),
+                }))
+            }
+            // `a?.b == "x"` holds only if the chain got as far as `b`, and
+            // `a?.b ~= nil` too: either way `a` is not nil there.
+            this.narrowOptionalLinks(ref, env, value.kind === "primitive" && value.name === "nil" ? no : yes)
             return
         }
 
@@ -3229,9 +3302,10 @@ class TypeAnalyzer {
         const step = key.slice(parentKey.length)
         if (!step.startsWith(".")) return // only property steps discriminate
         const prop = step.slice(1)
+        const optional = inner.type === "MemberExpression" && inner.optional === true
         this.narrowRef(inner.object, env, t, f, parentType => ({
-            yes: this.filterByProperty(parentType, prop, yes),
-            no: this.filterByProperty(parentType, prop, no),
+            yes: this.filterByProperty(parentType, prop, yes, optional),
+            no: this.filterByProperty(parentType, prop, no, optional),
         }))
     }
 
@@ -3239,9 +3313,13 @@ class TypeAnalyzer {
      *  Leaves a non-union (or a union nothing matches) alone: over-narrowing a
      *  plain object to `never` because of a property test would be worse than
      *  learning nothing. */
-    private filterByProperty(parent: Type, prop: string, want: Type): Type {
+    private filterByProperty(parent: Type, prop: string, want: Type, optional = false): Type {
         if (parent.kind !== "union" || want.kind === "never") return parent
-        const kept = parent.types.filter(m => overlaps(this.propertyType(m, prop), want))
+        // A nil member has no properties. Read through `?.` it gives nil; read
+        // through `.` it cannot have been the value at all.
+        const kept = parent.types.filter(m => m.kind === "primitive" && m.name === "nil"
+            ? optional && overlaps(nilType, want)
+            : overlaps(this.propertyType(m, prop), want))
         return kept.length ? union(kept) : parent
     }
 

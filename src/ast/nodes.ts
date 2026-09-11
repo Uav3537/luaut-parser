@@ -524,6 +524,9 @@ export interface MemberExpression extends BaseNode {
     type: "MemberExpression"
     object: Expression
     property: Identifier
+    /** `object?.property` — when `object` is nil, the whole chain this link
+     *  belongs to is nil and nothing after it is evaluated. */
+    optional?: boolean
 }
 
 export interface IndexExpression extends BaseNode {
@@ -543,6 +546,9 @@ export interface MethodCallExpression extends BaseNode {
     object: Expression
     method: Identifier
     arguments: Expression[]
+    /** `object?:method(...)` — see `MemberExpression.optional`. The
+     *  arguments are not evaluated when `object` is nil. */
+    optional?: boolean
 }
 
 export interface ParenthesizedExpression extends BaseNode {

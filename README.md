@@ -123,7 +123,8 @@ as a value is an error, and only type positions — `typeof A` included — may
 name it. Compiled code keeps no trace of it.
 
 **Optionality** — there is no `T?` shorthand. `?` in type position always
-belongs to a conditional type, and in expression position to a ternary.
+belongs to a conditional type, and in expression position to a ternary or an
+optional chain.
 
 ```luau
 name?: T        -- may be absent; its type is `T | nil`
@@ -132,6 +133,13 @@ name: T | nil   -- must be written, but may be nil
 
 Omitting an argument requires `?` (or a default), as in TypeScript — a
 parameter typed `T | nil` still has to be passed something.
+
+**Optional chaining** — `a?.b` and `a?:m(x)` are nil when `a` is, and then
+nothing further along the chain runs, arguments included: `folder?:FindFirstChild("A")?.Name`
+is a `string | nil`. The `?` must touch the `.` or `:`; `c ? a : b` stays a
+ternary. Parentheses end a chain. A chain cannot be assigned to (`a?.b = 1` is
+an error). A chain that got through narrows what it tested: inside
+`if part?.Parent then`, and `if part?.Name == "Door" then`, `part` is not nil.
 
 **Classes** — types are structural, except for classes. A definitions file
 declares one with `declare class`, and it is nominal, as Roblox's classes are:

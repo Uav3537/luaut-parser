@@ -315,6 +315,43 @@ const rel = (path: string | undefined): string | undefined =>
         "const grid: number[][] = [[], [1]]",
     ].join("\n")).errors, [])
     check("arrays: and still checks what it holds", analyze(`const wrong: number[] = ["a"]`).errors, ["Type 'string[]' is not assignable to 'number[]'"])
+
+    // Optional chaining: `a?.b` and `a?:m()` are nil when `a` is.
+    const chains = parse("const x = a?.b.c\nconst y = a?:m(1)?.n\nconst z = c ?a:b")
+    const [cx, cy, cz] = chains.body.statements.map(s => (s as { init: any[] }).init[0])
+    check("optional chains: `?.` and `?:` mark their link",
+        [cx.object.optional, cx.optional, cy.optional, cy.object.optional, cz.type],
+        [true, undefined, true, true, "IfElseExpression"])
+    check("optional chains: cannot be assigned to", [
+        parseError("a?.b = 1"),
+        parseError("a?.b.c += 1"),
+        parseError("a.b?.c, d = 1, 2"),
+    ], [
+        "An optional chain cannot be assigned to",
+        "An optional chain cannot be assigned to",
+        "An optional chain cannot be assigned to",
+    ])
+    const optional = analyze([
+        "type Node = { Parent: Node | nil, Name: string, find: (self: Node, name: string) -> Node | nil }",
+        "declare node: Node | nil",
+        "declare run: { go: () -> number } | nil",
+        "const name = node?.Name",
+        "const deep = node?.Parent?.Name",
+        "const found = node?:find(\"a\")",
+        "const called = run?.go()",
+        "const paren = (node?.Parent)",
+        "function f(n: Node | nil)",
+        "    if n?.Parent then const truthy = n else const falsy = n end",
+        "    if n?.Name ~= nil then const present = n end",
+        "    if n?:find(\"a\")?.Name == \"a\" then const matched = n end",
+        "end",
+    ].join("\n"))
+    check("optional chains: a chain is nil when a tested link is", [
+        optional.bindings.name, optional.bindings.deep, optional.bindings.found, optional.bindings.called, optional.bindings.paren,
+    ], ["string | nil", "string | nil", "Node | nil", "number | nil", "Node | nil"])
+    check("optional chains: a chain that got through narrows what it tested", [
+        optional.bindings.truthy, optional.bindings.falsy, optional.bindings.present, optional.bindings.matched,
+    ], ["Node", "Node | nil", "Node", "Node"])
 }
 
 for (const failure of failures) console.log(`FAIL ${failure}`)

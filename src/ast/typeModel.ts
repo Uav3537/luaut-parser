@@ -1006,6 +1006,10 @@ function escapeRegExp(s: string): string {
 /** Do these two types share any value? The compatibility test behind
  *  discriminant filtering and `narrowTo`. */
 export function overlaps(a: Type, b: Type): boolean {
+    // Two unions share a value when any of their members do: `Node | nil` and
+    // `nil | false` meet at `nil`, though neither is assignable to the other.
+    if (a.kind === "union") return a.types.some(m => overlaps(m, b))
+    if (b.kind === "union") return b.types.some(m => overlaps(a, m))
     return isAssignable(a, b) || isAssignable(b, a)
 }
 
