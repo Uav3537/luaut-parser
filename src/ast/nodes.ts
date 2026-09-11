@@ -388,6 +388,15 @@ export type Expression =
     | SatisfiesExpression
     | AsConstExpression
     | IfElseExpression
+    | ErrorExpression
+
+/** An expression that could not be parsed. Only produced in recovery mode
+ *  (`parseWithRecovery`), where a broken initializer, condition, field value or
+ *  argument keeps its place in the tree; its span covers the skipped tokens
+ *  (and is empty when nothing was written). Its type is `any`. */
+export interface ErrorExpression extends BaseNode {
+    type: "ErrorExpression"
+}
 
 export interface Identifier extends BaseNode {
     type: "Identifier"

@@ -7,7 +7,7 @@
 import { join, resolve } from "node:path"
 import {
     findConfig, loadConfig, resolveTypeLibraries, resolveModulePath, sourceMapTypes,
-    parse, analyzeScopes, analyzeTypes, moduleExports, formatType,
+    parse, parseWithRecovery, analyzeScopes, analyzeTypes, moduleExports, formatType,
     type ProjectHost, type ModuleExports,
 } from "../src/index.js"
 
@@ -315,6 +315,102 @@ const rel = (path: string | undefined): string | undefined =>
         "const grid: number[][] = [[], [1]]",
     ].join("\n")).errors, [])
     check("arrays: and still checks what it holds", analyze(`const wrong: number[] = ["a"]`).errors, ["Type 'string[]' is not assignable to 'number[]'"])
+
+    // Recovery: a syntax error costs as little of the tree as it can.
+    const recovered = (code: string) => {
+        const { program, errors } = parseWithRecovery(code)
+        const scopes = analyzeScopes(program)
+        const types = analyzeTypes(program, scopes)
+        const bindings: Record<string, string> = {}
+        for (const [id, type] of types.bindingType) bindings[scopes.bindings.get(id)!.name] = formatType(type)
+        return {
+            errors: errors.map(e => e.message.replace(/, got .*$/, "").replace(/ \(\d+:\d+\)$/, "")),
+            statements: program.body.statements.map(st => st.type),
+            bindings,
+        }
+    }
+    {
+        const r = recovered([
+            "const Config = {",
+            "    a: 1,",
+            "    b: ,",
+            "    c: \"x\"",
+            "    d: 4,",
+            "    run: function() return 1 end,",
+            "}",
+            "const after = Config.d",
+        ].join("\n"))
+        check("recovery: a broken field value and a missing comma keep the rest of the object",
+            [r.errors, r.bindings.Config, r.bindings.after],
+            [["Unexpected token in expression", "Expected ','"], "{ a: number, b: any, c: string, d: number, run: () -> 1 }", "number"])
+    }
+    {
+        const r = recovered([
+            "const Obj = {",
+            "    a: foo bar,",
+            "    f: function(x: number)",
+            "        if x then return 1 end",
+            "        return 2",
+            "    end,",
+            "    g: 5,",
+            "}",
+            "const after = Obj.g",
+        ].join("\n"))
+        check("recovery: skipping stops at the next field, not at an `end` inside the object",
+            [r.statements, r.bindings.after], [["VariableDeclaration", "VariableDeclaration"], "number"])
+    }
+    {
+        const r = recovered([
+            "function f(x: number)",
+            "    if x == then",
+            "        print(x)",
+            "    end",
+            "    return x",
+            "end",
+            "const after = f(1)",
+        ].join("\n"))
+        check("recovery: a broken condition keeps its `if`, so its `end` closes the right block",
+            [r.errors, r.statements, r.bindings.after], [["Unexpected token in expression"], ["FunctionDeclaration", "VariableDeclaration"], "number"])
+    }
+    {
+        const r = recovered([
+            "function a()",
+            "    if true then",
+            "        print(1)",
+            "end",
+            "function b(): number",
+            "    return 2",
+            "end",
+            "const after = b()",
+        ].join("\n"))
+        check("recovery: a missing `end` is placed by indentation",
+            [r.errors, r.statements, r.bindings.after],
+            [["Expected 'end' to close 'if' on line 2"], ["FunctionDeclaration", "FunctionDeclaration", "VariableDeclaration"], "number"])
+    }
+    {
+        const r = recovered([
+            "const a = \"unclosed",
+            "local b = 2",
+            "const part = { Name: \"x\" }",
+            "const n = part.",
+            "end",
+            "const c: { x: number, y: } = { x: 1, y: 2 }",
+            "const s = `${1 +}`",
+            "print(1, +, 3",
+            "const d =",
+        ].join("\n"))
+        check("recovery: strings, `local`, `obj.`, a stray `end`, types, interpolation, calls and initializers", [r.errors, Object.keys(r.bindings)], [[
+            "Unterminated string",
+            "luaut has no 'local'; declare with 'const' or 'let'",
+            // `part.` is followed by the stray `end`: one problem, reported once.
+            "Expected identifier",
+            "Unexpected token in type annotation",
+            "In '${1 +}': Unexpected token in expression",
+            "Unexpected token in expression",
+            "Expected ')'",
+            "Unexpected token in expression",
+        ], ["print", "a", "b", "part", "n", "c", "s", "d"]])
+    }
 
     // The language's utility types need no type library.
     const utilities = analyze([

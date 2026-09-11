@@ -45,7 +45,14 @@ annotation resolves to, and `expectedTypeOf` what each call argument should
 be, so a tool never has to re-derive a type from text.
 
 `parseWithRecovery(source)` returns `{ program, errors }` instead of throwing —
-use it for editors, where the text is usually mid-edit.
+use it for editors, where the text is usually mid-edit. An error costs as
+little of the tree as it can: a broken value becomes an `ErrorExpression`
+(typed `any`) in its place, a broken field or argument is skipped to the next
+`,`, a missing comma between fields on separate lines, or a missing `)`, `}`,
+`then`, `do` or `end`, is recorded and read past — a missing `end` is placed
+by indentation — and an unclosed string ends at its line. Skipping never lets
+an `end` or `}` inside a skipped function or object close the block around
+it. Valid code parses to exactly the same tree as `parse`.
 
 Neither analysis mutates the AST; both return side tables.
 

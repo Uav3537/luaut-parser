@@ -2724,6 +2724,8 @@ class TypeAnalyzer {
                 return stringType
             }
             case "VarargExpression": return anyType
+            // Broken syntax is reported by the parser; nothing more to say.
+            case "ErrorExpression": return anyType
 
             case "Identifier": {
                 const id = this.bindingIdOf(expr)

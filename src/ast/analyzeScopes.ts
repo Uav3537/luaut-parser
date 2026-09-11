@@ -641,6 +641,7 @@ class Analyzer {
             case "NumberLiteral":
             case "StringLiteral":
             case "VarargExpression":
+            case "ErrorExpression":
                 return
 
             case "InterpolatedStringExpression":

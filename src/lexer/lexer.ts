@@ -125,11 +125,24 @@ export class LexError extends Error {
 // Tokenizer
 // ============================================================
 
-export function tokenize(source: string): Token[] {
+/**
+ * `errors` — when given, a malformed token is recorded there instead of
+ * thrown, and lexing goes on: an unclosed string or comment ends at the end of
+ * its line (a long bracket at the end of the source), and a character that
+ * starts no token is skipped. An editor mid-keystroke still gets every other
+ * token.
+ */
+export function tokenize(source: string, errors?: LexError[]): Token[] {
     const tokens: Token[] = []
     let cursor = 0
     let line = 1
     let column = 1
+
+    function fail(message: string, atLine: number, atColumn: number): void {
+        const error = new LexError(message, atLine, atColumn)
+        if (!errors) throw error
+        errors.push(error)
+    }
 
     function peek(offset = 0): string {
         return source[cursor + offset] ?? ""
@@ -205,7 +218,8 @@ export function tokenize(source: string): Token[] {
         let content = ""
         while (true) {
             if (isAtEnd()) {
-                throw new LexError("Unterminated long bracket", line, column)
+                fail("Unterminated long bracket", line, column)
+                return content
             }
             if (peek() === "]") {
                 const save = cursor
@@ -354,16 +368,14 @@ export function tokenize(source: string): Token[] {
 
         let value = ""
         while (true) {
-            if (isAtEnd()) {
-                throw new LexError("Unterminated string", line, column)
-            }
             const ch = peek()
+            if (isAtEnd() || ch === "\n") {
+                fail("Unterminated string", line, column)
+                break
+            }
             if (ch === quote) {
                 advance()
                 break
-            }
-            if (ch === "\n") {
-                throw new LexError("Unterminated string", line, column)
             }
             if (ch === "\\") {
                 advance()
@@ -421,7 +433,9 @@ export function tokenize(source: string): Token[] {
 
         while (true) {
             if (isAtEnd()) {
-                throw new LexError("Unterminated interpolated string", line, column)
+                fail("Unterminated interpolated string", line, column)
+                flushString()
+                break
             }
             const ch = peek()
 
@@ -448,9 +462,12 @@ export function tokenize(source: string): Token[] {
                 advance() // '{'
                 const exprStart = cursor
                 let depth = 1
+                let closed = true
                 while (depth > 0) {
                     if (isAtEnd()) {
-                        throw new LexError("Unterminated interpolation expression", line, column)
+                        fail("Unterminated interpolation expression", line, column)
+                        closed = false
+                        break
                     }
                     if (peek() === "{") depth++
                     if (peek() === "}") {
@@ -460,8 +477,12 @@ export function tokenize(source: string): Token[] {
                     advance()
                 }
                 const exprRaw = source.slice(exprStart, cursor)
-                advance()
                 parts.push({ kind: "expression", raw: exprRaw })
+                if (!closed) {
+                    flushString()
+                    break
+                }
+                advance()
                 continue
             }
 
@@ -520,7 +541,7 @@ export function tokenize(source: string): Token[] {
         }
     }
 
-    function readOperatorOrPunctuator(): OperatorToken | PunctuatorToken {
+    function readOperatorOrPunctuator(): OperatorToken | PunctuatorToken | undefined {
         const startLine = line
         const startColumn = column
 
@@ -542,7 +563,9 @@ export function tokenize(source: string): Token[] {
             }
         }
 
-        throw new LexError(`Unexpected character '${peek()}'`, line, column)
+        fail(`Unexpected character '${peek()}'`, line, column)
+        advance()
+        return undefined
     }
 
     while (true) {
@@ -583,7 +606,8 @@ export function tokenize(source: string): Token[] {
             continue
         }
 
-        tokens.push(readOperatorOrPunctuator())
+        const symbol = readOperatorOrPunctuator()
+        if (symbol) tokens.push(symbol)
     }
 
     tokens.push({

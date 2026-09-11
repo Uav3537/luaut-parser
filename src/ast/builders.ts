@@ -1,4 +1,4 @@
-import { tokenize, type Token } from "@lexer/lexer"
+import { tokenize, LexError, type Token } from "@lexer/lexer"
 import type {
     Program, Block, Statement, Expression, TypeNode,
     VariableDeclaration, FunctionDeclaration, FunctionDeclarationStatement,
@@ -18,7 +18,7 @@ import type {
     TableExpression, TableField, ArrayExpression,
     BinaryExpression, UnaryExpression, MemberExpression, IndexExpression,
     CallExpression, MethodCallExpression, ParenthesizedExpression,
-    TypeAssertionExpression, AsConstExpression, IfElseExpression,
+    TypeAssertionExpression, AsConstExpression, IfElseExpression, ErrorExpression,
     TypeReference, TypeLiteralString, TypeLiteralBoolean, TypeLiteralNumber, TableTypeNode,
     ArrayTypeNode, TupleTypeNode,
     TableTypeProperty, FunctionTypeNode, FunctionTypeParameter,
@@ -95,18 +95,36 @@ export interface ParserOptions {
      *  first one. The returned AST has an `ErrorStatement` wherever a statement
      *  could not be parsed. */
     recover?: boolean
+    /** Recovery only: read where a block ends from indentation when an `end`
+     *  is missing — a line indented no deeper than the line that opened the
+     *  block is past it. Valid code never needs this; `parseWithRecovery`
+     *  reparses with it when the first pass found an `end` missing. */
+    indentation?: boolean
 }
+
+/** Keywords that start a statement or end a block: no expression contains one
+ *  outside a function, so skipping a broken expression stops there. */
+const STATEMENT_KEYWORDS = new Set([
+    "const", "let", "while", "for", "return", "do", "repeat", "break", "continue",
+    "import", "export", "end", "else", "elseif", "until", "then",
+])
 
 export class Parser {
     private tokens: Token[]
     private cursor = 0
     private recover: boolean
+    private indentation: boolean
     /** Populated in recovery mode. */
     readonly errors: ParseError[] = []
+    /** Recovery found a block without its `end`. */
+    missingEnd = false
+    /** The column of the first token on each line, for `indentation`. */
+    private lineIndent?: Map<number, number>
 
     constructor(tokens: Token[], options: ParserOptions = {}) {
         this.tokens = tokens
         this.recover = options.recover ?? false
+        this.indentation = this.recover && (options.indentation ?? false)
     }
 
     private current(): Token {
@@ -159,6 +177,11 @@ export class Parser {
             (t as { value?: unknown }).value === value
     }
 
+    private checkPunctuatorAt(offset: number, value: string): boolean {
+        const t = this.peek(offset)
+        return t.type === "Punctuator" && (t as { value?: unknown }).value === value
+    }
+
     private checkIdentifierValue(value: string): boolean {
         const t = this.current()
         return t.type === "Identifier" && (t as any).value === value
@@ -203,33 +226,199 @@ export class Parser {
         const t = this.current()
         const err = new ParseError(`${message}, got '${this.describeToken(t)}'`, t.line.start, t.column.start)
         if (this.recover) {
-            this.errors.push(err)
+            this.record(err)
             throw new ParseRecover(err.message)
         }
         throw err
     }
 
-    /** Recovery: skip tokens until the start of a plausible next statement (a
-     *  leading keyword / `@` attribute / just past a `;`) or a block
-     *  terminator. Forward progress past a zero-width failure is guaranteed by
-     *  the caller (`parseBlock`). */
-    private synchronize(): void {
-        while (!this.isAtEnd()) {
-            const t = this.current()
-            if (t.type === "Punctuator" && t.value === "@") return
-            if (t.type === "Keyword") {
-                switch (t.value) {
-                    case "const": case "let": case "function": case "if": case "while": case "for":
-                    case "return": case "do": case "repeat": case "break": case "continue":
-                    case "import": case "export":
-                    case "end": case "else": case "elseif": case "until":
-                        return
-                }
-            }
-            this.advance()
-            const prev = this.previous()
-            if (prev.type === "Punctuator" && prev.value === ";") return
+    // ============================================================
+    // Recovery
+    // ============================================================
+    //
+    // In recovery mode a syntax error costs as little of the tree as it can.
+    // A broken expression becomes an `ErrorExpression` where it stood; a broken
+    // field, element or argument is skipped up to the next `,`; a missing `)`,
+    // `}`, `then`, `do` or `end` is recorded and parsing goes on as if it were
+    // there. Only what none of these cover abandons a whole statement.
+
+    /** An error at the position of the one before it is the same problem seen
+     *  again, and is not recorded twice. */
+    private record(error: ParseError): void {
+        const last = this.errors[this.errors.length - 1]
+        if (last && last.line === error.line && last.column === error.column) return
+        this.errors.push(error)
+    }
+
+    /** Record an error without abandoning what is being parsed. */
+    private softError(message: string): void {
+        const t = this.current()
+        this.record(new ParseError(`${message}, got '${this.describeToken(t)}'`, t.line.start, t.column.start))
+    }
+
+    /** `parse()`; in recovery mode, when it fails, skip to where parsing can go
+     *  on and return `fallback` instead. */
+    private attempt<T>(parse: () => T, stop: () => boolean, fallback: (start: Token, from: number) => T): T {
+        if (!this.recover) return parse()
+        const from = this.cursor
+        const start = this.current()
+        try {
+            return parse()
+        } catch (e) {
+            if (e instanceof ParseError) this.record(e)
+            else if (!(e instanceof ParseRecover)) throw e
+            this.skip(stop, from, "expression")
+            return fallback(start, from)
         }
+    }
+
+    /** An expression, or an `ErrorExpression` over what could not be parsed. */
+    private expressionOr(stop: () => boolean): Expression {
+        return this.attempt(() => this.parseExpression(), stop, (start, from) => this.errorExpression(start, from))
+    }
+
+    private expressionListOr(stop: () => boolean): Expression[] {
+        const item = (): Expression => this.expressionOr(() => stop() || this.checkPunctuator(","))
+        const list = [item()]
+        while (this.matchPunctuator(",")) list.push(item())
+        return list
+    }
+
+    /** A type annotation, or none when it could not be parsed. */
+    private typeOr(stop: () => boolean): TypeNode | undefined {
+        return this.attempt<TypeNode | undefined>(() => this.parseType(), stop, () => undefined)
+    }
+
+    private errorExpression(start: Token, from: number): ErrorExpression {
+        if (this.cursor > from) return { type: "ErrorExpression", ...spanFrom(start, this.previous()) }
+        return {
+            type: "ErrorExpression",
+            line: { start: start.line.start, end: start.line.start },
+            column: { start: start.column.start, end: start.column.start },
+        }
+    }
+
+    /** A closing bracket; in recovery mode a missing one is recorded and the
+     *  construct ends where it is. */
+    private expectCloser(value: string): void {
+        if (this.matchPunctuator(value)) return
+        if (!this.recover) this.error(`Expected '${value}'`)
+        this.softError(`Expected '${value}'`)
+    }
+
+    /** `then` / `do` / `in`; in recovery mode a missing one is recorded and
+     *  what follows is read as if it were there. */
+    private expectKeywordSoft(value: string): void {
+        if (this.matchKeyword(value)) return
+        if (!this.recover) this.error(`Expected keyword '${value}'`)
+        this.softError(`Expected keyword '${value}'`)
+    }
+
+    /** The `end` of the block `opener` began. */
+    private expectEnd(opener: Token): void {
+        if (this.checkKeyword("end") && !this.endBelongsOutside(opener)) {
+            this.advance()
+            return
+        }
+        if (!this.recover) this.error("Expected keyword 'end'")
+        this.softError(`Expected 'end' to close '${this.describeToken(opener)}' on line ${opener.line.start}`)
+        this.missingEnd = true
+    }
+
+    /** Indentation mode: an `end` indented less than the line that opened the
+     *  block closes something outside it. */
+    private endBelongsOutside(opener: Token): boolean {
+        if (!this.indentation) return false
+        const t = this.current()
+        return t.line.start > opener.line.start && t.column.start < this.indentOf(opener)
+    }
+
+    /** Indentation mode: a statement indented no deeper than the line that
+     *  opened the block is past the block. */
+    private dedentedPast(opener: Token | undefined): boolean {
+        if (!this.indentation || !opener) return false
+        const t = this.current()
+        return t.line.start > opener.line.start && t.column.start <= this.indentOf(opener)
+    }
+
+    private indentOf(token: Token): number {
+        if (!this.lineIndent) {
+            this.lineIndent = new Map()
+            for (const t of this.tokens) {
+                if (!this.lineIndent.has(t.line.start)) this.lineIndent.set(t.line.start, t.column.start)
+            }
+        }
+        return this.lineIndent.get(token.line.start) ?? token.column.start
+    }
+
+    /** Is the current token on a later line than the one before it? */
+    private onNewLine(): boolean {
+        const previous = this.previous()
+        return previous !== undefined && this.current().line.start > previous.line.end
+    }
+
+    /** Recovery: move past what could not be parsed.
+     *
+     *  Skipping stops at a token `stop` accepts, at a bracket closing something
+     *  opened before the skip, or at a keyword that starts a statement. The
+     *  tokens from `from` on — including those the failed attempt already
+     *  consumed — count towards nesting, so a bracket or a `function ... end`
+     *  is skipped whole and an `end` or `}` inside it cannot end what encloses
+     *  it. A statement keyword inside brackets but outside any function means a
+     *  bracket was never closed, and it stops the skip as well. */
+    private skip(stop: () => boolean, from: number, mode: "expression" | "statement"): void {
+        const closers: string[] = []
+        for (let i = from; i < this.cursor; i++) this.nest(this.tokens[i], closers, mode)
+        while (!this.isAtEnd()) {
+            if (this.stopsSkip(closers, stop, mode)) return
+            const t = this.advance()
+            this.nest(t, closers, mode)
+            if (mode === "statement" && closers.length === 0 && t.type === "Punctuator" && t.value === ";") return
+        }
+    }
+
+    private nest(t: Token, closers: string[], mode: "expression" | "statement"): void {
+        const value = (t as { value?: unknown }).value
+        const popTo = (closer: string): void => {
+            const at = closers.lastIndexOf(closer)
+            if (at >= 0) closers.length = at
+        }
+        if (t.type === "Punctuator") {
+            if (value === "(") closers.push(")")
+            else if (value === "[") closers.push("]")
+            else if (value === "{") closers.push("}")
+            else if (value === ")" || value === "]" || value === "}") popTo(value)
+            return
+        }
+        if (t.type !== "Keyword") return
+        // Statements live in function bodies, and at the top of a statement.
+        const inBody = closers.includes("end") || closers.includes("until") || (mode === "statement" && closers.length === 0)
+        switch (value) {
+            case "function": closers.push("end"); return
+            case "if": closers.push(inBody ? "end" : "else"); return
+            case "do": if (inBody) closers.push("end"); return
+            case "repeat": if (inBody) closers.push("until"); return
+            case "else": if (closers[closers.length - 1] === "else") closers.pop(); return
+            case "end": popTo("end"); return
+            case "until": popTo("until"); return
+        }
+    }
+
+    private stopsSkip(closers: string[], stop: () => boolean, mode: "expression" | "statement"): boolean {
+        const t = this.current()
+        const value = (t as { value?: unknown }).value
+        const inFunction = closers.includes("end") || closers.includes("until")
+        if (!inFunction && t.type === "Keyword" && typeof value === "string") {
+            const inIfExpression = closers.includes("else") && (value === "then" || value === "elseif" || value === "else")
+            if (STATEMENT_KEYWORDS.has(value) && !inIfExpression && !(mode === "statement" && value === "then")) return true
+            if (mode === "statement" && closers.length === 0 &&
+                (value === "if" || (value === "function" && this.peek(1).type === "Identifier"))) return true
+        }
+        if (closers.length) return false
+        if (t.type === "Punctuator" && (value === ")" || value === "]" || value === "}")) return true
+        if (mode === "statement" && t.type === "Punctuator" && value === "@") return true
+        if (mode === "expression" && t.type === "Punctuator" && value === ";") return true
+        return stop()
     }
 
     private describeToken(t: Token): string {
@@ -246,13 +435,14 @@ export class Parser {
         const start = this.current()
         const body = this.parseBlock()
         if (!this.isAtEnd()) {
-            if (this.recover) {
-                const t = this.current()
-                this.errors.push(new ParseError(
-                    `Expected end of file, got '${this.describeToken(t)}'`, t.line.start, t.column.start))
-            } else {
-                this.error("Expected end of file")
+            if (!this.recover) this.error("Expected end of file")
+            // A stray `end` (or `else`, `until`) at the top: skip it and read on.
+            while (!this.isAtEnd()) {
+                this.softError("Expected end of file")
+                this.advance()
+                body.statements.push(...this.parseBlock().statements)
             }
+            Object.assign(body, spanFrom(body, this.previous() ?? start))
         }
         return { type: "Program", body, ...spanFrom(start, this.previous() ?? start) }
     }
@@ -269,11 +459,14 @@ export class Parser {
             this.checkKeyword("until")
     }
 
-    private parseBlock(): Block {
+    /** `opener` is the token that began the block (`if`, `function`, ...), for
+     *  indentation recovery. */
+    private parseBlock(opener?: Token): Block {
         const start = this.current()
         const statements: Statement[] = []
         while (!this.isBlockEnd()) {
             if (this.matchPunctuator(";")) continue
+            if (this.dedentedPast(opener)) break
             if (this.recover) {
                 const at = this.cursor
                 const errStart = this.current()
@@ -288,12 +481,11 @@ export class Parser {
                     if (e instanceof ParseRecover) {
                         // error already recorded by error()
                     } else if (e instanceof ParseError) {
-                        // thrown by a nested sub-parser (e.g. string interpolation)
-                        this.errors.push(e)
+                        this.record(e)
                     } else {
                         throw e
                     }
-                    this.synchronize()
+                    this.skip(() => false, at, "statement")
                     // Guarantee forward progress even if synchronize() couldn't.
                     if (this.cursor === at) {
                         if (this.isAtEnd()) break
@@ -365,6 +557,13 @@ export class Parser {
                     return { type: "ContinueStatement", ...spanFrom(t, this.previous()) } as ContinueStatement
                 }
             }
+        }
+
+        // Lua's `local`, out of habit: say what luaut writes, and read it as `let`.
+        if (this.recover && t.type === "Identifier" && (t as any).value === "local" &&
+            (this.peek(1).type === "Identifier" || this.checkPunctuatorAt(1, "{") || this.checkPunctuatorAt(1, "["))) {
+            this.softError("luaut has no 'local'; declare with 'const' or 'let'")
+            return this.parseVariableDeclaration("let")
         }
 
         if (t.type === "Identifier" && (t as any).value === "type" &&
@@ -626,9 +825,11 @@ export class Parser {
 
     // `const x = ...` / `let x, y = ...`.
     // luaut has no `local` — `const` bindings are immutable, `let` mutable.
-    private parseVariableDeclaration(): VariableDeclaration {
+    /** `kind` reads the leading word as that keyword (recovery's `local`). */
+    private parseVariableDeclaration(as?: "let"): VariableDeclaration {
         const start = this.current()
-        const kind = (this.advance() as any).value as "const" | "let"
+        const word = (this.advance() as any).value as "const" | "let"
+        const kind = as ?? word
 
         if (this.checkKeyword("function")) {
             this.error(`A function is declared as 'function name()'; '${kind}' does not apply to functions`)
@@ -641,9 +842,11 @@ export class Parser {
 
         let init: Expression[] = []
         if (this.matchOperator("=")) {
-            init = this.parseExpressionList()
+            init = this.expressionListOr(() => false)
         } else if (kind === "const") {
-            this.error("'const' declaration requires an initializer")
+            // Keep the name declared: everything after it refers to it.
+            if (!this.recover) this.error("'const' declaration requires an initializer")
+            this.softError("'const' declaration requires an initializer")
         }
 
         return { type: "VariableDeclaration", kind, names, init, ...spanFrom(start, this.previous()) }
@@ -654,53 +857,61 @@ export class Parser {
         this.expectKeyword("if")
         const clauses: IfClause[] = []
 
-        const cond = this.parseExpression()
-        this.expectKeyword("then")
-        const body = this.parseBlock()
+        const untilThen = (): boolean => this.checkKeyword("then")
+        const cond = this.expressionOr(untilThen)
+        this.expectKeywordSoft("then")
+        const body = this.parseBlock(start)
         clauses.push({ type: "IfClause", condition: cond, body, ...spanFrom(cond, this.previous()) })
 
         while (this.checkKeyword("elseif")) {
             const clauseStart = this.current()
             this.advance()
-            const c = this.parseExpression()
-            this.expectKeyword("then")
-            const b = this.parseBlock()
+            const c = this.expressionOr(untilThen)
+            this.expectKeywordSoft("then")
+            const b = this.parseBlock(start)
             clauses.push({ type: "IfClause", condition: c, body: b, ...spanFrom(clauseStart, this.previous()) })
         }
 
         let alternate: Block | undefined
         if (this.matchKeyword("else")) {
-            alternate = this.parseBlock()
+            alternate = this.parseBlock(start)
         }
 
-        this.expectKeyword("end")
+        this.expectEnd(start)
         return { type: "IfStatement", clauses, alternate, ...spanFrom(start, this.previous()) }
     }
 
     private parseWhileStatement(): WhileStatement {
         const start = this.current()
         this.expectKeyword("while")
-        const condition = this.parseExpression()
-        this.expectKeyword("do")
-        const body = this.parseBlock()
-        this.expectKeyword("end")
+        const condition = this.expressionOr(() => this.checkKeyword("do"))
+        this.expectKeywordSoft("do")
+        const body = this.parseBlock(start)
+        this.expectEnd(start)
         return { type: "WhileStatement", condition, body, ...spanFrom(start, this.previous()) }
     }
 
     private parseRepeatStatement(): RepeatStatement {
         const start = this.current()
         this.expectKeyword("repeat")
-        const body = this.parseBlock()
-        this.expectKeyword("until")
-        const condition = this.parseExpression()
+        const body = this.parseBlock(start)
+        let condition: Expression
+        if (this.checkKeyword("until") || !this.recover) {
+            this.expectKeyword("until")
+            condition = this.expressionOr(() => false)
+        } else {
+            this.softError(`Expected 'until' to close 'repeat' on line ${start.line.start}`)
+            this.missingEnd = true
+            condition = this.errorExpression(this.current(), this.cursor)
+        }
         return { type: "RepeatStatement", body, condition, ...spanFrom(start, this.previous()) }
     }
 
     private parseDoStatement(): DoStatement {
         const start = this.current()
         this.expectKeyword("do")
-        const body = this.parseBlock()
-        this.expectKeyword("end")
+        const body = this.parseBlock(start)
+        this.expectEnd(start)
         return { type: "DoStatement", body, ...spanFrom(start, this.previous()) }
     }
 
@@ -710,17 +921,18 @@ export class Parser {
 
         const first = this.parseBindingTarget(true)
 
+        const untilDo = (): boolean => this.checkKeyword("do")
         if (first.type === "IdentifierPattern" && this.matchOperator("=")) {
-            const from = this.parseExpression()
+            const from = this.expressionOr(() => untilDo() || this.checkPunctuator(","))
             this.expectPunctuator(",")
-            const to = this.parseExpression()
+            const to = this.expressionOr(() => untilDo() || this.checkPunctuator(","))
             let step: Expression | undefined
             if (this.matchPunctuator(",")) {
-                step = this.parseExpression()
+                step = this.expressionOr(untilDo)
             }
-            this.expectKeyword("do")
-            const body = this.parseBlock()
-            this.expectKeyword("end")
+            this.expectKeywordSoft("do")
+            const body = this.parseBlock(start)
+            this.expectEnd(start)
             return {
                 type: "NumericForStatement",
                 variable: this.identifierPatternToTypedIdentifier(first),
@@ -734,10 +946,10 @@ export class Parser {
             variables.push(this.parseBindingTarget(true))
         }
         this.expectKeyword("in")
-        const iterators = this.parseExpressionList()
-        this.expectKeyword("do")
-        const body = this.parseBlock()
-        this.expectKeyword("end")
+        const iterators = this.expressionListOr(untilDo)
+        this.expectKeywordSoft("do")
+        const body = this.parseBlock(start)
+        this.expectEnd(start)
         return {
             type: "GenericForStatement",
             variables, iterators, body,
@@ -765,7 +977,7 @@ export class Parser {
                 this.parseFunctionName() // consume the repeated name
                 continue
             }
-            const func = this.headToBody(head)
+            const func = this.headToBody(head, start)
             if (simpleName !== undefined) {
                 return {
                     type: "FunctionDeclaration", name: target.base, func,
@@ -832,7 +1044,7 @@ export class Parser {
         this.expectKeyword("return")
         let args: Expression[] = []
         if (this.isExpressionStart()) {
-            args = this.parseExpressionList()
+            args = this.expressionListOr(() => false)
         }
         return { type: "ReturnStatement", arguments: args, ...spanFrom(start, this.previous()) }
     }
@@ -872,7 +1084,7 @@ export class Parser {
                 targets.push(this.parseAssignTarget())
             }
             this.expectOperator("=")
-            const values = this.parseExpressionList()
+            const values = this.expressionListOr(() => false)
             return { type: "AssignmentStatement", targets, values, ...spanFrom(start, this.previous()) }
         }
 
@@ -885,7 +1097,7 @@ export class Parser {
             }
             for (const target of targets) this.rejectOptionalTarget(target)
             this.expectOperator("=")
-            const values = this.parseExpressionList()
+            const values = this.expressionListOr(() => false)
             return { type: "AssignmentStatement", targets, values, ...spanFrom(start, this.previous()) }
         }
 
@@ -893,7 +1105,7 @@ export class Parser {
         if (t.type === "Operator" && COMPOUND_ASSIGN_OPS.has((t as any).value)) {
             this.rejectOptionalTarget(first)
             const op = (this.advance() as any).value
-            const value = this.parseExpression()
+            const value = this.expressionOr(() => false)
             return {
                 type: "CompoundAssignmentStatement",
                 operator: op,
@@ -962,11 +1174,9 @@ export class Parser {
             if (node.optional) {
                 const at = target as Expression
                 const err = new ParseError("An optional chain cannot be assigned to", at.line.start, at.column.start)
-                if (this.recover) {
-                    this.errors.push(err)
-                    throw new ParseRecover(err.message)
-                }
-                throw err
+                if (!this.recover) throw err
+                this.record(err)
+                return
             }
             e = node.type === "MemberExpression" || node.type === "IndexExpression" || node.type === "MethodCallExpression"
                 ? node.object
@@ -1109,7 +1319,7 @@ export class Parser {
 
         if (t.type === "Keyword" && (t as any).value === "function") {
             this.advance()
-            const func = this.parseFunctionBody()
+            const func = this.parseFunctionBody(t)
             return { type: "FunctionExpression", func, ...spanFrom(t, this.previous()) } as FunctionExpression
         }
 
@@ -1141,7 +1351,16 @@ export class Parser {
             if (p.kind === "string") {
                 parts.push({ kind: "string", value: p.value, raw: p.raw })
             } else {
-                const expression = parseExpressionFromSource(p.raw)
+                let expression: Expression
+                try {
+                    expression = parseExpressionFromSource(p.raw)
+                } catch (e) {
+                    if (!this.recover || !(e instanceof ParseError || e instanceof LexError)) throw e
+                    const at = token as unknown as Span
+                    this.record(new ParseError(
+                        `In '\${${p.raw}}': ${e.message.replace(/ \(\d+:\d+\)$/, "")}`, at.line.start, at.column.start))
+                    expression = { type: "ErrorExpression", ...spanFrom(at, at) }
+                }
                 parts.push({ kind: "expression", expression })
             }
         }
@@ -1211,6 +1430,12 @@ export class Parser {
                 }
             }
             if (this.matchPunctuator(".")) {
+                if (this.recover && !this.checkType("Identifier")) {
+                    // `obj.` mid-typing: the access has no name yet.
+                    this.softError("Expected identifier")
+                    base = { type: "ErrorExpression", ...spanFrom(base, this.previous()) }
+                    break
+                }
                 const prop = this.parseIdentifier()
                 base = { type: "MemberExpression", object: base, property: prop, ...spanFrom(base, prop) }
                 continue
@@ -1258,12 +1483,28 @@ export class Parser {
 
     private parseCallArguments(): Expression[] {
         if (this.matchPunctuator("(")) {
-            if (this.checkPunctuator(")")) {
-                this.advance()
-                return []
+            const list: Expression[] = []
+            const stop = (): boolean => this.checkPunctuator(",")
+            if (!this.checkPunctuator(")")) {
+                while (true) {
+                    // `f(,` and then `Key: value` on the next line: the call
+                    // was never closed, and that is the enclosing object's field.
+                    if (this.recover && this.onNewLine() && this.startsTableField() && !this.startsMethodCall(1)) break
+                    const before = this.cursor
+                    const argument = this.expressionOr(stop)
+                    // `f(` with nothing written yet is no argument.
+                    if (argument.type !== "ErrorExpression" || this.cursor > before || list.length) list.push(argument)
+                    if (this.matchPunctuator(",")) continue
+                    if (!this.recover || this.checkPunctuator(")")) break
+                    // `print(a` and then the next line: the `)` is what is missing.
+                    if (this.onNewLine() && (this.checkType("Identifier") || this.checkType("Keyword"))) break
+                    this.softError("Expected ',' or ')'")
+                    this.skip(stop, this.cursor, "expression")
+                    if (this.matchPunctuator(",")) continue
+                    break
+                }
             }
-            const list = this.parseExpressionList()
-            this.expectPunctuator(")")
+            this.expectCloser(")")
             return list
         }
 
@@ -1294,42 +1535,68 @@ export class Parser {
         const start = this.current()
         this.expectPunctuator("{")
         const fields: TableField[] = []
+        const stop = (): boolean =>
+            this.checkPunctuator(",") || this.checkPunctuator(";") || (this.onNewLine() && this.startsTableField())
 
         while (!this.checkPunctuator("}")) {
-            if (this.checkOperator("...")) {
-                this.advance()
-                const argument = this.parseExpression()
-                fields.push({ type: "TableFieldSpread", argument })
-            } else if (this.matchPunctuator("[")) {
-                const key = this.parseExpression()
-                this.expectPunctuator("]")
-                this.expectPunctuator(":")
-                const value = this.parseExpression()
-                fields.push({ type: "TableFieldComputed", key, value })
-            } else if (this.checkType("Literal") && (this.current() as any).kind === "string") {
-                const t = this.advance() as any
-                const key: StringLiteral = { type: "StringLiteral", value: t.value, raw: t.raw, ...spanFrom(t, t) }
-                this.expectPunctuator(":")
-                const value = this.parseExpression()
-                fields.push({ type: "TableFieldNamed", key, value })
-            } else if (this.checkType("Identifier") && this.peek(1).type === "Punctuator" && (this.peek(1) as any).value === ":") {
-                const key = this.parseIdentifier()
-                this.expectPunctuator(":")
-                const value = this.parseExpression()
-                fields.push({ type: "TableFieldNamed", key, value })
-            } else if (this.checkType("Identifier")) {
-                const name = this.parseIdentifier()
-                fields.push({ type: "TableFieldShorthand", name })
-            } else {
-                this.error("Expected object field ('key: value', '[expr]: value', shorthand, or '...spread'); use '[...]' for arrays")
-            }
-
+            const field = this.attempt<TableField | undefined>(() => this.parseTableField(stop), stop, () => undefined)
+            if (field) fields.push(field)
             if (this.matchPunctuator(",") || this.matchPunctuator(";")) continue
+            if (!this.recover || this.checkPunctuator("}")) break
+            // A field on its own line after one without a comma: the comma is
+            // what is missing, not the field.
+            if (this.onNewLine() && this.startsTableField()) {
+                this.softError("Expected ','")
+                continue
+            }
+            if (this.isAtEnd() || this.onNewLine() && this.checkType("Keyword")) break
+            this.softError("Expected ',' or '}'")
+            const before = this.cursor
+            this.skip(stop, this.cursor, "expression")
+            if (this.matchPunctuator(",") || this.matchPunctuator(";")) continue
+            if (this.cursor > before && this.onNewLine() && this.startsTableField()) continue
             break
         }
 
-        this.expectPunctuator("}")
+        this.expectCloser("}")
         return { type: "TableExpression", fields, ...spanFrom(start, this.previous()) }
+    }
+
+    /** Does a `key: value` field, or a spread, start here? */
+    private startsTableField(): boolean {
+        const next = this.peek(1)
+        const colon = next.type === "Punctuator" && (next as { value?: unknown }).value === ":"
+        if (this.checkType("Identifier")) return colon
+        if (this.checkType("Literal") && (this.current() as { kind?: unknown }).kind === "string") return colon
+        return this.checkOperator("...")
+    }
+
+    private parseTableField(stop: () => boolean): TableField {
+        if (this.checkOperator("...")) {
+            this.advance()
+            return { type: "TableFieldSpread", argument: this.expressionOr(stop) }
+        }
+        if (this.matchPunctuator("[")) {
+            const key = this.expressionOr(() => this.checkPunctuator("]"))
+            this.expectPunctuator("]")
+            this.expectPunctuator(":")
+            return { type: "TableFieldComputed", key, value: this.expressionOr(stop) }
+        }
+        if (this.checkType("Literal") && (this.current() as any).kind === "string") {
+            const t = this.advance() as any
+            const key: StringLiteral = { type: "StringLiteral", value: t.value, raw: t.raw, ...spanFrom(t, t) }
+            this.expectPunctuator(":")
+            return { type: "TableFieldNamed", key, value: this.expressionOr(stop) }
+        }
+        if (this.checkType("Identifier") && this.peek(1).type === "Punctuator" && (this.peek(1) as any).value === ":") {
+            const key = this.parseIdentifier()
+            this.expectPunctuator(":")
+            return { type: "TableFieldNamed", key, value: this.expressionOr(stop) }
+        }
+        if (this.checkType("Identifier")) {
+            return { type: "TableFieldShorthand", name: this.parseIdentifier() }
+        }
+        this.error("Expected object field ('key: value', '[expr]: value', shorthand, or '...spread'); use '[...]' for arrays")
     }
 
     // `[1, 2, 3]` — array literal (trailing comma allowed).
@@ -1337,18 +1604,29 @@ export class Parser {
         const start = this.current()
         this.expectPunctuator("[")
         const elements: (Expression | SpreadElement)[] = []
+        const stop = (): boolean => this.checkPunctuator(",")
         while (!this.checkPunctuator("]")) {
             if (this.checkOperator("...")) {
                 const dots = this.advance()
-                const argument = this.parseExpression()
+                const argument = this.expressionOr(stop)
                 elements.push({ type: "SpreadElement", argument, ...spanFrom(dots, argument) })
             } else {
-                elements.push(this.parseExpression())
+                elements.push(this.expressionOr(stop))
             }
+            if (this.matchPunctuator(",")) continue
+            if (!this.recover || this.checkPunctuator("]")) break
+            // An element on its own line after one without a comma.
+            if (this.onNewLine() && this.isExpressionStart() && !this.checkType("Keyword")) {
+                this.softError("Expected ','")
+                continue
+            }
+            if (this.isAtEnd() || this.onNewLine() && this.checkType("Keyword")) break
+            this.softError("Expected ',' or ']'")
+            this.skip(stop, this.cursor, "expression")
             if (this.matchPunctuator(",")) continue
             break
         }
-        this.expectPunctuator("]")
+        this.expectCloser("]")
         return { type: "ArrayExpression", elements, ...spanFrom(start, this.previous()) }
     }
 
@@ -1385,7 +1663,7 @@ export class Parser {
         }
 
         if (topLevel && this.matchPunctuator(":")) {
-            target.typeAnnotation = this.parseType()
+            target.typeAnnotation = this.typeOr(() => this.checkOperator("=") || this.checkPunctuator(","))
         }
         return target
     }
@@ -1567,12 +1845,13 @@ export class Parser {
                 // `name?: T` — the argument may be omitted.
                 const optional = this.matchPunctuator("?")
                 let typeAnnotation: TypeNode | undefined
+                const paramEnd = (): boolean => this.checkPunctuator(",")
                 if (this.matchPunctuator(":")) {
-                    typeAnnotation = this.parseType()
+                    typeAnnotation = this.typeOr(() => paramEnd() || this.checkOperator("="))
                 }
                 let def: Expression | undefined
                 if (this.matchOperator("=")) {
-                    def = this.parseExpression()
+                    def = this.expressionOr(paramEnd)
                 }
                 params.push({
                     type: "FunctionParameter",
@@ -1590,7 +1869,9 @@ export class Parser {
         let predicate: TypePredicateNode | undefined
         if (this.matchPunctuator(":")) {
             predicate = this.tryParseTypePredicate()
-            if (!predicate) returnType = this.parseTypeOrTypePackReference()
+            if (!predicate) {
+                returnType = this.attempt<TypeNode | undefined>(() => this.parseTypeOrTypePackReference(), () => false, () => undefined)
+            }
         }
 
         return { start, generics, params, hasVarargs, varargTypeAnnotation, returnType, predicate }
@@ -1639,10 +1920,10 @@ export class Parser {
         return undefined
     }
 
-    private parseFunctionBody(): FunctionBody {
+    private parseFunctionBody(opener: Token): FunctionBody {
         const head = this.parseFunctionHead()
-        const body = this.parseBlock()
-        this.expectKeyword("end")
+        const body = this.parseBlock(opener)
+        this.expectEnd(opener)
         return {
             type: "FunctionBody",
             generics: head.generics, params: head.params, hasVarargs: head.hasVarargs,
@@ -1662,9 +1943,9 @@ export class Parser {
         }
     }
 
-    private headToBody(head: ReturnType<Parser["parseFunctionHead"]>): FunctionBody {
-        const body = this.parseBlock()
-        this.expectKeyword("end")
+    private headToBody(head: ReturnType<Parser["parseFunctionHead"]>, opener: Token): FunctionBody {
+        const body = this.parseBlock(opener)
+        this.expectEnd(opener)
         return {
             type: "FunctionBody",
             generics: head.generics, params: head.params, hasVarargs: head.hasVarargs,
@@ -2228,29 +2509,33 @@ export interface RecoverResult {
 }
 
 /**
- * Like `parse`, but never throws on a syntax error: it records every error,
- * synchronizes to the next statement boundary, and returns a best-effort AST
- * (with `ErrorStatement` nodes where statements were skipped). A lexer error
- * still can't produce a partial token stream, so it comes back as the sole
- * entry in `errors` alongside an empty program.
+ * Like `parse`, but never throws on a syntax error: it records every error and
+ * returns a best-effort AST. A broken expression becomes an `ErrorExpression`,
+ * a broken field or argument is skipped to the next `,`, a missing `)`, `}`,
+ * `then`, `do` or `end` is recorded and read past, and only what none of those
+ * cover becomes an `ErrorStatement`. A malformed token (an unclosed string) is
+ * an error too, and the rest of the file still lexes.
  *
  * This is the entry point a language server should use for open documents.
  */
 export function parseWithRecovery(source: string): RecoverResult {
-    let tokens: Token[]
-    try {
-        tokens = tokenize(source)
-    } catch (e) {
-        const le = e as { message?: string; line?: number; column?: number }
-        const err = new ParseError(le.message ?? "Lex error", le.line ?? 1, le.column ?? 1)
-        const empty: Program = {
-            type: "Program",
-            body: { type: "Block", statements: [], line: { start: 1, end: 1 }, column: { start: 1, end: 1 } },
-            line: { start: 1, end: 1 }, column: { start: 1, end: 1 },
+    const lexErrors: LexError[] = []
+    const tokens = tokenize(source, lexErrors)
+    const lexed = lexErrors.map(e => new ParseError(e.message.replace(/ \(\d+:\d+\)$/, ""), e.line, e.column))
+
+    const first = new Parser(tokens, { recover: true })
+    let program = first.parseProgram()
+    let errors = first.errors
+    // A missing `end` makes the block run on to the end of the file. Where the
+    // file is indented, the indentation says where the block really ended.
+    if (first.missingEnd) {
+        const second = new Parser(tokens, { recover: true, indentation: true })
+        const reparsed = second.parseProgram()
+        if (second.errors.length <= errors.length) {
+            program = reparsed
+            errors = second.errors
         }
-        return { program: empty, errors: [err] }
     }
-    const parser = new Parser(tokens, { recover: true })
-    const program = parser.parseProgram()
-    return { program, errors: parser.errors }
+    const all = [...lexed, ...errors].sort((a, b) => a.line - b.line || a.column - b.column)
+    return { program, errors: all }
 }
