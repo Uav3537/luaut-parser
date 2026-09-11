@@ -596,7 +596,15 @@ function isAssignableInner(a: Type, b: Type): boolean {
     if (a.kind === "union") return a.types.every(t => isAssignable(t, b))
     if (b.kind === "union") return b.types.some(t => isAssignable(a, t))
     if (b.kind === "intersection") return b.types.every(t => isAssignable(a, t))
-    if (a.kind === "intersection") return a.types.some(t => isAssignable(t, b))
+    if (a.kind === "intersection") {
+        if (a.types.some(t => isAssignable(t, b))) return true
+        // No member is enough on its own, but together they may be: `{ x } &
+        // { y }` has both properties. Compare the members merged into one
+        // object — which is what lets `Omit<Folder, "Parent"> & { Parent: P }`
+        // count as a `Folder`.
+        const merged = mergeObjectMembers(a.types)
+        return merged !== undefined && isAssignable(merged, b)
+    }
 
     if (a.kind === "literal") {
         if (b.kind === "literal") return a.value === b.value
@@ -1044,4 +1052,46 @@ function formatAtom(t: Type): string {
 const IDENT_KEY = /^[A-Za-z_][A-Za-z0-9_]*$/
 function formatKey(k: string): string {
     return IDENT_KEY.test(k) ? k : JSON.stringify(k)
+}
+
+/** The object members of an intersection merged into one object: every
+ *  property of every member, with a property several members declare getting
+ *  the intersection of their types. Aliases are seen through. `undefined` when
+ *  a member is not an object (a function, a primitive), since merging would
+ *  then lose what that member means. */
+function mergeObjectMembers(types: readonly Type[]): ObjectType | undefined {
+    const objects: ObjectType[] = []
+    const seen = new Set<Type>()
+    const collect = (t: Type): boolean => {
+        if (seen.has(t)) return true
+        seen.add(t)
+        if (t.kind === "genericRef") {
+            const expanded = expandAlias?.(t)
+            return expanded !== undefined && expanded !== t && collect(expanded)
+        }
+        if (t.kind === "intersection") return t.types.every(collect)
+        if (t.kind === "object") {
+            objects.push(t)
+            return true
+        }
+        return false
+    }
+    if (!types.every(collect) || objects.length < 2) return undefined
+
+    const properties = new Map<string, ObjectProperty>()
+    let indexer: ObjectType["indexer"]
+    for (const object of objects) {
+        indexer ??= object.indexer
+        for (const [name, property] of object.properties) {
+            const existing = properties.get(name)
+            properties.set(name, existing
+                ? {
+                    type: intersection([existing.type, property.type]),
+                    optional: existing.optional && property.optional,
+                    readonly: existing.readonly || property.readonly,
+                }
+                : property)
+        }
+    }
+    return objectType([...properties], indexer)
 }

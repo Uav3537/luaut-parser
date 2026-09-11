@@ -10,21 +10,11 @@ export type { ScopeAnalysis, ScopeDiagnostic, Binding, BindingId, BindingKind } 
 import { analyzeTypes, moduleExports } from '@ast/analyzeTypes'
 export type { TypeAnalysis, AnalyzeTypesOptions, TypeDiagnostic, ModuleExports, ExportedType } from '@ast/analyzeTypes'
 export * from '@ast/typeModel'
-export { luauLib, luauDefs, luauDefsPath } from './lib/luau'
-export { robloxLib, robloxDefs, robloxDefsPath } from './lib/roblox'
-import { luauLib } from './lib/luau'
-import { robloxLib } from './lib/roblox'
-import type { Program } from '@ast/nodes'
-
-/** Core Luau plus the Roblox baseline, in the order `analyzeTypes` expects.
- *
- *  The analyzer has no built-in knowledge of `type` / `typeof` — they are
- *  ordinary overload sets declared in these files, and narrowing is derived
- *  from them. Pass this (or your own list) or those built-ins narrow nothing:
- *
- *      analyzeTypes(program, scopes, { libs: defaultLibs })
- */
-export const defaultLibs: readonly Program[] = [luauLib, robloxLib]
+// No types or globals are built in — not even `print`. A project names the
+// type libraries it wants in `luaut.config.json` (`"types": ["luau"]`), and
+// the project functions find and load them. See `findConfig` and
+// `resolveTypeLibraries`.
+export * from './project'
 
 // This package is the luaut *front end* only: source -> luaut AST (+ scope
 // analysis). Emitting Luau is the downstream compiler's job — it lowers the

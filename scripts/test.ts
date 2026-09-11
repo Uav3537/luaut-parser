@@ -11,22 +11,33 @@ import { readdirSync, readFileSync, writeFileSync, mkdirSync } from "fs";
 import { join, relative, dirname } from "path";
 import { fileURLToPath } from "url";
 
-import { parse, analyzeScopes, analyzeTypes, moduleExports, isUnassignedGlobal, formatType, defaultLibs } from "../src/index.js";
+import {
+    parse, analyzeScopes, analyzeTypes, moduleExports, isUnassignedGlobal, formatType,
+    findConfig, resolveTypeLibraries, resolveModulePath,
+} from "../src/index.js";
 import type { Type, ModuleExports } from "../src/index.js";
 
 const root = join(dirname(fileURLToPath(import.meta.url)), "..");
 const smokeDir = join(root, "smoketest");
 const outDir = join(root, "generated");
 
-// Globals a Luau/Roblox script may reference without declaring.
-const BUILTIN_GLOBALS = [
-    "print", "warn", "error", "assert", "type", "typeof", "tostring", "tonumber",
-    "pairs", "ipairs", "next", "select", "unpack", "rawget", "rawset", "rawequal",
-    "setmetatable", "getmetatable", "pcall", "xpcall", "require", "newproxy",
-    "table", "string", "math", "task", "os", "coroutine", "bit32", "utf8", "debug",
-    "game", "workspace", "script", "shared", "Instance", "Vector3", "Vector2",
-    "CFrame", "Color3", "UDim2", "UDim", "Enum", "tick", "time", "wait", "delay",
-];
+// Types come from the smoketests' own luaut.config.json, loaded the way any
+// project loads them — the parser has none built in.
+const lookup = findConfig(join(smokeDir, "smoketest.luaut"));
+if (!lookup.config || lookup.problems.length) {
+    throw new Error(`smoketest config: ${lookup.problems.map((p) => p.message).join("; ") || "not found"}`);
+}
+const config = lookup.config;
+const libraries = resolveTypeLibraries(config);
+if (libraries.problems.length) {
+    throw new Error(`smoketest types: ${libraries.problems.map((p) => p.message).join("; ")}`);
+}
+const libs = libraries.files.map((file) => parse(readFileSync(file, "utf8")));
+
+// The globals a script may use undeclared: whatever the libraries declare.
+const BUILTIN_GLOBALS = libs.flatMap((lib) =>
+    lib.body.statements.flatMap((s) => (s.type === "DeclareStatement" ? [s.name] : [])),
+);
 
 function collectLuaut(dir: string): string[] {
     const out: string[] = [];
@@ -54,7 +65,8 @@ const inProgress = new Set<string>();
 
 function resolverFor(file: string) {
     return (specifier: string): ModuleExports | undefined => {
-        const target = join(dirname(file), specifier.endsWith(".luaut") ? specifier : `${specifier}.luaut`);
+        const target = resolveModulePath(file, specifier, config);
+        if (!target) return undefined;
         if (inProgress.has(target)) return { values: new Map(), types: new Map(), partial: true };
         const cached = exportsCache.get(target);
         if (cached) return cached;
@@ -68,7 +80,7 @@ function resolverFor(file: string) {
         try {
             const program = parse(text);
             const scopes = analyzeScopes(program, { builtinGlobals: BUILTIN_GLOBALS });
-            const types = analyzeTypes(program, scopes, { libs: defaultLibs, resolveModule: resolverFor(target) });
+            const types = analyzeTypes(program, scopes, { libs, resolveModule: resolverFor(target) });
             const exports = moduleExports(program, scopes, types, resolverFor(target));
             exportsCache.set(target, exports);
             return exports;
@@ -85,7 +97,7 @@ for (const file of files) {
     try {
         const program = parse(source);
         const scopes = analyzeScopes(program, { builtinGlobals: BUILTIN_GLOBALS });
-        const types = analyzeTypes(program, scopes, { libs: defaultLibs, resolveModule: resolverFor(file) });
+        const types = analyzeTypes(program, scopes, { libs, resolveModule: resolverFor(file) });
 
         writeFileSync(
             join(outDir, name.replace(/\.luaut$/, ".json")),

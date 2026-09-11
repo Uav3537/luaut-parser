@@ -108,7 +108,8 @@ export interface AnalyzeTypesOptions {
     libTypes?: Record<string, Type>
     /** Parsed definitions files (`.d.luaut`): their `type` aliases become
      *  available to annotations and their `declare` statements seed global
-     *  types. See `robloxLib`. */
+     *  types. A project lists them under `types` in `luaut.config.json`; see
+     *  `resolveTypeLibraries`. */
     libs?: readonly Program[]
     /** Resolve an `import`'s module path to what that module exports. Called
      *  once per distinct path. Return `undefined` when there is no such module:

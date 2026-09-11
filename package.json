@@ -1,6 +1,6 @@
 {
   "name": "luaut-parser",
-  "version": "1.2.0",
+  "version": "2.0.0",
   "description": "luaut parser for roblox",
   "main": "./dist/index.js",
   "module": "./dist/index.js",
@@ -23,7 +23,7 @@
     }
   },
   "scripts": {
-    "test": "tsx scripts/test.ts",
+    "test": "tsx scripts/test.ts && tsx scripts/project.test.ts",
     "build": "tsup",
     "typecheck": "tsc --noEmit"
   },
@@ -32,6 +32,8 @@
   "license": "ISC",
   "type": "module",
   "devDependencies": {
+    "@luaut/luau": "file:../luaut-types/packages/luau",
+    "@luaut/roblox": "file:../luaut-types/packages/roblox",
     "@types/node": "^22.0.0",
     "tsup": "^8.5.1",
     "tsx": "^4.19.0",

@@ -1,0 +1,6 @@
+{
+  // The smoketests are a Roblox project: `roblox` brings `luau` along.
+  "types": ["roblox"],
+  "paths": {},
+  "sourceMap": null
+}

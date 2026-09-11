@@ -11,13 +11,20 @@ npm install luaut-parser
 ```
 
 ```ts
+import { readFileSync } from "node:fs"
 import {
-  parse, analyzeScopes, analyzeTypes, formatType, defaultLibs,
+  parse, analyzeScopes, analyzeTypes,
+  findConfig, resolveTypeLibraries, resolveModulePath,
 } from "luaut-parser"
 
-const program = parse(source)
-const scopes  = analyzeScopes(program, {})
-const types   = analyzeTypes(program, scopes, { libs: defaultLibs })
+// The project the file belongs to, and the type libraries it names.
+const { config } = findConfig(file)
+const libs = config ? resolveTypeLibraries(config).files.map(f => parse(readFileSync(f, "utf8"))) : []
+const globals = libs.flatMap(lib => lib.body.statements.flatMap(s => s.type === "DeclareStatement" ? [s.name] : []))
+
+const program = parse(readFileSync(file, "utf8"))
+const scopes  = analyzeScopes(program, { builtinGlobals: globals })
+const types   = analyzeTypes(program, scopes, { libs })
 
 for (const d of [...scopes.diagnostics, ...types.diagnostics]) console.log(d.message)
 ```
@@ -28,41 +35,69 @@ for (const d of [...scopes.diagnostics, ...types.diagnostics]) console.log(d.mes
 |---|---|---|
 | `parse(source)` | `Program` — every node carries `line`/`column` spans | everything |
 | `analyzeScopes(program, opts)` | `bindingOf`, `bindings`, `references`, `diagnostics` | go-to-definition, find-references, rename |
-| `analyzeTypes(program, scopes, opts)` | `typeOf`, `narrowedTypeOf`, `bindingType`, `typeOfTypeNode`, `aliases`, `diagnostics` | hover, assignability errors |
+| `analyzeTypes(program, scopes, opts)` | `typeOf`, `narrowedTypeOf`, `bindingType`, `typeOfTypeNode`, `expectedTypeOf`, `aliases`, `diagnostics` | hover, completion, type errors |
 
 Every name in the AST has a node with its own span — including the ones that
 used to be bare strings: `DeclareStatement.id`, `TableTypeProperty.key`,
 `FunctionTypeParameter.id`, `GenericTypeParameter.id`, `InferTypeNode.id`,
 `MappedTypeNode.parameterId`. `typeOfTypeNode` gives what each type
-annotation resolves to, so a tool never has to re-derive a type from text.
+annotation resolves to, and `expectedTypeOf` what each call argument should
+be, so a tool never has to re-derive a type from text.
 
 `parseWithRecovery(source)` returns `{ program, errors }` instead of throwing —
 use it for editors, where the text is usually mid-edit.
 
 Neither analysis mutates the AST; both return side tables.
 
-## Definitions
+## Projects
 
-`type` / `typeof` are **not** special-cased in the analyzer. They are ordinary
-overload sets declared in `luau.d.luaut`, and narrowing is derived from them.
-Pass the definitions or those built-ins narrow nothing:
+**No types are built in** — not `print`, not `string`, not `game`. A project
+lists the type libraries it uses in `luaut.config.json`, the way TypeScript
+uses `@types/*`:
 
-```ts
-analyzeTypes(program, scopes, { libs: defaultLibs })   // core Luau + Roblox
-analyzeTypes(program, scopes, { libs: [luauLib] })     // core Luau only
+```bash
+npm i -D @luaut/roblox        # or just @luaut/luau
 ```
 
-The same trick drives the Roblox layer: `IsA`, `GetService` and `Instance.new`
-are each one generic signature indexing a map of names to types, so adding a
-class is adding a line to `roblox.d.luaut`. Ship your own definitions by
-parsing them the same way:
-
-```ts
-analyzeTypes(program, scopes, { libs: [luauLib, parse(myDefs)] })
+```jsonc
+// luaut.config.json
+{
+  "types": ["roblox"],                          // @luaut/roblox, which brings @luaut/luau
+  "paths": { "@shared/*": ["src/shared/*"] },   // import aliases, as in tsconfig
+  "sourceMap": "sourcemap.json"                 // a Rojo sourcemap, or null
+}
 ```
 
-`luauDefs` / `robloxDefs` expose the raw text (the loaders read from disk, so a
-browser consumer should parse the text itself).
+- **Which config applies** — the nearest one in the file's folder or above.
+  `luaut.config.json` and `luaut.config.jsonc` in the same folder is an error.
+  Both forms accept comments and trailing commas.
+- **`types`** — `"luau"` is looked up as `@luaut/luau`, then as a package named
+  `luau`, in `node_modules` from the config upward. A full package name or a
+  relative path (`"./types"`, `"./defs.d.luaut"`) works too. A type library's
+  own type-library dependencies load first.
+- **`paths`** — tsconfig rules: an exact pattern wins, then the `*` pattern
+  with the longest prefix; targets resolve from `baseUrl` (default: the
+  config's folder).
+- **`sourceMap`** — the instance tree becomes types: `game` and `workspace`
+  follow it, and a file the tree maps gets its own `script`, so
+  `script.Parent.Remotes` is typed. A `.luaut` file matches the Luau file of
+  the same path.
+
+| function | does |
+|---|---|
+| `findConfig(file, host?)` | the config that applies, problems with it, and every path searched |
+| `loadConfig(path, host?)` | read and check one config |
+| `resolveTypeLibraries(config, host?)` | the `.d.luaut` files to load, in order |
+| `moduleCandidates(from, specifier, config?)` / `resolveModulePath(...)` | what an `import` means |
+| `sourceMapTypes(text, path, { classes })` | the tree's types, and `scriptFor(file)` |
+
+Every problem comes back as `{ file, message, line, column }`, pointing into
+the config (or sourcemap) it is about. `host` reads files — pass your own to
+read unsaved editor buffers or to record what was read.
+
+`type` / `typeof` are **not** special-cased in the analyzer either: they are
+overload sets in `@luaut/luau`, and narrowing is derived from them. Without a
+library that declares them, they narrow nothing.
 
 ## The language, in brief
 
@@ -81,6 +116,10 @@ name: T | nil   -- must be written, but may be nil
 
 Omitting an argument requires `?` (or a default), as in TypeScript — a
 parameter typed `T | nil` still has to be passed something.
+
+**Calls** — every argument is checked against its parameter, and a generic
+parameter against its constraint (`GetService<K extends keyof Services>`
+rejects `""`).
 
 **Narrowing** follows TypeScript's model: references (`x`, `x.a.b`, `x["k"]`)
 rather than just variables, discriminated unions at any depth, `and`/`or`,
@@ -103,6 +142,8 @@ written in luaut on top of those, not built in.
 `typeof(expr)` spelling works too. It is compile-time only, unrelated to the
 `typeof(v)` function that returns a string at runtime.
 
+**Modules** — `import` / `export`, export lists, re-exports and `export *`.
+
 ## Options
 
 ```ts
@@ -111,10 +152,10 @@ analyzeScopes(program, {
 })
 
 analyzeTypes(program, scopes, {
-  libs: defaultLibs,          // parsed `.d.luaut` definitions
+  libs,                       // parsed `.d.luaut` definitions
   globalTypes: { … },         // types for specific globals; wins over `libs`
   libTypes: { … },            // extra named types for annotations
-  diagnostics: true,          // emit assignability errors (default)
+  diagnostics: true,          // emit type errors (default)
   resolveModule: specifier => exportsOfThatFile,
                               // what an `import` sees; without it imports are `any`
 })
@@ -123,21 +164,22 @@ analyzeTypes(program, scopes, {
 ## Known limitations
 
 - `export * as ns from` and namespace imports (`import * as ns`) are not
-  supported. Export lists (`export { a, b as c }`), re-exports
-  (`export { a } from`) and `export * from` are.
+  supported.
 - `setmetatable` and metatables are not modelled.
 - Accessing a property a type does not have yields `unknown` rather than an
   error; assigning to a `readonly` property is not reported.
+- A sourcemap child whose name is not an identifier (`"My Part"`) is not typed.
 
 ## Development
 
 ```bash
 npm install
-npm test        # parses smoketest/*.luaut, writes AST + inferred types to generated/
+npm test        # smoketests (types via smoketest/luaut.config.json), then project tests
 npm run build
 npm run typecheck
 ```
 
 `smoketest/` is the test suite. Each file annotates its bindings with the type
 they should infer to, so a wrong result surfaces as a diagnostic rather than
-something to eyeball.
+something to eyeball. `scripts/project.test.ts` covers configs, type
+libraries, import paths and sourcemaps against an in-memory file system.
