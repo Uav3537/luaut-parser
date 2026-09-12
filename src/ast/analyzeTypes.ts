@@ -3186,6 +3186,26 @@ class TypeAnalyzer {
         }
     }
 
+    /** `names:filter(f)`, `text:trim()` — the methods arrays and strings have.
+     *  They are written in the prelude as `ArrayMethods<T>` and
+     *  `StringMethods`, so a file (or a type library) that declares one of
+     *  those names again replaces the whole set, and nothing here is a special
+     *  case in the analyzer. The build lowers each call to a plain function. */
+    private builtInMethod(t: Type, name: string): Type | undefined {
+        const element = t.kind === "array" ? t.element
+            : t.kind === "tuple" ? union(t.elements)
+            : undefined
+        const methodTable = element !== undefined ? "ArrayMethods"
+            : (t.kind === "primitive" && t.name === "string") ||
+                (t.kind === "literal" && t.base === "string") ? "StringMethods"
+            : undefined
+        const def = methodTable === undefined ? undefined : this.aliasDefs.get(methodTable)
+        if (!def || def.class) return undefined
+        const table = this.expand(this.instantiateAlias(def as { params: GenericTypeParameter[]; node: TypeNode }, element !== undefined ? [element] : []))
+        const property = table.kind === "object" ? table.properties.get(name) : undefined
+        return property && property.type
+    }
+
     private propertyType(raw: Type, name: string): Type {
         const t = this.deferredAccess(this.expand(raw))
         if (t.kind === "object") {
@@ -3193,6 +3213,8 @@ class TypeAnalyzer {
             if (p) return p.optional ? optional(p.type) : p.type
             if (t.indexer) return t.indexer.value
         }
+        const built = this.builtInMethod(t, name)
+        if (built) return built
         if (t.kind === "union") return union(t.types.map(m => this.propertyType(m, name)))
         if (t.kind === "intersection") {
             const parts = t.types.map(m => this.propertyType(m, name)).filter(p => p.kind !== "unknown")

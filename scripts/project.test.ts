@@ -667,6 +667,41 @@ const rel = (path: string | undefined): string | undefined =>
         [optionalCall.bindings.said, optionalCall.bindings.got, optionalCall.errors],
         ["string | nil", "number | nil", []])
 
+    // The methods arrays and strings answer to, out of the prelude.
+    const methods = analyze([
+        `const names = ["a", "bb"]`,
+        "const found = names:find(function(v) return #v > 1 end)",
+        "const long = names:filter(function(v) return #v > 1 end)",
+        "const sizes = names:map(function(v) return #v end)",
+        `const joined = names:join(", ")`,
+        `const at = names:indexOf("bb")`,
+        "const inline = ([1, 2]):pop()",
+        "declare text: string",
+        "const up = text:upper()",
+        `const parts = text:split(","):join("|")`,
+        "const trimmed = text:trim()",
+        `const has = text:includes("a")`,
+    ].join("\n"))
+    check("array and string methods: their types come from the prelude", [
+        methods.bindings.found, methods.bindings.long, methods.bindings.sizes,
+        methods.bindings.joined, methods.bindings.at, methods.bindings.inline,
+        methods.bindings.up, methods.bindings.parts, methods.bindings.trimmed, methods.bindings.has,
+        methods.errors,
+    ], [
+        "string | nil", "string[]", "number[]", "string", "number | nil", "number | nil",
+        "string", "string", "string", "boolean",
+        [],
+    ])
+
+    // The names are the prelude's, so a file can say something else.
+    check("array methods: a file that declares the set again replaces it",
+        analyze([
+            "type ArrayMethods<T> = { first: (self: T[]) -> T | nil }",
+            "const own = ([1]):first()",
+            "const gone = ([1]):filter(function(v) return true end)",
+        ].join("\n")).bindings,
+        { own: "number | nil", v: "any", gone: "unknown" })
+
     // A literal written in an argument keeps its literal type when the
     // parameter asks for one — TypeScript's contextual typing.
     const request = [

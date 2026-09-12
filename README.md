@@ -160,6 +160,34 @@ brings in names that are types and nothing else: unlike TypeScript, using one
 as a value is an error, and only type positions — `typeof A` included — may
 name it. Compiled code keeps no trace of it.
 
+**Array and string methods** — an array and a string answer to the methods
+JavaScript gives them, written with `:`:
+
+```luau
+const long = names:filter(function(n) return #n > 3 end):map(string.upper)
+const first = names:find(function(n) return n:startsWith("A") end)
+print(names:join(", "), text:trim(), text:replaceAll(",", ";"))
+```
+
+Nothing is attached to the table or to the string metatable: each call is
+lowered to a plain call on a small library the output carries, so they work on
+any array, including one a Luau library returned. The set is
+`find findIndex filter map forEach some every reduce includes indexOf join
+concat slice flat reverse sort push pop shift unshift` on arrays, and on
+strings Luau's own (`upper`, `sub`, `gsub`, `split`, ...) plus
+`trim trimStart trimEnd startsWith endsWith includes indexOf slice replace
+replaceAll padStart padEnd`.
+
+Indices are Luau's: the first element is 1, `indexOf` and `findIndex` answer
+`nil` rather than -1, `slice` takes an inclusive range (and counts from the
+end when given a negative), and `sort` takes Luau's comparator — true when `a`
+comes first. `push`, `pop`, `shift`, `unshift`, `sort` and `reverse` change
+the array they are called on; the rest return a new one.
+
+They are types like any other: the prelude declares them as `ArrayMethods<T>`
+and `StringMethods`, and a file or type library that declares either name
+again replaces the set.
+
 **Optionality** — there is no `T?` shorthand. `?` in type position always
 belongs to a conditional type, and in expression position to a ternary or an
 optional chain.
