@@ -2520,8 +2520,25 @@ export class Parser {
                     name, key: tokenIdentifier(keyTok), valueType, optional,
                     ...spanFrom(propStart, this.previous()),
                 })
+            } else if (this.checkType("Literal") && (this.current() as { kind?: unknown }).kind === "string" &&
+                this.peek(1).type === "Punctuator" &&
+                ((this.peek(1) as { value?: unknown }).value === ":" ||
+                 ((this.peek(1) as { value?: unknown }).value === "?" &&
+                  this.peek(2).type === "Punctuator" && (this.peek(2) as { value?: unknown }).value === ":"))) {
+                // `"Respawn After Kill": T` — a property whose name is not an
+                // identifier, written the way the object literal writes it.
+                const keyTok = this.advance() as Span & { value?: unknown }
+                const name = String(keyTok.value)
+                const optional = this.matchPunctuator("?")
+                this.expectPunctuator(":")
+                const valueType = this.parseType()
+                properties.push({
+                    type: "TableTypeProperty",
+                    name, key: tokenIdentifier(keyTok), valueType, optional,
+                    ...spanFrom(propStart, this.previous()),
+                })
             } else {
-                this.error("Expected object type property ('name: T' or '[K]: V'); use 'T[]' for arrays and '[T, U]' for tuples")
+                this.error("Expected object type property ('name: T', '\"name\": T' or '[K]: V'); use 'T[]' for arrays and '[T, U]' for tuples")
             }
 
             if (this.matchPunctuator(",") || this.matchPunctuator(";")) continue

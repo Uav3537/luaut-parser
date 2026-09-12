@@ -667,6 +667,32 @@ const rel = (path: string | undefined): string | undefined =>
         [optionalCall.bindings.said, optionalCall.bindings.got, optionalCall.errors],
         ["string | nil", "number | nil", []])
 
+    // A property whose name is not an identifier, written as the object
+    // literal writes it.
+    {
+        const quoted = analyze([
+            `type Settings = {`,
+            `    ShowHitboxes: "True" | "False",`,
+            `    "Respawn After Kill": "True" | "False",`,
+            `    "Skip Intros"?: "True" | "False",`,
+            `}`,
+            `declare s: Settings`,
+            `const read = s["Respawn After Kill"]`,
+            `const whole: Settings = { ShowHitboxes: "True", "Respawn After Kill": "False" }`,
+        ].join("\n"))
+        check("object types: a quoted property name", [
+            quoted.bindings.read,
+            quoted.errors,
+        ], [`"True" | "False"`, []])
+
+        // The value must still be one it names.
+        check("object types: and it is checked like any other",
+            analyze([
+                `type Settings = { "Respawn After Kill": "True" | "False" }`,
+                `const whole: Settings = { "Respawn After Kill": "Maybe" }`,
+            ].join("\n")).errors.length, 1)
+    }
+
     // A string is not a table: the only members it has are its methods.
     {
         const methods = parse(

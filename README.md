@@ -214,6 +214,9 @@ in JavaScript — `const v = map[key]` followed by `("A"):upper()` is one
 statement, a call of `map[key]`. luaut says so rather than letting it pass:
 write `;` before the `(` when a new statement was meant.
 
+**Object types** — `{ name: T, name?: T, [K]: V }`, and a name that is not an
+identifier is quoted, as in the literal: `{ "Respawn After Kill": boolean }`.
+
 **Optionality** — there is no `T?` shorthand. `?` in type position always
 belongs to a conditional type, and in expression position to a ternary or an
 optional chain.

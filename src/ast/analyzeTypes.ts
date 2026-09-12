@@ -3252,21 +3252,28 @@ class TypeAnalyzer {
      *  those names again replaces the whole set, and nothing here is a special
      *  case in the analyzer. The build lowers each call to a plain function. */
     private builtInMethod(t: Type, name: string): Type | undefined {
-        const element = t.kind === "array" ? t.element
-            : t.kind === "tuple" ? union(t.elements)
-            : undefined
+        // A union of arrays is still an array to its methods — what one holds
+        // is any of their elements. Same for a union of strings.
+        const parts = (t.kind === "union" ? t.types : [t]).map(m => this.expand(m))
+        const elements = parts.map(m => (m.kind === "array" ? m.element
+            : m.kind === "tuple" ? union(m.elements)
+            : undefined))
+        const element = elements.every(e => e !== undefined) ? union(elements as Type[]) : undefined
+        const isString = (m: Type): boolean =>
+            (m.kind === "primitive" && m.name === "string") ||
+            (m.kind === "literal" && m.base === "string") ||
+            m.kind === "templateLiteral"
         const methodTable = element !== undefined ? "ArrayMethods"
-            : (t.kind === "primitive" && t.name === "string") ||
-                (t.kind === "literal" && t.base === "string") ? "StringMethods"
+            : parts.every(isString) ? "StringMethods"
             : undefined
         const def = methodTable === undefined ? undefined : this.aliasDefs.get(methodTable)
         if (!def || def.class) return undefined
         const table = this.expand(this.instantiateAlias(def as { params: GenericTypeParameter[]; node: TypeNode }, element !== undefined ? [element] : []))
         // Libraries layer, so the set may be an intersection of what each gave
         // it; the last to declare a name wins.
-        const parts = table.kind === "intersection" ? table.types.map(m => this.expand(m)) : [table]
-        for (let i = parts.length - 1; i >= 0; i--) {
-            const part = parts[i]
+        const layers = table.kind === "intersection" ? table.types.map(m => this.expand(m)) : [table]
+        for (let i = layers.length - 1; i >= 0; i--) {
+            const part = layers[i]
             const property = part.kind === "object" ? part.properties.get(name) : undefined
             if (property) return property.type
         }
@@ -3364,7 +3371,14 @@ class TypeAnalyzer {
         }
         const built = this.builtInMethod(t, name)
         if (built) return built
-        if (t.kind === "union") return union(t.types.map(m => this.propertyType(m, name)))
+        if (t.kind === "union") {
+            // The methods of a union of arrays (or of strings) come from the
+            // union, not from each member on its own: one `some` over all the
+            // elements, rather than several that cannot be called.
+            const built = this.builtInMethod(t, name)
+            if (built) return built
+            return union(t.types.map(m => this.propertyType(m, name)))
+        }
         if (t.kind === "intersection") {
             const parts = t.types.map(m => this.propertyType(m, name)).filter(p => p.kind !== "unknown")
             if (parts.length) return intersection(parts)
@@ -3373,6 +3387,13 @@ class TypeAnalyzer {
         // A subtraction only removes values; the members are the base's.
         if (t.kind === "difference") return this.propertyType(t.base, name)
         if (t.kind === "any") return anyType
+        // Still waiting on a type parameter: read the member from the most it
+        // could become, so `skills:some(f)` knows what `f` takes even while
+        // `Extract<Rows, { Page: P }>["Skills"]` is unevaluated.
+        if (t.kind === "conditional" || t.kind === "indexedAccess") {
+            const bound = this.deferredBound(t)
+            if (bound) return this.propertyType(bound, name)
+        }
         return unknownType
     }
 
