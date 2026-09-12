@@ -628,6 +628,29 @@ const rel = (path: string | undefined): string | undefined =>
             analyzeTypes(program, analyzeScopes(program)).diagnostics.length, 0)
     }
 
+    // The implementation of an overload set sees what its signatures allow.
+    const implementation = analyze([
+        "declare class Player {}",
+        "declare player: Player",
+        `export function get(stat: "hp", who?: Player): number`,
+        `export function get(stat: "name", who?: Player): string`,
+        "export function get(stat, who, extra)",
+        "    const s = stat",
+        "    const w = who",
+        "    const e = extra",
+        "    return nil",
+        "end",
+        `function annotated(stat: "hp"): number`,
+        `function annotated(stat: "name"): string`,
+        "function annotated(stat: string)",
+        "    const inner = stat",
+        "    return nil",
+        "end",
+    ].join("\n"))
+    check("overloads: an implementation's bare parameter is what the signatures allow",
+        [implementation.bindings.s, implementation.bindings.w, implementation.bindings.e, implementation.bindings.inner],
+        [`"hp" | "name"`, "Player | nil", "any", "string"])
+
     // `export function` overloads: one declaration, exported once.
     const overloadModule = [
         "export function Tags(a: number, b: number): boolean",

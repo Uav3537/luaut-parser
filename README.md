@@ -139,7 +139,10 @@ there, so a returned callback takes its parameters from it.
 **Overloads** — a `function name(...)` with no body is a signature for the
 declaration that follows it, as in TypeScript: the signatures are what a call
 sees, and the last one, with the body, is the implementation. `export` goes on
-every line of the set or none of them.
+every line of the set or none of them. A parameter of the implementation that
+carries no annotation holds what the signatures allow there — under
+`get(stat: "hp")` and `get(stat: "name")`, the implementation's `stat` is
+`"hp" | "name"` rather than `any`.
 
 **Modules** — `import { a, b as c } from "./m"`, `import D from "./m"` and
 `import * as M from "./m"`; `export const`, `export function`, `export default`,

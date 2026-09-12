@@ -1656,6 +1656,7 @@ class TypeAnalyzer {
                 this.checkParamOrder(stmt.func.params, stmt)
                 for (const sig of stmt.signatures ?? []) this.checkParamOrder(sig.params, stmt)
                 const id = this.bindingIdByName(stmt.name.name, stmt.name)
+                this.paramsFromSignatures(stmt.func, stmt.signatures)
                 const fnType = stmt.signatures?.length
                     ? intersection(stmt.signatures.map(s => this.signatureToFnType(s)))
                     : this.inferFunctionBody(stmt.func, env)
@@ -1677,6 +1678,7 @@ class TypeAnalyzer {
                 if (memberName === undefined && stmt.target.path.length === 0) {
                     // Plain `function f(...)` — rebinds the name itself.
                     if (targetId !== undefined) {
+                        this.paramsFromSignatures(stmt.func, stmt.signatures)
                         const fnType = stmt.signatures?.length
                             ? intersection(stmt.signatures.map(s => this.signatureToFnType(s)))
                             : this.inferFunctionBody(stmt.func, env)
@@ -1693,6 +1695,7 @@ class TypeAnalyzer {
                 // receiver is what makes `self.x` work inside the body.
                 const recv = targetId === undefined ? anyType : this.currentType(targetId, env)
                 this.withSelfType(stmt.isMethod ? recv : undefined, () => {
+                    this.paramsFromSignatures(stmt.func, stmt.signatures)
                     const fnType = stmt.signatures?.length
                         ? intersection(stmt.signatures.map(s => this.signatureToFnType(s)))
                         : this.inferFunctionBody(stmt.func, env)
@@ -2563,6 +2566,27 @@ class TypeAnalyzer {
             message: `Expected ${need} argument${need === "1" ? "" : "s"}, got ${argCount}`,
         })
         return false
+    }
+
+    /** An overload set's implementation handles every signature, so a bare
+     *  parameter of it holds whatever those signatures allow there:
+     *  `function f(Stat, ...)` under 36 `Stat: "..."` signatures is the union
+     *  of all 36. TypeScript leaves such a parameter `any`; this says what it
+     *  can actually be. An annotation, a pattern or a default still wins. */
+    private paramsFromSignatures(func: FunctionBody, signatures: readonly FunctionSignature[] | undefined): void {
+        if (!signatures?.length) return
+        const resolved = signatures.map(sig => this.signatureToFnType(sig))
+        func.params.forEach((param, i) => {
+            if (param.typeAnnotation || param.pattern || param.default) return
+            const candidates: Type[] = []
+            for (const signature of resolved) {
+                if (signature.kind !== "function") continue
+                const own = signature.params[i]
+                if (own) candidates.push(own.optional ? optional(own.type) : own.type)
+                else if (signature.varargs) candidates.push(signature.varargs)
+            }
+            if (candidates.length) this.contextualParams.set(param, union(candidates))
+        })
     }
 
     private signatureToFnType(sig: FunctionSignature): Type {
