@@ -197,7 +197,15 @@ is `[]` passed where one is expected, including inside an object literal.
 
 **Calls** — every argument is checked against its parameter, and a generic
 parameter against its constraint (`GetService<K extends keyof Services>`
-rejects `""`).
+rejects `""`). Arguments are checked again once the call's own type arguments
+are known, so `pick("Bones", "Blast1")` is caught where `pick`'s second
+parameter reads `Extract<Rows, { Page: P }>["Skills"][number]`. A type that
+waits on a type parameter — a conditional, an index, `T[K]` — is worked out
+where that parameter is.
+
+**Trailing commas** are allowed wherever TypeScript allows them: parameter
+lists, call arguments, generic parameters and type arguments, tables, arrays,
+tuples, imports and exports.
 
 **Narrowing** follows TypeScript's model: references (`x`, `x.a.b`, `x["k"]`)
 rather than just variables, discriminated unions at any depth, `and`/`or`,

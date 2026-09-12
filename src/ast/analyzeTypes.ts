@@ -1353,8 +1353,16 @@ class TypeAnalyzer {
 
     private reduceConditional(t: Extract<Type, { kind: "conditional" }>): Type {
         const checkType = this.reduceType(t.checkType)
+        const extendsType = this.reduceType(t.extendsType)
         // Still generic — keep the whole conditional for a later instantiation.
-        if (containsTypeParam(checkType)) return { ...t, checkType }
+        // Either side can hold the unknown: `Extract<Rows, { Page: P }>` knows
+        // what it is testing, not what against.
+        // `infer R` in the `extends` clause is bound by the clause itself, not
+        // something still to be filled in.
+        const free = new Set(t.inferVars)
+        if (containsTypeParam(checkType) || containsTypeParam(extendsType, new Set(), free)) {
+            return { ...t, checkType, extendsType }
+        }
 
         // A conditional over a bare type parameter distributes across a union,
         // so `Exclude<"a" | "b", "a">` filters member by member instead of
@@ -2244,7 +2252,7 @@ class TypeAnalyzer {
             for (const child of Object.values(value)) walk(child)
         }
         for (const p of f.params) if (containsTypeParam(p.type)) walk(p.type)
-        return f.params.map(p => substitute(p.type, bounds))
+        return f.params.map(p => this.reduceType(substitute(p.type, bounds)))
     }
 
     /** Record what each written argument is expected to be — see
@@ -2267,6 +2275,37 @@ class TypeAnalyzer {
 
     /** No signature accepts the call, and the argument count is not the
      *  problem: say which argument is wrong, the way TypeScript does. */
+    /** Check what was written against the parameters as this call's own type
+     *  arguments make them read: `pick("Bones", "C")` is wrong only once `P`
+     *  is known to be `"Bones"`. Picking the overload goes by each parameter's
+     *  constraint, which is deliberately looser than that. */
+    private checkInferredArguments(
+        call: Expression,
+        written: readonly Expression[],
+        f: FunctionType,
+        argTypes: readonly Type[],
+        self: number,
+    ): void {
+        if (!this.emitDiagnostics || !f.typeParams?.length) return
+        const subst = this.inferTypeArgs(f, [...argTypes])
+        // A parameter nothing pinned down stands for anything, and checking
+        // against what it fell back to would invent errors.
+        for (const bound of subst.values()) if (bound.kind === "unknown") return
+        for (let i = 0; i < f.params.length; i++) {
+            const arg = argTypes[i]
+            const declared = f.params[i].type
+            if (arg === undefined || !containsTypeParam(declared)) continue
+            const expected = this.reduceType(substitute(declared, subst))
+            if (containsTypeParam(expected) || expected.kind === "any" || expected.kind === "unknown") continue
+            if (isAssignable(arg, expected) || isAssignable(widen(arg), expected)) continue
+            this.diagnostics.push({
+                node: written[i - self] ?? call,
+                message: `Argument of type '${formatType(arg)}' is not assignable to parameter of type '${briefType(expected)}'`,
+            })
+            return
+        }
+    }
+
     private reportArguments(
         call: Expression,
         written: readonly Expression[],
@@ -3015,6 +3054,7 @@ class TypeAnalyzer {
             const distributed = this.distributedReturn(fns, argTypes, picked, (_, args) => args)
             if (distributed) return distributed
             if (picked) {
+                this.checkInferredArguments(expr, expr.arguments, picked, argTypes, 0)
                 return this.callReturn(picked, this.constArgs(picked, expr.arguments, argTypes, env))
             }
             if (arityFits) this.reportArguments(expr, expr.arguments, fns, () => argTypes, () => 0)
@@ -3048,6 +3088,7 @@ class TypeAnalyzer {
             if (distributed) return distributed
             if (picked) {
                 const self = this.takesSelf(picked) ? 1 : 0
+                this.checkInferredArguments(expr, expr.arguments, picked, withSelf(picked), self)
                 const written = this.constArgs(picked, expr.arguments, argTypes, env, self)
                 return this.callReturn(picked, this.takesSelf(picked) ? [objType, ...written] : written)
             }

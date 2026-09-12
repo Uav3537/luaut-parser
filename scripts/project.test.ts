@@ -500,6 +500,43 @@ const rel = (path: string | undefined): string | undefined =>
         [varargs.bindings.first, varargs.bindings.f, varargs.bindings.s, varargs.bindings.anything],
         ["number", "(...number) -> number", "string", "any"])
 
+    // A constraint is a type like any other: `typeof` in one reads a value.
+    const constraints = analyze([
+        "const Skills = {",
+        `    Sans: [{ Page: "Bones", Skills: ["Bonespam", "Bonewall"] }, { Page: "Blasters", Skills: ["Blast1"] }],`,
+        "} as const",
+        "type Rows = (typeof Skills)[\"Sans\"][number]",
+        "type Extract<T, U> = T extends U ? T : never",
+        "function pick<P extends (typeof Skills)[\"Sans\"][number][\"Page\"]>(",
+        "    page: P,",
+        "    skill: Extract<Rows, { Page: P }>[\"Skills\"][number],",
+        ")",
+        "    return skill",
+        "end",
+        `const good = pick("Bones", "Bonespam")`,
+        `const wrongSkill = pick("Bones", "Blast1")`,
+        `const wrongPage = pick("Nope", "Bonespam")`,
+    ].join("\n"))
+    check("generics: a constraint written inline, and arguments checked once the call fixes them", [
+        constraints.bindings.good,
+        constraints.errors,
+    ], [
+        `"Bonespam" | "Bonewall"`,
+        [
+            `Argument of type '"Blast1"' is not assignable to parameter of type '"Bonespam" | "Bonewall"'`,
+            `Argument of type '"Nope"' is not assignable to parameter of type '"Bones" | "Blasters"'`,
+        ],
+    ])
+
+    // Trailing commas, as in TypeScript.
+    check("trailing commas: parameters, arguments, generics and type arguments", [
+        parseError("function f(\n    a: number,\n    b: string,\n)\nend"),
+        parseError("print(\n    1,\n    2,\n)"),
+        parseError("function f<\n    A,\n    B,\n>(a: A) end"),
+        parseError("type F = (\n    a: number,\n) -> ()"),
+        parseError("type P = Partial<number,>"),
+    ], [undefined, undefined, undefined, undefined, undefined])
+
     // `...rest` holds what the pattern did not take.
     const rest = analyze([
         "declare t: { a: number, b: number, c: string }",

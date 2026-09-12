@@ -1495,7 +1495,7 @@ export class Parser {
                     const argument = this.expressionOr(stop)
                     // `f(` with nothing written yet is no argument.
                     if (argument.type !== "ErrorExpression" || this.cursor > before || list.length) list.push(argument)
-                    if (this.matchPunctuator(",")) continue
+                    if (this.matchPunctuator(",") && !this.checkPunctuator(")")) continue
                     if (!this.recover || this.checkPunctuator(")")) break
                     // `print(a` and then the next line: the `)` is what is missing.
                     if (this.onNewLine() && (this.checkType("Identifier") || this.checkType("Keyword"))) break
@@ -1860,7 +1860,9 @@ export class Parser {
                     optional: optional || undefined,
                     ...spanFrom(paramStart, this.previous()),
                 })
-                if (this.matchPunctuator(",")) continue
+                // A trailing comma is allowed, as in TypeScript: a parameter
+                // list written one per line ends with one.
+                if (this.matchPunctuator(",") && !this.checkPunctuator(")")) continue
                 break
             }
         }
@@ -2179,7 +2181,7 @@ export class Parser {
                 this.advance()
                 if (!this.checkOperator(">")) {
                     typeArguments.push(this.parseTypeArgument())
-                    while (this.matchPunctuator(",")) {
+                    while (this.matchPunctuator(",") && !this.checkOperator(">")) {
                         typeArguments.push(this.parseTypeArgument())
                     }
                 }
@@ -2237,7 +2239,7 @@ export class Parser {
                     optional: optional || undefined,
                     ...spanFrom(paramStart, this.previous()),
                 })
-                if (this.matchPunctuator(",")) continue
+                if (this.matchPunctuator(",") && !this.checkPunctuator(")")) continue
                 break
             }
         }
@@ -2467,7 +2469,7 @@ export class Parser {
                 default: def,
                 ...spanFrom(nameTok, this.previous()),
             })
-            if (this.matchPunctuator(",")) continue
+            if (this.matchPunctuator(",") && !this.checkOperator(">")) continue
             break
         }
         this.expectOperator(">")

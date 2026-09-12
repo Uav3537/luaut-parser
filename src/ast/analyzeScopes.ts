@@ -621,6 +621,8 @@ class Analyzer {
                 // Type-level names live in a separate namespace from value
                 // bindings, but a `typeof x` inside the definition reads a
                 // value.
+                this.visitGenerics(
+                    (stmt.type === "TypeAliasStatement" ? stmt : stmt.alias).generics, scope)
                 this.visitType(stmt.type === "TypeAliasStatement" ? stmt.definition : stmt.alias.definition, scope)
                 return
 
@@ -680,6 +682,7 @@ class Analyzer {
         // "between" param declarations and the body that would need its
         // own layer.
         const fnScope = childScope(outerScope)
+        this.visitGenerics(func.generics, fnScope)
         // For `function T:m(...)`, the parser already injects a real
         // `self` FunctionParameter as `params[0]` (see builders.ts) — it's
         // not synthesized here, just classified differently so rename
@@ -709,11 +712,28 @@ class Analyzer {
     /** An overload signature: no body and no bindings, but its types can hold
      *  a `typeof x`. */
     private visitSignature(
-        signature: { params: { typeAnnotation?: TypeNode }[]; returnType?: TypeNode | TypePackNode },
+        signature: {
+            params: { typeAnnotation?: TypeNode }[]
+            returnType?: TypeNode | TypePackNode
+            generics?: { constraint?: TypeNode; default?: TypeNode | TypePackNode }[]
+        },
         scope: Scope,
     ): void {
+        this.visitGenerics(signature.generics, scope)
         for (const param of signature.params) this.visitType(param.typeAnnotation, scope)
         this.visitType(signature.returnType, scope)
+    }
+
+    /** `<K extends typeof config>` — a constraint is a type like any other,
+     *  and the `typeof` in it reads a value. */
+    private visitGenerics(
+        generics: readonly { constraint?: TypeNode; default?: TypeNode | TypePackNode }[] | undefined,
+        scope: Scope,
+    ): void {
+        for (const generic of generics ?? []) {
+            this.visitType(generic.constraint, scope)
+            this.visitType(generic.default, scope)
+        }
     }
 
     /** Resolve the value references inside a type. Only `typeof x` has any —

@@ -913,13 +913,26 @@ function containsFreeTypeParam(t: Type, seen: Set<Type>, bound: Set<string>): bo
         case "indexedAccess":
             return containsTypeParam(t.objectType, seen, bound) ||
                 containsTypeParam(t.indexType, seen, bound)
-        case "conditional":
-            // Still unreduced, so what it hinges on is what matters; `infer`
-            // names are bound by the clause that introduces them.
-            return containsTypeParam(t.checkType, seen, bound)
-        case "mapped":
-            // Likewise: the key set decides whether it can be built yet.
-            return containsTypeParam(t.constraint, seen, bound)
+        case "conditional": {
+            // Every part can hold one: `Extract<Rows, { Page: P }>` waits on
+            // its `extends` side, and the branches carry the alias's own
+            // parameters. `infer` names are bound by the clause that
+            // introduces them.
+            const inner = t.inferVars.length ? new Set([...bound, ...t.inferVars]) : bound
+            return containsTypeParam(t.checkType, seen, bound) ||
+                containsTypeParam(t.extendsType, seen, inner) ||
+                containsTypeParam(t.trueType, seen, inner) ||
+                containsTypeParam(t.falseType, seen, bound)
+        }
+        case "mapped": {
+            // The key it maps over, and what it maps each key to — under the
+            // mapped parameter, which is bound here.
+            const inner = new Set([...bound, t.parameter])
+            return containsTypeParam(t.constraint, seen, bound) ||
+                (!!t.nameType && containsTypeParam(t.nameType, seen, inner)) ||
+                containsTypeParam(t.template, seen, inner) ||
+                (!!t.source && containsTypeParam(t.source, seen, bound))
+        }
         default: return false
     }
 }
