@@ -3304,6 +3304,57 @@ class TypeAnalyzer {
         }
     }
 
+    /** What `text["upper"]` reads: a string answers only to its methods, the
+     *  way Lua's string metatable does. */
+    private stringMember(object: Type, index: Type): Type | undefined {
+        if (index.kind !== "literal" || typeof index.value !== "string") return undefined
+        const parts = this.stringParts(object)
+        if (!parts) return undefined
+        const found = parts.map(part => this.builtInMethod(part, index.value as string))
+        return found.every(t => t !== undefined) ? union(found as Type[]) : undefined
+    }
+
+    /** The members of `t` when every one of them is a string — `"a" | "b"` is
+     *  as much a string as `string` is. */
+    private stringParts(t: Type): Type[] | undefined {
+        let expanded = this.expand(t)
+        // A type still waiting on a type parameter counts when everything it
+        // could become is a string.
+        if (expanded.kind === "conditional" || expanded.kind === "indexedAccess") {
+            const bound = this.deferredBound(expanded)
+            if (!bound) return undefined
+            expanded = this.expand(bound)
+        }
+        const parts = (expanded.kind === "union" ? expanded.types : [expanded]).map(m => this.expand(m))
+        const isString = (m: Type): boolean =>
+            (m.kind === "primitive" && m.name === "string") ||
+            (m.kind === "literal" && m.base === "string") ||
+            m.kind === "templateLiteral"
+        return parts.length && parts.every(isString) ? parts : undefined
+    }
+
+    /** `text.Sans` or `text["Sans"]`: a string is not a table, and the only
+     *  members it has are the ones a type library gave it — so a name that is
+     *  not one of them is a mistake worth reporting, rather than the nil Lua
+     *  would hand back. */
+    private checkStringMember(node: Expression, object: Type, key: Type): void {
+        if (!this.emitDiagnostics) return
+        const parts = this.stringParts(object)
+        if (!parts) return
+        // The key may be one name or a choice of them; anything less definite
+        // says nothing worth reporting.
+        const keys = (key.kind === "union" ? key.types : [key]).map(m => this.expand(m))
+        if (!keys.length || !keys.every(m => m.kind === "literal" && typeof m.value === "string")) return
+        const names = keys.map(m => String((m as Extract<Type, { kind: "literal" }>).value))
+        if (names.some(name => parts.some(part => this.builtInMethod(part, name)))) return
+        this.diagnostics.push({
+            node,
+            message: names.length === 1
+                ? `'${names[0]}' does not exist on a string`
+                : `'${briefType(key)}' does not name a member of a string`,
+        })
+    }
+
     private propertyType(raw: Type, name: string): Type {
         const t = this.deferredAccess(this.expand(raw))
         if (t.kind === "object") {
@@ -3521,6 +3572,7 @@ class TypeAnalyzer {
                 const { type: obj, shortCircuits } = this.chainObject(expr, expr.object, env)
                 const key = this.refKeyOf(expr)
                 const narrowed = key === undefined ? undefined : env.get(key)
+                this.checkStringMember(expr, obj, literal(expr.property.name))
                 return this.chainResult(expr, narrowed ?? this.propertyType(obj, expr.property.name), shortCircuits)
             }
 
@@ -3529,6 +3581,9 @@ class TypeAnalyzer {
                 const idx = this.infer(expr.index, env)
                 const key = this.refKeyOf(expr)
                 const narrowed = key === undefined ? undefined : env.get(key)
+                this.checkStringMember(expr, obj, this.expand(idx))
+                const member = this.stringMember(obj, this.expand(idx))
+                if (member) return this.chainResult(expr, member, shortCircuits)
                 return this.chainResult(expr, narrowed ?? this.indexedType(obj, idx), shortCircuits)
             }
 

@@ -667,6 +667,38 @@ const rel = (path: string | undefined): string | undefined =>
         [optionalCall.bindings.said, optionalCall.bindings.got, optionalCall.errors],
         ["string | nil", "number | nil", []])
 
+    // A string is not a table: the only members it has are its methods.
+    {
+        const methods = parse(
+            "type StringMethods = { upper: (self: string) -> string }",
+        )
+        const program = parse([
+            `declare skill: "a" | "b"`,
+            `declare name: "Sans" | "Asgore"`,
+            "declare anyKey: string",
+            "const method = skill[\"upper\"]",
+            "const wrong = skill[name]",
+            "const alsoWrong = skill.Sans",
+            "const dynamic = skill[anyKey]",
+            "declare rows: { Sans: number }",
+            "const table = rows[name]",
+        ].join("\n"))
+        const scopes = analyzeScopes(program)
+        const types = analyzeTypes(program, scopes, { libs: [methods] })
+        const bindings: Record<string, string> = {}
+        for (const [id, type] of types.bindingType) bindings[scopes.bindings.get(id)!.name] = formatType(type)
+        check("string members: a method by name, and a report for anything else", [
+            bindings.method,
+            types.diagnostics.map(d => d.message),
+        ], [
+            "(self: string) -> string",
+            [
+                `'"Sans" | "Asgore"' does not name a member of a string`,
+                "'Sans' does not exist on a string",
+            ],
+        ])
+    }
+
     // `(` on a line of its own continues the statement above it.
     {
         const trap = [
