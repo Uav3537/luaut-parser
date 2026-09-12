@@ -571,6 +571,9 @@ interface CallExpression extends BaseNode {
     arguments: Expression[];
     /** `f<T>(x)` — type arguments written out rather than inferred. */
     typeArguments?: (TypeNode | TypePackNode)[];
+    /** `f?.(...)` — see `MemberExpression.optional`. The call does not happen,
+     *  and the arguments are not evaluated, when `callee` is nil. */
+    optional?: boolean;
 }
 interface MethodCallExpression extends BaseNode {
     type: "MethodCallExpression";
@@ -1305,7 +1308,7 @@ resolveModule?: (specifier: string) => ModuleExports | undefined): ModuleExports
  * that declaration wins.
  *
  * What a runtime provides — `print`, `string`, `game` — is not here: that is a
- * type library's job (`@luaut/luau`, `@luaut/roblox`).
+ * type library's job (`@luaut/lua`, `@luaut/roblox`).
  */
 declare const PRELUDE_SOURCE = "\n-- In Luau only `nil` and `false` are falsy: `0` and `\"\"` are truthy.\n-- These are what truthiness narrowing computes, made available to write down.\ntype Falsy = nil | false\ntype Truthy<T> = T - Falsy\n\n-- `-` is set difference. Over a union it drops members; over a concrete type\n-- it simplifies away; over an opaque type (`unknown`, an unresolved parameter)\n-- it is kept, so `Exclude<unknown, 1>` stays `unknown - 1`.\ntype Exclude<T, U> = T - U\ntype Extract<T, U> = T extends U ? T : never\ntype NonNullable<T> = T - nil\n\ntype ReturnType<T> = T extends (...unknown) -> infer R ? R : never\ntype Parameters<T> = T extends (...infer P) -> unknown ? P : never\n\ntype Partial<T> = { [K in keyof T]?: T[K] }\ntype Required<T> = { [K in keyof T]-?: T[K] }\ntype Readonly<T> = { readonly [K in keyof T]: T[K] }\ntype Mutable<T> = { -readonly [K in keyof T]: T[K] }\n\ntype Pick<T, K> = { [P in K]: T[P] }\ntype Omit<T, K> = Pick<T, Exclude<keyof T, K>>\ntype Record<K, V> = { [P in K]: V }\n";
 
@@ -1323,7 +1326,7 @@ interface LuautConfig {
     readonly directory: string;
     /** The config file's text, for locating problems in it. */
     readonly source: string;
-    /** Type libraries to load, in order: `"luau"`, `"@luaut/roblox"`, `"./types"`. */
+    /** Type libraries to load, in order: `"lua"`, `"@luaut/roblox"`, `"./types"`. */
     readonly types: readonly string[];
     /** Import path aliases, as in tsconfig: `{ "@shared/*": ["src/shared/*"] }`. */
     readonly paths: Readonly<Record<string, readonly string[]>>;

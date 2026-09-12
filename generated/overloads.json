@@ -209,6 +209,18 @@
             "column": {
               "start": 13,
               "end": 32
+            },
+            "name": {
+              "type": "Identifier",
+              "name": "len",
+              "line": {
+                "start": 3,
+                "end": 3
+              },
+              "column": {
+                "start": 10,
+                "end": 13
+              }
             }
           },
           {
@@ -273,9 +285,33 @@
             "column": {
               "start": 13,
               "end": 35
+            },
+            "name": {
+              "type": "Identifier",
+              "name": "len",
+              "line": {
+                "start": 4,
+                "end": 4
+              },
+              "column": {
+                "start": 10,
+                "end": 13
+              }
             }
           }
         ],
+        "implementationName": {
+          "type": "Identifier",
+          "name": "len",
+          "line": {
+            "start": 5,
+            "end": 5
+          },
+          "column": {
+            "start": 10,
+            "end": 13
+          }
+        },
         "line": {
           "start": 3,
           "end": 7
@@ -416,6 +452,18 @@
             "column": {
               "start": 17,
               "end": 36
+            },
+            "name": {
+              "type": "Identifier",
+              "name": "reverse",
+              "line": {
+                "start": 9,
+                "end": 9
+              },
+              "column": {
+                "start": 10,
+                "end": 17
+              }
             }
           },
           {
@@ -491,9 +539,33 @@
             "column": {
               "start": 17,
               "end": 40
+            },
+            "name": {
+              "type": "Identifier",
+              "name": "reverse",
+              "line": {
+                "start": 10,
+                "end": 10
+              },
+              "column": {
+                "start": 10,
+                "end": 17
+              }
             }
           }
         ],
+        "implementationName": {
+          "type": "Identifier",
+          "name": "reverse",
+          "line": {
+            "start": 11,
+            "end": 11
+          },
+          "column": {
+            "start": 10,
+            "end": 17
+          }
+        },
         "line": {
           "start": 9,
           "end": 13

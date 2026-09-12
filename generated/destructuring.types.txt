@@ -11,7 +11,7 @@ p: number
 q: number
 r: number
 renamed: number
-restObj: { a: number, b: number, c: number, list: number[], nested: { deep: number } }
+restObj: { c: number, list: number[] }
 s: number
 tail: number[]
 third: number

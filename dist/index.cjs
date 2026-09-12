@@ -1967,6 +1967,19 @@ var Parser = class {
           base = { type: "MemberExpression", object: base, property: prop, optional: true, ...spanFrom(base, prop) };
           continue;
         }
+        if (punct === "." && this.punctuatorAt(2, "(")) {
+          this.advance();
+          this.advance();
+          const args = this.parseCallArguments();
+          base = {
+            type: "CallExpression",
+            callee: base,
+            arguments: args,
+            optional: true,
+            ...spanFrom(base, this.previous())
+          };
+          continue;
+        }
         if (punct === ":" && this.startsMethodCall(1)) {
           this.advance();
           this.advance();
@@ -2043,6 +2056,11 @@ var Parser = class {
       break;
     }
     return base;
+  }
+  /** Is the token `ahead` places on the punctuator `value`? */
+  punctuatorAt(ahead, value) {
+    const token = this.peek(ahead);
+    return token.type === "Punctuator" && token.value === value;
   }
   /** An assignment target after the first: a prefix expression (`a.b`,
    *  `a[i]`, `a`) or a nested destructuring pattern. */
@@ -4714,7 +4732,7 @@ function expressionLabel(e, depth = 0) {
     }
     case "CallExpression": {
       const o = expressionLabel(e.callee, depth + 1);
-      return o === void 0 ? void 0 : `${o}${args(e.arguments)}`;
+      return o === void 0 ? void 0 : `${o}${e.optional ? "?." : ""}${args(e.arguments)}`;
     }
     case "IndexExpression": {
       const o = expressionLabel(e.object, depth + 1);
@@ -4989,6 +5007,22 @@ var TypeAnalyzer = class {
    *  `declare script: LuaSourceContainer`. */
   /** Program `declare`s whose type depends on a value's, by name. */
   deferredDeclares = /* @__PURE__ */ new Map();
+  /** A library that declares a name a second time adds to it rather than
+   *  replacing it: `declare table: { find: ... }` on top of Lua's `table`
+   *  leaves both members there, the way overloads of a function accumulate.
+   *  This is what lets one definitions file build on another's — Luau's on
+   *  Lua's, Roblox's on Luau's. A property declared twice takes its later
+   *  type. Classes stay as they are: they come from one generated file and
+   *  merging them would only blur it. */
+  mergeDeclared(prev, next) {
+    if (!prev || prev.kind !== "object" || next.kind !== "object") return next;
+    if (prev.class || next.class) return next;
+    return objectType(
+      [...prev.properties, ...next.properties],
+      next.indexer ?? prev.indexer,
+      next.frozen ?? prev.frozen
+    );
+  }
   harvestDeclares(block, own = false) {
     for (const stmt of block.statements) {
       if (stmt.type !== "DeclareStatement") continue;
@@ -4999,7 +5033,10 @@ var TypeAnalyzer = class {
       const t = this.resolveType(stmt.valueType);
       const prev = this.libGlobalTypes.get(stmt.name);
       const overload = prev && stmt.valueType.type === "FunctionTypeNode" && (prev.kind === "function" || prev.kind === "intersection");
-      this.libGlobalTypes.set(stmt.name, overload ? intersection([prev, t]) : t);
+      this.libGlobalTypes.set(
+        stmt.name,
+        overload ? intersection([prev, t]) : this.mergeDeclared(prev, t)
+      );
     }
   }
   resolveAllAliases() {
@@ -7404,21 +7441,36 @@ var TypeAnalyzer = class {
    *  A nested literal is checked against the property it is written for.
    *  A target with an indexer, a class, or a member whose shape is not known
    *  accepts anything. */
+  /** The keys an index signature covers, when it covers a countable set of
+   *  them: `[("a" | "b")]` yes, `[string]` no. */
+  finiteKeys(key) {
+    const t = this.expand(key);
+    const parts = t.kind === "union" ? t.types : [t];
+    const out = /* @__PURE__ */ new Set();
+    for (const part of parts.map((m) => this.expand(m))) {
+      if (part.kind !== "literal" || typeof part.value === "boolean") return void 0;
+      out.add(String(part.value));
+    }
+    return out.size ? out : void 0;
+  }
   reportExcessProperties(expression, target) {
     let literal2 = unwrapParens(expression);
     while (literal2.type === "AsConstExpression") literal2 = unwrapParens(literal2.expression);
     if (literal2.type !== "TableExpression" || !this.emitDiagnostics) return;
     const members = this.membersOf(target);
     const shapes = members.filter((m) => m.kind === "object");
-    if (!shapes.length || shapes.some((o) => o.indexer || o.class)) return;
+    if (!shapes.length || shapes.some((o) => o.class)) return;
+    const keySets = shapes.map((o) => o.indexer && this.finiteKeys(o.indexer.key));
+    if (shapes.some((o, i) => o.indexer && !keySets[i])) return;
     if (members.some((m) => m.kind === "any" || m.kind === "unknown" || m.kind === "typeParam" || m.kind === "intersection")) return;
     for (const field of literal2.fields) {
       if (field.type !== "TableFieldNamed" && field.type !== "TableFieldShorthand") continue;
       const key = field.type === "TableFieldNamed" ? field.key : field.name;
       const name = key.type === "Identifier" ? key.name : key.value;
-      const expected = shapes.flatMap((o) => {
+      const expected = shapes.flatMap((o, i) => {
         const property = o.properties.get(name);
-        return property ? [property.type] : [];
+        if (property) return [property.type];
+        return o.indexer && keySets[i].has(name) ? [o.indexer.value] : [];
       });
       if (!expected.length) {
         if (this.excessReported.has(key)) continue;
