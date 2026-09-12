@@ -128,6 +128,11 @@ is hoisted, and can be called above its declaration. Inside a function only
 the name is: other functions can call it, but a call straight in the block
 above the declaration is an error, because nothing is there yet.
 
+**Returns** — a declared return type is checked: what a `return` gives must
+fit it, and a function that declared one must return a value (a guard or an
+`asserts` function needs none). The declared type also types what is written
+there, so a returned callback takes its parameters from it.
+
 **Overloads** — a `function name(...)` with no body is a signature for the
 declaration that follows it, as in TypeScript: the signatures are what a call
 sees, and the last one, with the body, is the implementation. `export` goes on

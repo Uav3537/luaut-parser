@@ -33,7 +33,7 @@
 import type {
     Program, Block, Statement, Expression, TypeNode, TypePackNode,
     Identifier, FunctionBody, FunctionSignature, BindingTarget, GenericTypeParameter,
-    ObjectPattern, ArrayPattern, ObjectPatternProperty,
+    ObjectPattern, ArrayPattern, ObjectPatternProperty, ReturnStatement,
     TableExpression, ArrayExpression, IfStatement, TypePredicateNode, DeclareClassStatement, DeclareStatement,
 } from "./nodes"
 import type { ScopeAnalysis, BindingId } from "./analyzeScopes"
@@ -55,8 +55,9 @@ import {
 
 export interface TypeDiagnostic {
     /** Usually an expression or statement; a type where the type is wrong
-     *  (`declare class A extends NotAClass`). */
-    node: Expression | Statement | TypeNode
+     *  (`declare class A extends NotAClass`), or a block where nothing in it
+     *  is to blame (a function that never returns). Only its span is read. */
+    node: Expression | Statement | TypeNode | Block
     message: string
 }
 
@@ -879,6 +880,66 @@ class TypeAnalyzer {
         return this.imported
     }
     private imported?: Set<string>
+
+    /** What a `return` gives, against what the function declared. */
+    private checkReturn(
+        stmt: ReturnStatement,
+        declared: Type | undefined,
+        types: readonly Type[],
+        sources: readonly (Expression | undefined)[],
+        env: FlowEnv,
+    ): void {
+        if (!declared || !this.emitDiagnostics) return
+        if (declared.kind === "any" || declared.kind === "unknown" || this.namesNothing(declared)) return
+        const actual = stmt.arguments.length === 0 ? nilType
+            : types.length === 1 ? types[0]
+            : tuple([...types], true)
+        const source = stmt.arguments.length === 1 ? sources[0] : undefined
+        const fits = source
+            ? this.fitsAnnotation(source, declared, actual, env)
+            : isAssignable(actual, declared) || isAssignable(widen(actual), declared)
+        if (fits) return
+        this.diagnostics.push({
+            node: stmt,
+            message: `Type '${formatType(actual)}' is not assignable to '${briefType(declared)}'`,
+        })
+    }
+
+    /** A function that declared what it returns but never does. Only a body
+     *  with no `return` at all is reported: anything subtler needs to know
+     *  which paths can run off the end, and a wrong guess there is worse than
+     *  a missing complaint. */
+    private checkReturnsAtAll(func: FunctionBody, declared: Type | undefined): void {
+        if (!declared || !this.emitDiagnostics) return
+        // A guard or assertion narrows by being called; `assert(v)` and
+        // `function f(): v is T` need no value of their own.
+        if (func.predicate) return
+        if (declared.kind === "any" || declared.kind === "unknown" || declared.kind === "never") return
+        if (isAssignable(nilType, declared) || this.namesNothing(declared)) return
+        let found = false
+        const walk = (statements: readonly Statement[]): void => {
+            for (const statement of statements) {
+                if (found) return
+                if (statement.type === "ReturnStatement") { found = true; return }
+                for (const value of Object.values(statement)) {
+                    if (value && typeof value === "object" && "statements" in (value as object)) {
+                        walk((value as Block).statements)
+                    } else if (Array.isArray(value)) {
+                        for (const item of value) {
+                            const block = item as { body?: Block }
+                            if (block?.body?.statements) walk(block.body.statements)
+                        }
+                    }
+                }
+            }
+        }
+        walk(func.body.statements)
+        if (found) return
+        this.diagnostics.push({
+            node: func.body,
+            message: `A function that returns '${briefType(declared)}' must return a value`,
+        })
+    }
 
     /** Does this type rest on a name nothing declares? Such a type says
      *  nothing about what fits it, so checking against it only piles a second
@@ -1784,9 +1845,22 @@ class TypeAnalyzer {
                 return
             }
 
-            case "ReturnStatement":
-                for (const arg of stmt.arguments) this.infer(arg, env)
+            case "ReturnStatement": {
+                const declared = this.declaredReturns[this.declaredReturns.length - 1]
+                // The declared type says what belongs here: a callback takes
+                // its parameters from it, a literal keeps what it admits, and
+                // an editor can offer the values it names.
+                if (declared) {
+                    if (stmt.arguments.length === 1) {
+                        this.applyContext(stmt.arguments[0], declared)
+                    } else if (declared.kind === "tuple" && declared.isPack) {
+                        stmt.arguments.forEach((a, i) => this.applyContext(a, declared.elements[i]))
+                    }
+                }
+                const { types, sources } = this.valueList(stmt.arguments, env)
+                this.checkReturn(stmt, declared, types, sources, env)
                 return
+            }
 
             case "ExportStatement":
                 this.visitStatement(stmt.declaration, env)
@@ -2157,16 +2231,22 @@ class TypeAnalyzer {
 
     /** The type of `...` in each function body being walked. */
     private readonly varargs: (Type | undefined)[] = []
+    /** What each function body being walked declared it returns. */
+    private readonly declaredReturns: (Type | undefined)[] = []
 
-    /** Run `body` with `...` typed as `func` declares it. */
+    /** Run `body` with `...` and `return` as `func` declares them. */
     private withVarargs<T>(func: FunctionBody, body: () => T): T {
         this.varargs.push(func.hasVarargs
             ? (func.varargTypeAnnotation ? this.resolveType(func.varargTypeAnnotation) : anyType)
             : undefined)
+        this.declaredReturns.push(func.predicate
+            ? booleanType
+            : func.returnType ? this.resolveType(func.returnType) : undefined)
         try {
             return body()
         } finally {
             this.varargs.pop()
+            this.declaredReturns.pop()
         }
     }
 
@@ -2187,7 +2267,10 @@ class TypeAnalyzer {
                 if (p.typeAnnotation) this.annotated.add(id)
             }
         }
-        this.withVarargs(func, () => this.visitBlock(func.body, env))
+        this.withVarargs(func, () => {
+            this.visitBlock(func.body, env)
+            this.checkReturnsAtAll(func, this.declaredReturns[this.declaredReturns.length - 1])
+        })
     }
 
     /** Return type of calling `f` with `argTypes`. For a generic function,

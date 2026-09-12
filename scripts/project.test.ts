@@ -500,6 +500,44 @@ const rel = (path: string | undefined): string | undefined =>
         [varargs.bindings.first, varargs.bindings.f, varargs.bindings.s, varargs.bindings.anything],
         ["number", "(...number) -> number", "string", "any"])
 
+    // What a function returns is checked against what it declared.
+    const returns = analyze([
+        "declare function print(v: unknown): ()",
+        "declare function error(message: string): never",
+        "function wrong(): boolean",
+        `    return ""`,
+        "end",
+        "function bare(): boolean",
+        "    return",
+        "end",
+        "function never(): boolean",
+        "    print(1)",
+        "end",
+        "function pack(): (boolean, string)",
+        "    return true, 2",
+        "end",
+        "function fine(): boolean",
+        "    if true then return true else return false end",
+        "end",
+        "function optional(): boolean | nil",
+        "end",
+        "function guard(v: unknown): v is string",
+        `    return type(v) == "string"`,
+        "end",
+        "function asserted(v: boolean): asserts v",
+        `    if not v then error("no") end`,
+        "end",
+        "function inferred()",
+        `    return "anything"`,
+        "end",
+    ].join("\n"))
+    check("returns: a value that does not fit, and a body that never returns one", returns.errors, [
+        `Type '""' is not assignable to 'boolean'`,
+        "Type 'nil' is not assignable to 'boolean'",
+        "A function that returns 'boolean' must return a value",
+        "Type '(true, 2)' is not assignable to '(boolean, string)'",
+    ])
+
     // A type name nothing declares, when asked for.
     {
         const program = parse([
