@@ -1544,10 +1544,14 @@ export class Parser {
                 }
             }
             if (this.startsCallArguments()) {
+                // `x\n("a")` is a call of `x`: worth telling the analyzer, so
+                // it can point out what was almost certainly two statements.
+                const onNewLine: boolean = this.current().line.start > base.line.end
                 const args = this.parseCallArguments()
                 base = {
                     type: "CallExpression",
                     callee: base, arguments: args,
+                    argumentsOnNewLine: onNewLine || undefined,
                     ...spanFrom(base, this.previous()),
                 }
                 continue

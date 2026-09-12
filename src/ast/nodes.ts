@@ -559,6 +559,15 @@ export interface CallExpression extends BaseNode {
     /** `f?.(...)` — see `MemberExpression.optional`. The call does not happen,
      *  and the arguments are not evaluated, when `callee` is nil. */
     optional?: boolean
+    /** The `(` opened on a line after the callee ended:
+     *
+     *      const value = map[key]
+     *      ("text"):upper()
+     *
+     *  is one statement — a call of `map[key]` — because a line break does
+     *  not end a statement, in Lua or in JavaScript. Flagged here so the
+     *  analyzer can say so; Lua 5.1 calls it "ambiguous syntax". */
+    argumentsOnNewLine?: boolean
 }
 
 export interface MethodCallExpression extends BaseNode {

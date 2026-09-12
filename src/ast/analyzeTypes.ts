@@ -3558,6 +3558,7 @@ class TypeAnalyzer {
     }
 
     private inferCall(expr: Extract<Expression, { type: "CallExpression" }>, callee: Type, env: FlowEnv): Type {
+        this.checkAmbiguousCall(expr)
         const fns = this.overloadsOf(callee)
         const explicit = this.explicitTypeArguments(expr, fns)
         const expected = this.expectedArguments(expr.arguments, fns, () => 0)
@@ -3579,6 +3580,23 @@ class TypeAnalyzer {
             return union(fns.map(f => this.callReturn(f, argTypes, explicit)))
         }
         return callee.kind === "any" ? anyType : unknownType
+    }
+
+    /** A `(` on a line of its own continues the statement above it:
+     *
+     *      const value = map[key]
+     *      ("text"):upper()
+     *
+     *  calls `map[key]`, in luaut as in Lua and in JavaScript. It is almost
+     *  never what was meant, and what it does instead is invisible — so say
+     *  so, and name the fix. */
+    private checkAmbiguousCall(expr: Extract<Expression, { type: "CallExpression" }>): void {
+        if (!this.emitDiagnostics || !expr.argumentsOnNewLine) return
+        this.diagnostics.push({
+            node: expr,
+            message: "This calls the value the line above ends with — a line break does not end a statement. "
+                + "Write ';' before '(' if a new statement was meant.",
+        })
     }
 
     private inferMethodCall(expr: Extract<Expression, { type: "MethodCallExpression" }>, objType: Type, env: FlowEnv): Type {

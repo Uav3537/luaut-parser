@@ -667,6 +667,24 @@ const rel = (path: string | undefined): string | undefined =>
         [optionalCall.bindings.said, optionalCall.bindings.got, optionalCall.errors],
         ["string | nil", "number | nil", []])
 
+    // `(` on a line of its own continues the statement above it.
+    {
+        const trap = [
+            "declare map: { [string]: string }",
+            "declare key: string",
+            "const value = map[key]",
+            `("A"):split(",")`,
+        ].join("\n")
+        check("ambiguous call: a `(` that starts a line is a call of the line above", [
+            analyze(trap).errors.length,
+            analyze(trap).errors[0]?.startsWith("This calls the value the line above ends with"),
+            // The fix, and the shapes that are not it.
+            analyze(trap.replace(`("A")`, `;("A")`)).errors,
+            analyze("declare f: (a: number, b: number) -> ()\nf(\n    1,\n    2,\n)").errors,
+            analyze("declare f: () -> ()\nf()\nf()").errors,
+        ], [1, true, [], [], []])
+    }
+
     // A type still waiting on a type parameter goes where anything it could
     // become goes: `Extract<Rows, { Page: P }>["Skills"][number]` is one of
     // the rows' skills, whatever `P` turns out to be.

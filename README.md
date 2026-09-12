@@ -209,6 +209,11 @@ it.
 first element is 1, `indexOf` answers `nil` rather than -1) and `push`, `pop`,
 `shift`, `unshift`, `sort` and `reverse` change the array they are called on.
 
+**A `(` that starts a line** continues the statement above it, as in Lua and
+in JavaScript — `const v = map[key]` followed by `("A"):upper()` is one
+statement, a call of `map[key]`. luaut says so rather than letting it pass:
+write `;` before the `(` when a new statement was meant.
+
 **Optionality** — there is no `T?` shorthand. `?` in type position always
 belongs to a conditional type, and in expression position to a ternary or an
 optional chain.
