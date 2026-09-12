@@ -667,6 +667,43 @@ const rel = (path: string | undefined): string | undefined =>
         [optionalCall.bindings.said, optionalCall.bindings.got, optionalCall.errors],
         ["string | nil", "number | nil", []])
 
+    // `T[K]` over a union of keys: the ones the table has, and nil for the
+    // rest — the same answer the value side gives, rather than `unknown`
+    // swallowing the union because one key was missing.
+    {
+        const program = parse([
+            `const S = { a: [1], b: ["x"] } as const`,
+            `type Keys = "a" | "b"`,
+            `type Extra = "a" | "b" | "c"`,
+            `type Present = (typeof S)[Keys]`,
+            `type WithMissing = (typeof S)[Extra]`,
+            `type Gone = (typeof S)["c"]`,
+            `type Mapped = { [K in "x" | "y"]: number }`,
+            `type Partly = Mapped["x" | "zz"]`,
+        ].join("\n"))
+        const scopes = analyzeScopes(program)
+        const types = analyzeTypes(program, scopes)
+        const named = (name: string) => formatType(types.aliases.get(name)!)
+        check("indexed access: a key the table does not have reads as nil",
+            [named("Present"), named("WithMissing"), named("Gone"), named("Partly")],
+            [`[1] | ["x"]`, `[1] | ["x"] | nil`, "nil", "number | nil"])
+
+        // A class is nominal: a member it does not declare is not nil, it is
+        // nothing at all.
+        const withClass = parse([
+            "declare t: Thing",
+            `type Has = (typeof t)["Name"]`,
+            `type Missing = (typeof t)["Nope"]`,
+        ].join("\n"))
+        const classScopes = analyzeScopes(withClass)
+        const classTypes = analyzeTypes(withClass, classScopes, {
+            libs: [parse("declare class Thing { Name: string }")],
+        })
+        check("indexed access: a class member it does not have is not nil",
+            [formatType(classTypes.aliases.get("Has")!), formatType(classTypes.aliases.get("Missing")!)],
+            ["string", "unknown"])
+    }
+
     // The methods an array and a string answer to. The analyzer knows only
     // where to look — `ArrayMethods<T>` and `StringMethods` — and a library
     // says what is in them.

@@ -1473,7 +1473,14 @@ class TypeAnalyzer {
     private accessType(obj: Type, index: Type): Type {
         if (index.kind === "union") return union(index.types.map(m => this.accessType(obj, m)))
         if (index.kind === "literal" && typeof index.value === "string") {
-            return this.propertyType(obj, index.value)
+            const member = this.propertyType(obj, index.value)
+            if (member.kind !== "unknown") return member
+            // A key a table does not have reads as nil, as it does on the
+            // value side — so `T[K]` over a union of keys gives what the keys
+            // it has hold, plus nil, rather than collapsing to `unknown`
+            // because one of them was not there.
+            const t = this.expand(obj)
+            return t.kind === "object" && !t.class && !t.indexer ? nilType : member
         }
         return this.indexedType(obj, index)
     }
