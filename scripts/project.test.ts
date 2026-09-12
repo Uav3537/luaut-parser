@@ -536,6 +536,32 @@ const rel = (path: string | undefined): string | undefined =>
             shadows.length, 2)
     }
 
+    // An inferred return type reads each `return` where it stands.
+    const inferredReturns = analyze([
+        "declare class NumberValue { Value: number }",
+        "declare function plain(): NumberValue | nil",
+        "function narrowed()",
+        "    const v = plain()",
+        "    if v then return v.Value end",
+        "    return 0",
+        "end",
+        "function branches()",
+        "    const n = 5",
+        "    if n then return n end",
+        "    return 0",
+        "end",
+        "function nested()",
+        "    const inner = function()",
+        `        return "inner"`,
+        "    end",
+        "    return inner",
+        "end",
+        "const a = narrowed()",
+    ].join("\n"))
+    check("returns: inferred from inside the branch that narrowed the value",
+        [inferredReturns.errors, inferredReturns.bindings.narrowed, inferredReturns.bindings.branches, inferredReturns.bindings.nested],
+        [[], "() -> number", "() -> 5 | 0", `() -> () -> "inner"`])
+
     // What a function returns is checked against what it declared.
     const returns = analyze([
         "declare function print(v: unknown): ()",

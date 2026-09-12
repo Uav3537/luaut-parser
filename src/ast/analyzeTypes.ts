@@ -1859,6 +1859,11 @@ class TypeAnalyzer {
                 }
                 const { types, sources } = this.valueList(stmt.arguments, env)
                 this.checkReturn(stmt, declared, types, sources, env)
+                if (this.returnTypes) {
+                    this.returnTypes.push(stmt.arguments.length === 0 ? nilType
+                        : types.length === 1 ? types[0]
+                        : tuple([...types], true))
+                }
                 return
             }
 
@@ -2267,10 +2272,10 @@ class TypeAnalyzer {
                 if (p.typeAnnotation) this.annotated.add(id)
             }
         }
-        this.withVarargs(func, () => {
+        this.withVarargs(func, () => this.collectReturns(undefined, () => {
             this.visitBlock(func.body, env)
             this.checkReturnsAtAll(func, this.declaredReturns[this.declaredReturns.length - 1])
-        })
+        }))
     }
 
     /** Return type of calling `f` with `argTypes`. For a generic function,
@@ -2634,10 +2639,18 @@ class TypeAnalyzer {
                 // `return` expressions are read — otherwise `local r = f()
                 // return r` infers `any`. The real visit runs afterwards and
                 // overwrites everything this pass recorded.
-                returns = this.withVarargs(func, () => {
-                    this.preVisitBody(func.body, bodyEnv)
-                    return this.inferReturnType(func.body, bodyEnv)
-                })
+                // Both passes are guesswork the real visit redoes: they read
+                // `return` expressions outside the branch they are written in,
+                // where a narrowed name still looks like what it was declared.
+                // Both passes are guesswork the real visit redoes; neither
+                // reports anything.
+                const collected: Type[] = []
+                returns = this.withVarargs(func, () => this.silently(() => {
+                    this.collectReturns(collected, () => this.preVisitBody(func.body, bodyEnv))
+                    // A body too deep for the pre-visit collected nothing:
+                    // read its `return`s where they stand instead.
+                    return collected.length ? union(collected) : this.inferReturnType(func.body, bodyEnv)
+                }))
             }
             return fn(
                 params, returns,
@@ -2646,6 +2659,32 @@ class TypeAnalyzer {
                 this.resolvePredicate(func.predicate, params),
             )
         })
+    }
+
+    /** Where the return types of the function being walked are collected, so
+     *  each is read where it is written — inside the branch that narrowed it —
+     *  rather than in whatever state the body ends in. */
+    private returnTypes: Type[] | undefined
+
+    private collectReturns<T>(into: Type[] | undefined, body: () => T): T {
+        const previous = this.returnTypes
+        this.returnTypes = into
+        try {
+            return body()
+        } finally {
+            this.returnTypes = previous
+        }
+    }
+
+    /** Run something without reporting what it finds. */
+    private silently<T>(body: () => T): T {
+        const wasEmitting = this.emitDiagnostics
+        this.emitDiagnostics = false
+        try {
+            return body()
+        } finally {
+            this.emitDiagnostics = wasEmitting
+        }
     }
 
     /** Populate binding types for a function body without reporting anything,
