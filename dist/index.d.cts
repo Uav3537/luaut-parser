@@ -1309,6 +1309,13 @@ resolveModule?: (specifier: string) => ModuleExports | undefined): ModuleExports
  *
  * What a runtime provides — `print`, `string`, `game` — is not here: that is a
  * type library's job (`@luaut/lua`, `@luaut/roblox`).
+ *
+ * The methods an array and a string answer to — `names:filter(f)`,
+ * `text:trim()` — are a library's too. `propertyType` reads them from types
+ * named `ArrayMethods<T>` and `StringMethods`, whichever library declares
+ * those; the library also says which of them the compiler must emit code for
+ * (`luaut.methods` in its package.json). Nothing about `filter` is written
+ * into the analyzer.
  */
 declare const PRELUDE_SOURCE = "\n-- In Luau only `nil` and `false` are falsy: `0` and `\"\"` are truthy.\n-- These are what truthiness narrowing computes, made available to write down.\ntype Falsy = nil | false\ntype Truthy<T> = T - Falsy\n\n-- `-` is set difference. Over a union it drops members; over a concrete type\n-- it simplifies away; over an opaque type (`unknown`, an unresolved parameter)\n-- it is kept, so `Exclude<unknown, 1>` stays `unknown - 1`.\ntype Exclude<T, U> = T - U\ntype Extract<T, U> = T extends U ? T : never\ntype NonNullable<T> = T - nil\n\ntype ReturnType<T> = T extends (...unknown) -> infer R ? R : never\ntype Parameters<T> = T extends (...infer P) -> unknown ? P : never\n\ntype Partial<T> = { [K in keyof T]?: T[K] }\ntype Required<T> = { [K in keyof T]-?: T[K] }\ntype Readonly<T> = { readonly [K in keyof T]: T[K] }\ntype Mutable<T> = { -readonly [K in keyof T]: T[K] }\n\ntype Pick<T, K> = { [P in K]: T[P] }\ntype Omit<T, K> = Pick<T, Exclude<keyof T, K>>\ntype Record<K, V> = { [P in K]: V }\n";
 
@@ -1367,9 +1374,92 @@ declare function stripJsonComments(text: string): string;
 interface TypeLibraries {
     /** Definitions files, dependencies before what depends on them. */
     readonly files: readonly string[];
+    /** Lowering modules the libraries ship, in the same order. */
+    readonly lowerings: readonly LoweringModule[];
     readonly problems: readonly ConfigProblem[];
 }
+/** A library's own lowering: JavaScript the compiler loads and asks what a
+ *  call written against this library's types should become.
+ *
+ *  The library declares the *types* in its definitions file; this is the other
+ *  half. `names:filter(f)` is a call to a function only because `@luaut/lua`
+ *  says so and ships the Luau behind it — the compiler knows how to ask, and
+ *  nothing about `filter`.
+ *
+ *  `luaut.lowering` in the package.json names the module; what it must export
+ *  is the compiler's business (see luaut-build's `LoweringPlugin`). */
+interface LoweringModule {
+    /** The JavaScript module to load. */
+    readonly file: string;
+    /** The package it came from, for reporting. */
+    readonly from: string;
+}
 declare function resolveTypeLibraries(config: LuautConfig, host?: ProjectHost): TypeLibraries;
+
+/**
+ * The contract between a type library and the compiler.
+ *
+ * A library's definitions file says what a value *is*; when what it gives is
+ * not something the value already answers to, the library must also say how
+ * it runs. `names:filter(f)` is a call to a function because `@luaut/lua`
+ * declares the method and ships the Luau behind it — the compiler lowers the
+ * language (`import`, `export`, `?.`, `a ? b : c`, destructuring, spreads)
+ * and asks a library about everything else.
+ *
+ * These types are declarations only: nothing here runs, and the parser never
+ * loads a lowering module. They live here so a library can be written in
+ * TypeScript against the same contract the compiler implements, without
+ * depending on the compiler.
+ *
+ *     // lowering.ts, in a type library
+ *     import type { LoweringPlugin } from "luaut-parser"
+ *
+ *     const plugin: LoweringPlugin = {
+ *         runtime: { array: "local __NAME__ = {}\n..." },
+ *         methodCall({ method, receiver, use }) {
+ *             if (receiver?.kind === "array" && method === "filter") {
+ *                 return { callee: `${use("array")}.filter` }
+ *             }
+ *             return undefined
+ *         },
+ *     }
+ *     export default plugin
+ */
+
+interface LoweringPlugin {
+    /** Luau the plugin needs in the output, by a key it chooses. Each is a
+     *  file's worth of source with `__NAME__` standing for the local the
+     *  compiler gives it, and each is emitted once, at the top of the output,
+     *  only if `use` asked for it:
+     *
+     *      local __NAME__ = {}
+     *      function __NAME__.filter(t, test) ... end
+     */
+    readonly runtime?: Readonly<Record<string, string>>;
+    /** What `receiver:method(...)` becomes. `undefined` leaves a plain Luau
+     *  method call, which is what a value that answers to the method itself
+     *  wants — `text:upper()` reaches Lua's own. */
+    methodCall?(call: MethodCall): MethodLowering | undefined;
+}
+interface MethodCall {
+    /** The name written after `:`. */
+    readonly method: string;
+    /** The receiver's type, as the analyzer worked it out. `undefined` when
+     *  nothing typed it, where a plugin should decline rather than guess. */
+    readonly receiver: Type | undefined;
+    /** How many arguments were written. */
+    readonly argumentCount: number;
+    /** The local name the output gives one of `runtime`'s entries, emitting
+     *  it if this is the first call that needed it. */
+    use(runtime: string): string;
+}
+interface MethodLowering {
+    /** What to call instead: a name, or a `table.member` path — usually built
+     *  from `use(...)`. */
+    readonly callee: string;
+    /** Pass the receiver as the first argument. Default: yes. */
+    readonly passReceiver?: boolean;
+}
 
 /** Every file `specifier` could mean from `fromFile`, in the order they are
  *  tried. A resolver that caches should watch all of them: creating an earlier
@@ -1417,4 +1507,4 @@ declare const luautparser: {
     readonly analyzeTypes: typeof analyzeTypes;
 };
 
-export { type AnalyzeTypesOptions, type AnyType, type ArrayExpression, type ArrayPattern, type ArrayPatternElement, type ArrayType, type ArrayTypeNode, type AsConstExpression, type AssignmentStatement, type BaseNode, type BaseToken, type BinaryExpression, BinaryOperators, type Binding, type BindingId, type BindingKind, type BindingTarget, type Block, type BooleanLiteral, type BreakStatement, CONFIG_FILE_NAMES, type CallExpression, type CallStatement, type ClassInfo, type CompoundAssignmentStatement, type ConditionalType, type ConditionalTypeNode, type ConfigLookup, type ConfigProblem, type ContinueStatement, type DeclareClassStatement, type DeclareStatement, type DifferenceType, type DifferenceTypeNode, type Directive, type DirectiveKind, type DirectiveOutcome, type Directives, type DoStatement, type EOFToken, type ErrorExpression, type ErrorStatement, type ExportAllStatement, type ExportDefaultStatement, type ExportNamedStatement, type ExportSpecifier, type ExportStatement, type ExportTypeAliasStatement, type ExportedType, type Expression, type FunctionBody, type FunctionDeclaration, type FunctionDeclarationStatement, type FunctionExpression, type FunctionName, type FunctionParam, type FunctionParameter, type FunctionSignature, type FunctionType, type FunctionTypeNode, type FunctionTypeParameter, type GenericForStatement, type GenericRefType, type GenericTypeParameter, type Identifier, type IdentifierPattern, type IdentifierToken, type IfClause, type IfElseExpression, type IfStatement, type ImportSpecifier, type ImportStatement, type IndexExpression, type IndexedAccessType, type IndexedAccessTypeNode, type InferType, type InferTypeNode, type InterpolatedStringExpression, type InterpolatedStringPart, type InterpolatedStringPart_Expression, type InterpolatedStringPart_String, type InterpolatedStringToken, type IntersectionType, type IntersectionTypeNode, type KeyofType, type KeyofTypeNode, type KeywordToken, Keywords, LexError, type LiteralToken, type LiteralType, type LuautConfig, type MappedType, type MappedTypeNode, type MemberExpression, type MethodCallExpression, type ModuleExports, type NeverType, type NilLiteral, type Node, type NumberLiteral, type NumericForStatement, type ObjectPattern, type ObjectPatternProperty, type ObjectProperty, type ObjectType, type OperatorToken, Operators, PRELUDE_SOURCE, type ParenthesizedExpression, type ParenthesizedTypeNode, ParseError, type ParserOptions, type PrimitiveName, type PrimitiveType, type Program, type ProjectHost, type PunctuatorToken, Punctuators, type RecoverResult, type RepeatStatement, type ReturnStatement, type SatisfiesExpression, type ScopeAnalysis, type ScopeDiagnostic, type SourceComment, type SourceMapNode, type SourceMapOptions, type SourceMapTypes, type SpreadElement, type Statement, type StringLiteral, type TableExpression, type TableField, type TableTypeNode, type TableTypeProperty, type TemplateLiteralType, type TemplateLiteralTypeNode, type Token, type TokenizeOptions, type TupleType, type TupleTypeNode, type Type, type TypeAliasStatement, type TypeAnalysis, type TypeAssertionExpression, type TypeDiagnostic, type TypeLibraries, type TypeLiteralBoolean, type TypeLiteralNumber, type TypeLiteralString, type TypeNode, type TypePackNode, type TypeParamType, type TypePredicate, type TypePredicateNode, type TypeReference, type TypedIdentifier, type TypeofTypeNode, UNUSED_EXPECT_ERROR, type UnaryExpression, UnaryOperators, type UnionType, type UnionTypeNode, type UnknownType, type VarargExpression, type VariableDeclaration, type VariadicTypeNode, type WhileStatement, analyzeScopes, analyzeTypes, anyType, applyDirectives, arrayOf, booleanType, bufferType, containsTypeParam, luautparser as default, difference, directivesOf, equalTypes, falsyType, findConfig, fn, formatType, getBinding, intersection, isAssignable, isClassType, isGlobal, isPossiblyFalsy, isPossiblyTruthy, isUnassignedGlobal, literal, loadConfig, luautparser, matchInfer, moduleCandidates, moduleExports, narrowExclude, narrowFalsy, narrowTo, narrowTruthy, neverType, nilType, nodeHost, numberType, objectType, optional, overlaps, parse, parseExpressionFromSource, parseTokens, parseWithRecovery, primitive, readDirectives, resolveModulePath, resolveTypeLibraries, setAliasExpander, sourceMapTypes, stringType, stripJsonComments, substitute, templateMatches, threadType, tokenize, tuple, typeParam, unify, union, unknownType, widen };
+export { type AnalyzeTypesOptions, type AnyType, type ArrayExpression, type ArrayPattern, type ArrayPatternElement, type ArrayType, type ArrayTypeNode, type AsConstExpression, type AssignmentStatement, type BaseNode, type BaseToken, type BinaryExpression, BinaryOperators, type Binding, type BindingId, type BindingKind, type BindingTarget, type Block, type BooleanLiteral, type BreakStatement, CONFIG_FILE_NAMES, type CallExpression, type CallStatement, type ClassInfo, type CompoundAssignmentStatement, type ConditionalType, type ConditionalTypeNode, type ConfigLookup, type ConfigProblem, type ContinueStatement, type DeclareClassStatement, type DeclareStatement, type DifferenceType, type DifferenceTypeNode, type Directive, type DirectiveKind, type DirectiveOutcome, type Directives, type DoStatement, type EOFToken, type ErrorExpression, type ErrorStatement, type ExportAllStatement, type ExportDefaultStatement, type ExportNamedStatement, type ExportSpecifier, type ExportStatement, type ExportTypeAliasStatement, type ExportedType, type Expression, type FunctionBody, type FunctionDeclaration, type FunctionDeclarationStatement, type FunctionExpression, type FunctionName, type FunctionParam, type FunctionParameter, type FunctionSignature, type FunctionType, type FunctionTypeNode, type FunctionTypeParameter, type GenericForStatement, type GenericRefType, type GenericTypeParameter, type Identifier, type IdentifierPattern, type IdentifierToken, type IfClause, type IfElseExpression, type IfStatement, type ImportSpecifier, type ImportStatement, type IndexExpression, type IndexedAccessType, type IndexedAccessTypeNode, type InferType, type InferTypeNode, type InterpolatedStringExpression, type InterpolatedStringPart, type InterpolatedStringPart_Expression, type InterpolatedStringPart_String, type InterpolatedStringToken, type IntersectionType, type IntersectionTypeNode, type KeyofType, type KeyofTypeNode, type KeywordToken, Keywords, LexError, type LiteralToken, type LiteralType, type LoweringModule, type LoweringPlugin, type LuautConfig, type MappedType, type MappedTypeNode, type MemberExpression, type MethodCall, type MethodCallExpression, type MethodLowering, type ModuleExports, type NeverType, type NilLiteral, type Node, type NumberLiteral, type NumericForStatement, type ObjectPattern, type ObjectPatternProperty, type ObjectProperty, type ObjectType, type OperatorToken, Operators, PRELUDE_SOURCE, type ParenthesizedExpression, type ParenthesizedTypeNode, ParseError, type ParserOptions, type PrimitiveName, type PrimitiveType, type Program, type ProjectHost, type PunctuatorToken, Punctuators, type RecoverResult, type RepeatStatement, type ReturnStatement, type SatisfiesExpression, type ScopeAnalysis, type ScopeDiagnostic, type SourceComment, type SourceMapNode, type SourceMapOptions, type SourceMapTypes, type SpreadElement, type Statement, type StringLiteral, type TableExpression, type TableField, type TableTypeNode, type TableTypeProperty, type TemplateLiteralType, type TemplateLiteralTypeNode, type Token, type TokenizeOptions, type TupleType, type TupleTypeNode, type Type, type TypeAliasStatement, type TypeAnalysis, type TypeAssertionExpression, type TypeDiagnostic, type TypeLibraries, type TypeLiteralBoolean, type TypeLiteralNumber, type TypeLiteralString, type TypeNode, type TypePackNode, type TypeParamType, type TypePredicate, type TypePredicateNode, type TypeReference, type TypedIdentifier, type TypeofTypeNode, UNUSED_EXPECT_ERROR, type UnaryExpression, UnaryOperators, type UnionType, type UnionTypeNode, type UnknownType, type VarargExpression, type VariableDeclaration, type VariadicTypeNode, type WhileStatement, analyzeScopes, analyzeTypes, anyType, applyDirectives, arrayOf, booleanType, bufferType, containsTypeParam, luautparser as default, difference, directivesOf, equalTypes, falsyType, findConfig, fn, formatType, getBinding, intersection, isAssignable, isClassType, isGlobal, isPossiblyFalsy, isPossiblyTruthy, isUnassignedGlobal, literal, loadConfig, luautparser, matchInfer, moduleCandidates, moduleExports, narrowExclude, narrowFalsy, narrowTo, narrowTruthy, neverType, nilType, nodeHost, numberType, objectType, optional, overlaps, parse, parseExpressionFromSource, parseTokens, parseWithRecovery, primitive, readDirectives, resolveModulePath, resolveTypeLibraries, setAliasExpander, sourceMapTypes, stringType, stripJsonComments, substitute, templateMatches, threadType, tokenize, tuple, typeParam, unify, union, unknownType, widen };

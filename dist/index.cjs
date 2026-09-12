@@ -4824,8 +4824,8 @@ var TypeAnalyzer = class {
   /** Recursion guard for `preVisitBody`. */
   preVisitDepth = 0;
   run() {
-    this.registerAliasDefs(preludeProgram().body);
-    for (const lib of this.options.libs ?? []) this.registerAliasDefs(lib.body);
+    this.registerAliasDefs(preludeProgram().body, true);
+    for (const lib of this.options.libs ?? []) this.registerAliasDefs(lib.body, true);
     this.registerAliasDefs(this.program.body);
     for (const lib of this.options.libs ?? []) this.harvestDeclares(lib.body);
     this.registerImportedTypes();
@@ -4903,10 +4903,28 @@ var TypeAnalyzer = class {
       }
     }
   }
-  registerAliasDefs(block) {
+  /** `layering` is on for the prelude and for definitions files: a second
+   *  library that declares an alias already declared *adds* to it, the way a
+   *  second `declare` of a table's name does, so `@luaut/roblox` can give
+   *  `StringMethods` Luau's `split` without restating Lua's. The file being
+   *  analysed is not a layer: its own alias replaces what the libraries
+   *  gave, which is how a project opts out of a set. */
+  registerAliasDefs(block, layering = false) {
     for (const stmt of block.statements) {
       const alias = stmt.type === "TypeAliasStatement" ? stmt : stmt.type === "ExportTypeAliasStatement" ? stmt.alias : void 0;
-      if (alias) this.aliasDefs.set(alias.name.name, { params: alias.generics, node: alias.definition });
+      if (alias) {
+        const previous = layering ? this.aliasDefs.get(alias.name.name) : void 0;
+        const node = previous && !previous.class ? {
+          type: "IntersectionTypeNode",
+          types: [previous.node, alias.definition],
+          line: alias.definition.line,
+          column: alias.definition.column
+        } : alias.definition;
+        this.aliasDefs.set(alias.name.name, {
+          params: previous && !previous.class && previous.params.length ? previous.params : alias.generics,
+          node
+        });
+      }
       if (stmt.type === "DeclareClassStatement") {
         this.aliasDefs.set(stmt.name.name, { params: [], node: stmt.body, class: stmt });
       }
@@ -6171,13 +6189,15 @@ var TypeAnalyzer = class {
     const objects = this.expectedMembers(expected).filter((m) => m.kind === "object");
     if (!objects.length) return;
     for (const field of e.fields) {
-      if (field.type !== "TableFieldNamed") continue;
-      const key = field.key.type === "Identifier" ? field.key.name : field.key.value;
+      if (field.type !== "TableFieldNamed" && field.type !== "TableFieldShorthand") continue;
+      const key = field.type === "TableFieldShorthand" ? field.name.name : field.key.type === "Identifier" ? field.key.name : field.key.value;
       const types = objects.flatMap((o) => {
         const property = o.properties.get(key);
         return property ? [property.type] : o.indexer ? [o.indexer.value] : [];
       });
-      if (types.length) this.applyContext(field.value, union(types));
+      if (types.length) {
+        this.applyContext(field.type === "TableFieldShorthand" ? field.name : field.value, union(types));
+      }
     }
   }
   /** The members of an expected type worth matching a literal against:
@@ -6976,6 +6996,25 @@ var TypeAnalyzer = class {
       this.resolvingAliases.delete(t.name);
     }
   }
+  /** `names:filter(f)`, `text:trim()` — the methods arrays and strings have.
+   *  They are written in the prelude as `ArrayMethods<T>` and
+   *  `StringMethods`, so a file (or a type library) that declares one of
+   *  those names again replaces the whole set, and nothing here is a special
+   *  case in the analyzer. The build lowers each call to a plain function. */
+  builtInMethod(t, name) {
+    const element = t.kind === "array" ? t.element : t.kind === "tuple" ? union(t.elements) : void 0;
+    const methodTable = element !== void 0 ? "ArrayMethods" : t.kind === "primitive" && t.name === "string" || t.kind === "literal" && t.base === "string" ? "StringMethods" : void 0;
+    const def = methodTable === void 0 ? void 0 : this.aliasDefs.get(methodTable);
+    if (!def || def.class) return void 0;
+    const table = this.expand(this.instantiateAlias(def, element !== void 0 ? [element] : []));
+    const parts = table.kind === "intersection" ? table.types.map((m) => this.expand(m)) : [table];
+    for (let i = parts.length - 1; i >= 0; i--) {
+      const part = parts[i];
+      const property = part.kind === "object" ? part.properties.get(name) : void 0;
+      if (property) return property.type;
+    }
+    return void 0;
+  }
   propertyType(raw, name) {
     const t = this.deferredAccess(this.expand(raw));
     if (t.kind === "object") {
@@ -6983,6 +7022,8 @@ var TypeAnalyzer = class {
       if (p) return p.optional ? optional(p.type) : p.type;
       if (t.indexer) return t.indexer.value;
     }
+    const built = this.builtInMethod(t, name);
+    if (built) return built;
     if (t.kind === "union") return union(t.types.map((m) => this.propertyType(m, name)));
     if (t.kind === "intersection") {
       const parts = t.types.map((m) => this.propertyType(m, name)).filter((p) => p.kind !== "unknown");
@@ -7336,7 +7377,21 @@ var TypeAnalyzer = class {
       }
     }
     if (asConst && !hadSpread) return tuple(elems);
-    return arrayOf(elems.length ? union(elems.map((t) => asConst ? t : widen(t))) : unknownType);
+    return arrayOf(elems.length ? union(elems.map((t, i) => {
+      const element = expr.elements[i];
+      return asConst || !element || element.type === "SpreadElement" ? t : this.widenUnlessAsked(t, element);
+    })) : unknownType);
+  }
+  /** A literal written inside a fresh table or array widens — `{ n = 1 }` is
+   *  `{ n: number }` — unless the surroundings said a literal belongs there.
+   *  `request({ Method: "GET" })` keeps `"GET"` when `Method` is a union of
+   *  string literals, exactly as TypeScript's contextual typing does, and
+   *  goes on widening to `string` when the parameter only says `string`.
+   *  The context was recorded by `applyContext` before the value was
+   *  inferred, so this is a lookup rather than a second pass. */
+  widenUnlessAsked(value, at) {
+    const wanted = this.expectedTypeOf.get(at);
+    return wanted === void 0 ? widen(value) : this.keepContextualLiterals(value, wanted);
   }
   inferObject(expr, env, asConst) {
     const entries = [];
@@ -7344,16 +7399,24 @@ var TypeAnalyzer = class {
     for (const field of expr.fields) {
       if (field.type === "TableFieldNamed") {
         const key = field.key.type === "Identifier" ? field.key.name : field.key.value;
-        const v = asConst ? this.inferAsConst(field.value, env) : widen(this.infer(field.value, env));
+        const v = asConst ? this.inferAsConst(field.value, env) : this.widenUnlessAsked(this.infer(field.value, env), field.value);
         entries.push([key, { type: v, optional: false, readonly: asConst }]);
       } else if (field.type === "TableFieldShorthand") {
         const v = this.infer(field.name, env);
-        entries.push([field.name.name, { type: asConst ? v : widen(v), optional: false, readonly: asConst }]);
+        entries.push([field.name.name, {
+          type: asConst ? v : this.widenUnlessAsked(v, field.name),
+          optional: false,
+          readonly: asConst
+        }]);
       } else if (field.type === "TableFieldComputed") {
         const k = this.infer(field.key, env);
         const v = this.infer(field.value, env);
         if (k.kind === "literal" && typeof k.value === "string") {
-          entries.push([k.value, { type: asConst ? v : widen(v), optional: false, readonly: asConst }]);
+          entries.push([k.value, {
+            type: asConst ? v : this.widenUnlessAsked(v, field.value),
+            optional: false,
+            readonly: asConst
+          }]);
         } else {
           indexer = mergeIndexer(indexer, { key: widen(k), value: asConst ? v : widen(v) });
         }
@@ -8178,6 +8241,7 @@ function offsetPosition(source, offset) {
 var import_node_path2 = require("path");
 function resolveTypeLibraries(config, host = nodeHost) {
   const files = [];
+  const lowerings = [];
   const problems = [];
   const loaded = /* @__PURE__ */ new Set();
   const addFile = (file) => {
@@ -8195,6 +8259,8 @@ function resolveTypeLibraries(config, host = nodeHost) {
       if (found) addPackage(found.directory, found.file, visiting);
     }
     addFile(entryFile);
+    const lowering = loweringModule(directory, host, problems, config);
+    if (lowering) lowerings.push(lowering);
   };
   for (const entry of config.types) {
     const relative = entry.startsWith("./") || entry.startsWith("../") || entry.startsWith("/") || /^[A-Za-z]:[\\/]/.test(entry);
@@ -8221,7 +8287,19 @@ function resolveTypeLibraries(config, host = nodeHost) {
       });
     }
   }
-  return { files, problems };
+  return { files, lowerings, problems };
+}
+function loweringModule(directory, host, problems, config) {
+  const manifest = readJson((0, import_node_path2.join)(directory, "package.json"), host);
+  const declared = manifest?.luaut?.lowering;
+  if (typeof declared !== "string") return void 0;
+  const from = typeof manifest?.name === "string" ? manifest.name : directory;
+  const file = (0, import_node_path2.resolve)(directory, declared);
+  if (host.readFile(file) === void 0) {
+    problems.push({ file: config.path, message: `'${from}' names a lowering module '${declared}', which is not there` });
+    return void 0;
+  }
+  return { file, from };
 }
 var ENTRY_FILE = "index.d.luaut";
 function packageEntry(directory, host) {
