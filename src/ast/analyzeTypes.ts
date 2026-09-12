@@ -3690,21 +3690,40 @@ class TypeAnalyzer {
      *  A nested literal is checked against the property it is written for.
      *  A target with an indexer, a class, or a member whose shape is not known
      *  accepts anything. */
+    /** The keys an index signature covers, when it covers a countable set of
+     *  them: `[("a" | "b")]` yes, `[string]` no. */
+    private finiteKeys(key: Type): Set<string> | undefined {
+        const t = this.expand(key)
+        const parts = t.kind === "union" ? t.types : [t]
+        const out = new Set<string>()
+        for (const part of parts.map(m => this.expand(m))) {
+            if (part.kind !== "literal" || typeof part.value === "boolean") return undefined
+            out.add(String(part.value))
+        }
+        return out.size ? out : undefined
+    }
+
     private reportExcessProperties(expression: Expression, target: Type): void {
         let literal = unwrapParens(expression)
         while (literal.type === "AsConstExpression") literal = unwrapParens(literal.expression)
         if (literal.type !== "TableExpression" || !this.emitDiagnostics) return
         const members = this.membersOf(target)
         const shapes = members.filter((m): m is ObjectType => m.kind === "object")
-        if (!shapes.length || shapes.some(o => o.indexer || o.class)) return
+        if (!shapes.length || shapes.some(o => o.class)) return
+        // `{ [Names]: V }` over a finite set of literal keys names exactly
+        // those keys, so a key outside it is as excess as an unknown property.
+        // `{ [string]: V }` accepts anything — nothing can be excess there.
+        const keySets = shapes.map(o => o.indexer && this.finiteKeys(o.indexer.key))
+        if (shapes.some((o, i) => o.indexer && !keySets[i])) return
         if (members.some(m => m.kind === "any" || m.kind === "unknown" || m.kind === "typeParam" || m.kind === "intersection")) return
         for (const field of literal.fields) {
             if (field.type !== "TableFieldNamed" && field.type !== "TableFieldShorthand") continue
             const key = field.type === "TableFieldNamed" ? field.key : field.name
             const name = key.type === "Identifier" ? key.name : key.value
-            const expected = shapes.flatMap(o => {
+            const expected = shapes.flatMap((o, i) => {
                 const property = o.properties.get(name)
-                return property ? [property.type] : []
+                if (property) return [property.type]
+                return o.indexer && keySets[i]!.has(name) ? [o.indexer.value] : []
             })
             if (!expected.length) {
                 if (this.excessReported.has(key)) continue

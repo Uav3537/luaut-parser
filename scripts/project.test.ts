@@ -655,6 +655,22 @@ const rel = (path: string | undefined): string | undefined =>
         "number",
     ])
 
+    // An index signature over a finite set of keys names exactly those keys.
+    const names = `type Names = "GTFrisk" | "XTFrisk"\n`
+    check("finite indexer: a key outside the set is excess",
+        analyze(`${names}const PerClass = {
+    GTFrisk: function() end,
+    XTFriskk: function() end,
+} as const satisfies { [Names]: () -> () }`).errors,
+        ["Object literal may only specify known properties, and 'XTFriskk' does not exist in type '{ [\"GTFrisk\" | \"XTFrisk\"]: () -> () }'"])
+    check("finite indexer: the keys in the set are fine, and `[string]` takes anything", [
+        analyze(`${names}const PerClass = {
+    GTFrisk: function() end,
+    XTFrisk: function() end,
+} as const satisfies { [Names]: () -> () }`).errors,
+        analyze(`const m = { whatever: 1 } satisfies { [string]: number }`).errors,
+    ], [[], []])
+
     // `const c = player.Character`: the two names hold one value.
     const player = `type Char = { Name: string }\ndeclare player: { Character: Char | nil }\n`
     const alias = analyze(`${player}function f()
