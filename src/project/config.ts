@@ -18,7 +18,7 @@ export interface LuautConfig {
     readonly directory: string
     /** The config file's text, for locating problems in it. */
     readonly source: string
-    /** Type libraries to load, in order: `"luau"`, `"@luaut/roblox"`, `"./types"`. */
+    /** Type libraries to load, in order: `"lua"`, `"@luaut/roblox"`, `"./types"`. */
     readonly types: readonly string[]
     /** Import path aliases, as in tsconfig: `{ "@shared/*": ["src/shared/*"] }`. */
     readonly paths: Readonly<Record<string, readonly string[]>>

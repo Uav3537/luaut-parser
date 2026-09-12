@@ -667,6 +667,36 @@ const rel = (path: string | undefined): string | undefined =>
         [optionalCall.bindings.said, optionalCall.bindings.got, optionalCall.errors],
         ["string | nil", "number | nil", []])
 
+    // Definitions files are layers: `@luaut/luau` adds to `@luaut/lua` rather
+    // than replacing it, and `@luaut/roblox` to both.
+    {
+        const lua = parse([
+            "declare table: { insert: (t: unknown[], v: unknown) -> () }",
+            `declare function type(value: number): "number"`,
+            "declare function type<T>(value: T): string",
+        ].join("\n"))
+        const luau = parse([
+            "declare table: { create: (n: number) -> unknown[] }",
+            `declare function type(value: buffer): "buffer"`,
+        ].join("\n"))
+        const program = parse([
+            "declare value: number | buffer",
+            "const theTable = table",
+            `if type(value) == "buffer" then`,
+            "    const narrowed = value",
+            "end",
+        ].join("\n"))
+        const scopes = analyzeScopes(program)
+        const types = analyzeTypes(program, scopes, { libs: [lua, luau] })
+        const bindings: Record<string, string> = {}
+        for (const [id, type] of types.bindingType) bindings[scopes.bindings.get(id)!.name] = formatType(type)
+        check("layered definitions: a table declared twice keeps both files' members",
+            bindings.theTable,
+            "{ create: (n: number) -> unknown[], insert: (t: unknown[], v: unknown) -> () }")
+        check("layered definitions: and the later file's overload narrows",
+            [bindings.narrowed, types.diagnostics.map(d => d.message)], ["buffer", []])
+    }
+
     // An index signature over a finite set of keys names exactly those keys.
     const names = `type Names = "GTFrisk" | "XTFrisk"\n`
     check("finite indexer: a key outside the set is excess",

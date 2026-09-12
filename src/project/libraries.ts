@@ -11,7 +11,9 @@
  * A package is looked for in `node_modules` from the config's folder upward.
  * Its definitions file is `luaut.types` in its `package.json`, or
  * `index.d.luaut`. Any of its dependencies that are type libraries load first,
- * so `["roblox"]` brings `@luaut/luau` along.
+ * so `["roblox"]` brings `@luaut/luau` and `@luaut/lua` along, in that order.
+ * A later file adds to the names an earlier one declared rather than
+ * replacing them, which is what makes those layers layers.
  */
 import { dirname, join, resolve } from "node:path"
 import type { ConfigProblem, LuautConfig } from "./config"

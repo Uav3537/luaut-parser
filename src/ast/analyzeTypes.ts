@@ -807,6 +807,23 @@ class TypeAnalyzer {
     /** Program `declare`s whose type depends on a value's, by name. */
     private readonly deferredDeclares = new Map<string, DeclareStatement>()
 
+    /** A library that declares a name a second time adds to it rather than
+     *  replacing it: `declare table: { find: ... }` on top of Lua's `table`
+     *  leaves both members there, the way overloads of a function accumulate.
+     *  This is what lets one definitions file build on another's — Luau's on
+     *  Lua's, Roblox's on Luau's. A property declared twice takes its later
+     *  type. Classes stay as they are: they come from one generated file and
+     *  merging them would only blur it. */
+    private mergeDeclared(prev: Type | undefined, next: Type): Type {
+        if (!prev || prev.kind !== "object" || next.kind !== "object") return next
+        if (prev.class || next.class) return next
+        return objectType(
+            [...prev.properties, ...next.properties],
+            next.indexer ?? prev.indexer,
+            next.frozen ?? prev.frozen,
+        )
+    }
+
     private harvestDeclares(block: Block, own = false): void {
         for (const stmt of block.statements) {
             if (stmt.type !== "DeclareStatement") continue
@@ -819,7 +836,8 @@ class TypeAnalyzer {
             const prev = this.libGlobalTypes.get(stmt.name)
             const overload = prev && stmt.valueType.type === "FunctionTypeNode" &&
                 (prev.kind === "function" || prev.kind === "intersection")
-            this.libGlobalTypes.set(stmt.name, overload ? intersection([prev, t]) : t)
+            this.libGlobalTypes.set(stmt.name,
+                overload ? intersection([prev, t]) : this.mergeDeclared(prev, t))
         }
     }
 
