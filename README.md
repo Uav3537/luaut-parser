@@ -64,13 +64,13 @@ language's own utility types are (`Partial`, `Pick`, `Omit`, `Record`,
 libraries it uses in `luaut.config.json`, the way TypeScript uses `@types/*`:
 
 ```bash
-npm i -D @luaut/roblox        # or @luaut/luau, or @luaut/lua
+npm i -D @luaut/roblox        # Luau + Roblox; or @luaut/lua on its own
 ```
 
 ```jsonc
 // luaut.config.json
 {
-  "types": ["roblox"],                          // and the layers it depends on: luau, lua
+  "types": ["roblox"],                          // and what it depends on: @luaut/lua
   "paths": { "@shared/*": ["src/shared/*"] },   // import aliases, as in tsconfig
   "sourceMap": "sourcemap.json"                 // a Rojo sourcemap, or null
 }
@@ -104,13 +104,13 @@ the config (or sourcemap) it is about. `host` reads files — pass your own to
 read unsaved editor buffers or to record what was read.
 
 `type` / `typeof` are **not** special-cased in the analyzer either: they are
-overload sets in `@luaut/lua` and `@luaut/luau`, and narrowing is derived from
-them. Without a library that declares them, they narrow nothing.
+overload sets in `@luaut/lua` and `@luaut/roblox`, and narrowing is derived
+from them. Without a library that declares them, they narrow nothing.
 
 Libraries stack: a name declared again *adds* to what an earlier library gave
 it — overloads of a function accumulate, and the members of a declared table
-merge. That is how `@luaut/luau` extends Lua's `table` and `type` without
-restating them, and how `@luaut/roblox` extends both.
+merge. That is how `@luaut/roblox` extends Lua's `table` and `type` without
+restating them.
 
 ## The language, in brief
 

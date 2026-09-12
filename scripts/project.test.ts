@@ -667,8 +667,8 @@ const rel = (path: string | undefined): string | undefined =>
         [optionalCall.bindings.said, optionalCall.bindings.got, optionalCall.errors],
         ["string | nil", "number | nil", []])
 
-    // Definitions files are layers: `@luaut/luau` adds to `@luaut/lua` rather
-    // than replacing it, and `@luaut/roblox` to both.
+    // Definitions files are layers: `@luaut/roblox` adds to `@luaut/lua`
+    // rather than replacing it.
     {
         const lua = parse([
             "declare table: { insert: (t: unknown[], v: unknown) -> () }",

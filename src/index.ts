@@ -13,7 +13,7 @@ export type { TypeAnalysis, AnalyzeTypesOptions, TypeDiagnostic, ModuleExports, 
 export * from '@ast/typeModel'
 // The language's own utility types (`Partial`, `ReturnType`, ...) are built
 // in; see `PRELUDE_SOURCE`. No globals are — not even `print`. A project names
-// the type libraries it wants in `luaut.config.json` (`"types": ["luau"]`), and
+// the type libraries it wants in `luaut.config.json` (`"types": ["roblox"]`), and
 // the project functions find and load them. See `findConfig` and
 // `resolveTypeLibraries`.
 export { PRELUDE_SOURCE } from '@ast/prelude'

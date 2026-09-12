@@ -11,7 +11,7 @@ import type { Program } from "./nodes"
  * that declaration wins.
  *
  * What a runtime provides — `print`, `string`, `game` — is not here: that is a
- * type library's job (`@luaut/lua`, `@luaut/luau`, `@luaut/roblox`).
+ * type library's job (`@luaut/lua`, `@luaut/roblox`).
  */
 export const PRELUDE_SOURCE = `
 -- In Luau only \`nil\` and \`false\` are falsy: \`0\` and \`""\` are truthy.
