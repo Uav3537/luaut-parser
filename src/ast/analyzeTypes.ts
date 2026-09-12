@@ -2379,7 +2379,7 @@ class TypeAnalyzer {
         return Object.keys(defaults).length ? { ...type, typeParamDefaults: defaults } : type
     }
 
-    private inferTypeArgs(f: FunctionType, argTypes: Type[], explicit?: readonly Type[]): Map<string, Type> {
+    private inferTypeArgs(f: FunctionType, argTypes: (Type | undefined)[], explicit?: readonly Type[]): Map<string, Type> {
         const subst = new Map<string, Type>()
         // `f<Folder>(x)`: what the call says takes precedence over what its
         // arguments would suggest.
@@ -2531,15 +2531,46 @@ class TypeAnalyzer {
         written: readonly Expression[],
         fns: FunctionType[],
         selfOf: (f: FunctionType) => number,
+        argsOf: (f: FunctionType) => readonly Type[] = () => [],
     ): void {
+        const paramsOf = new Map<FunctionType, Type[]>()
+        for (const f of fns) paramsOf.set(f, this.paramsAsCalled(f, argsOf(f)))
         written.forEach((arg, j) => {
             const candidates: Type[] = []
             for (const f of fns) {
                 const i = j + selfOf(f)
-                const param = i < f.params.length ? this.boundParams(f)[i] : f.varargs
+                const params = paramsOf.get(f)!
+                const param = i < params.length ? params[i] : f.varargs
                 if (param) candidates.push(param)
             }
             if (candidates.length) this.expectedTypeOf.set(arg, union(candidates))
+        })
+    }
+
+    /** The parameters as *this* call makes them read: a type argument the
+     *  arguments already written pin down is substituted in, and one nothing
+     *  has pinned down yet falls back to its constraint.
+     *
+     *  It is what makes the second argument of
+     *  `get(page, skill: Extract<Rows, { Page: Page }>["Skills"][number])`
+     *  worth completing — with `page` written, `skill` is the skills of that
+     *  page, not of every page. */
+    private paramsAsCalled(f: FunctionType, argTypes: readonly Type[]): Type[] {
+        const fallback = this.boundParams(f)
+        if (!f.typeParams?.length || !argTypes.length) return fallback
+        return f.params.map((p, i) => {
+            if (!containsTypeParam(p.type)) return p.type
+            // What the *other* arguments say. An argument does not get to
+            // decide what it is itself: reading `get("")` as `Page = ""`
+            // would make the very argument being written the only thing that
+            // fits it.
+            const subst = this.inferTypeArgs(f, argTypes.map((t, k) => (k === i ? undefined : t)))
+            // A type parameter nothing pinned down stays open; leaving it in
+            // the substitution would resolve the type against `unknown`.
+            for (const [name, bound] of [...subst]) if (bound.kind === "unknown") subst.delete(name)
+            if (!subst.size) return fallback[i]
+            const applied = this.reduceType(substitute(p.type, subst))
+            return containsTypeParam(applied) ? fallback[i] : applied
         })
     }
 
@@ -3500,7 +3531,7 @@ class TypeAnalyzer {
         expr.arguments.forEach((a, i) => this.applyContext(a, expected[i]))
         const argTypes = expr.arguments.map(a => this.infer(a, env))
         if (fns.length) {
-            this.recordExpected(expr.arguments, fns, () => 0)
+            this.recordExpected(expr.arguments, fns, () => 0, () => argTypes)
             const arityFits = this.checkArity(expr, fns, argTypes.length, 0)
             const picked = this.pickOverload(fns, argTypes)
             const distributed = this.distributedReturn(fns, argTypes, picked, (_, args) => args)
@@ -3531,7 +3562,7 @@ class TypeAnalyzer {
             const withSelf = (f: FunctionType): Type[] =>
                 this.takesSelf(f) ? [objType, ...argTypes] : argTypes
             const selfOf = (f: FunctionType): number => (this.takesSelf(f) ? 1 : 0)
-            this.recordExpected(expr.arguments, fns, selfOf)
+            this.recordExpected(expr.arguments, fns, selfOf, withSelf)
             // The receiver fills the `self` slot, so it does not count
             // against what the caller wrote.
             const arityFits = this.checkArity(expr, fns, argTypes.length, this.takesSelf(fns[0]) ? 1 : 0)

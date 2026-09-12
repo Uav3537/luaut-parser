@@ -667,6 +667,42 @@ const rel = (path: string | undefined): string | undefined =>
         [optionalCall.bindings.said, optionalCall.bindings.got, optionalCall.errors],
         ["string | nil", "number | nil", []])
 
+    // What one argument is expected to be, once another has pinned the type
+    // parameter down: `get("Bones", ...)` wants that page's skills.
+    {
+        const program = parse([
+            `const Rows = {`,
+            `    a: [`,
+            `        { Page: "Bones", Skills: ["Bonespam", "Bonewall"] },`,
+            `        { Page: "Fire", Skills: ["Geyser"] },`,
+            `    ],`,
+            `} as const`,
+            `type Row = (typeof Rows)["a"][number]`,
+            `declare function get<P extends Row["Page"]>(`,
+            `    page: P,`,
+            `    skill: Extract<Row, { Page: P }>["Skills"][number],`,
+            `): boolean`,
+            `get("Bones", "Bonespam")`,
+            `get("Fire", "Geyser")`,
+        ].join("\n"))
+        const scopes = analyzeScopes(program)
+        const types = analyzeTypes(program, scopes)
+        const calls: string[][] = []
+        for (const statement of program.body.statements) {
+            const call = (statement as { expression?: { arguments?: object[] } }).expression
+            if (!call?.arguments) continue
+            calls.push(call.arguments.map(argument => {
+                const expected = types.expectedTypeOf.get(argument as never)
+                return expected ? formatType(expected) : "(none)"
+            }))
+        }
+        check("expected argument types: what the other arguments pinned down", calls, [
+            [`"Bones" | "Fire"`, `"Bonespam" | "Bonewall"`],
+            [`"Bones" | "Fire"`, `"Geyser"`],
+        ])
+        check("expected argument types: and no error for either call", types.diagnostics.map(d => d.message), [])
+    }
+
     // `T[K]` over a union of keys: the ones the table has, and nil for the
     // rest — the same answer the value side gives, rather than `unknown`
     // swallowing the union because one key was missing.
