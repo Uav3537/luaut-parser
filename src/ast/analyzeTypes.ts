@@ -2060,6 +2060,21 @@ class TypeAnalyzer {
         return tuple(target.elements.map(el => el ? leaf(el.value, el.default) : anyType))
     }
 
+    /** The type of `...` in each function body being walked. */
+    private readonly varargs: (Type | undefined)[] = []
+
+    /** Run `body` with `...` typed as `func` declares it. */
+    private withVarargs<T>(func: FunctionBody, body: () => T): T {
+        this.varargs.push(func.hasVarargs
+            ? (func.varargTypeAnnotation ? this.resolveType(func.varargTypeAnnotation) : anyType)
+            : undefined)
+        try {
+            return body()
+        } finally {
+            this.varargs.pop()
+        }
+    }
+
     private visitFunctionBodyInner(func: FunctionBody, outerEnv: FlowEnv): void {
         const env = forkEnv(outerEnv)
         for (const p of func.params) {
@@ -2077,7 +2092,7 @@ class TypeAnalyzer {
                 if (p.typeAnnotation) this.annotated.add(id)
             }
         }
-        this.visitBlock(func.body, env)
+        this.withVarargs(func, () => this.visitBlock(func.body, env))
     }
 
     /** Return type of calling `f` with `argTypes`. For a generic function,
@@ -2410,8 +2425,10 @@ class TypeAnalyzer {
                 // `return` expressions are read — otherwise `local r = f()
                 // return r` infers `any`. The real visit runs afterwards and
                 // overwrites everything this pass recorded.
-                this.preVisitBody(func.body, bodyEnv)
-                returns = this.inferReturnType(func.body, bodyEnv)
+                returns = this.withVarargs(func, () => {
+                    this.preVisitBody(func.body, bodyEnv)
+                    return this.inferReturnType(func.body, bodyEnv)
+                })
             }
             return fn(
                 params, returns,
@@ -2833,7 +2850,8 @@ class TypeAnalyzer {
                 for (const part of expr.parts) if (part.kind === "expression") this.infer(part.expression, env)
                 return stringType
             }
-            case "VarargExpression": return anyType
+            // `...` holds what the function declared it takes.
+            case "VarargExpression": return this.varargs[this.varargs.length - 1] ?? anyType
             // Broken syntax is reported by the parser; nothing more to say.
             case "ErrorExpression": return anyType
 

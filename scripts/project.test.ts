@@ -479,6 +479,27 @@ const rel = (path: string | undefined): string | undefined =>
         [generics.errors, generics.bindings.char, generics.bindings.telek, generics.bindings.signature],
         [[], "number", "string", `<K extends "Char" | "Telek">(name: K) -> RemoteMap[K]`])
 
+    // `...` is what the function declared it takes.
+    const varargs = analyze([
+        "function f(...: number)",
+        "    const first = ...",
+        "    return ...",
+        "end",
+        "function g(...: string)",
+        "    const s = ...",
+        "    function inner()",
+        "        return 1",
+        "    end",
+        "    return s",
+        "end",
+        "function plain(...)",
+        "    const anything = ...",
+        "end",
+    ].join("\n"))
+    check("varargs: `...` has the declared type, per function",
+        [varargs.bindings.first, varargs.bindings.f, varargs.bindings.s, varargs.bindings.anything],
+        ["number", "(...number) -> number", "string", "any"])
+
     // `...rest` holds what the pattern did not take.
     const rest = analyze([
         "declare t: { a: number, b: number, c: string }",
