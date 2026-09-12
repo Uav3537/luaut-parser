@@ -628,6 +628,33 @@ const rel = (path: string | undefined): string | undefined =>
             analyzeTypes(program, analyzeScopes(program)).diagnostics.length, 0)
     }
 
+    // Reading a table with a key that is one of several.
+    const indexed = analyze([
+        "const Paths = {",
+        `    Blocking: ["Blocking"],`,
+        `    BlockingTick: ["Blocking", "Tick"],`,
+        `    Health: ["Health"],`,
+        `} as const satisfies { [string]: string[] }`,
+        `declare known: "Blocking" | "Health"`,
+        `declare partly: "Blocking" | "Missing"`,
+        "const both = Paths[known]",
+        "const some = Paths[partly]",
+        `const one = Paths["Health"]`,
+        `const none = Paths["Nope"]`,
+        "declare xs: number[]",
+        "declare i: 1 | 2",
+        "const element = xs[i]",
+    ].join("\n"))
+    check("indexing: a key that is one of several reads each, and a missing key is nil", [
+        indexed.bindings.both, indexed.bindings.some, indexed.bindings.one, indexed.bindings.none, indexed.bindings.element,
+    ], [
+        `["Blocking"] | ["Health"]`,
+        `["Blocking"] | nil`,
+        `["Health"]`,
+        "nil",
+        "number",
+    ])
+
     // The implementation of an overload set sees what its signatures allow.
     const implementation = analyze([
         "declare class Player {}",

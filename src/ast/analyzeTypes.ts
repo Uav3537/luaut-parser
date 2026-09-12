@@ -3060,21 +3060,31 @@ class TypeAnalyzer {
         const t = this.expand(raw)
         if (t.kind === "any") return anyType
         if (t.kind === "union") return union(t.types.map(m => this.indexedType(m, idx)))
-        if (t.kind === "difference") return this.indexedType(t.base, idx)
-        if (t.kind === "typeParam" && t.constraint) return this.indexedType(t.constraint, idx)
+        // A key that is one of several: read each, and the answer is any of
+        // them — `map[stat]` over `"Health" | "Attack"` gives both values.
+        const index = this.expand(idx)
+        if (index.kind === "union") return union(index.types.map(m => this.indexedType(t, m)))
+        if (t.kind === "difference") return this.indexedType(t.base, index)
+        if (t.kind === "typeParam" && t.constraint) return this.indexedType(t.constraint, index)
         if (t.kind === "array") return t.element
         if (t.kind === "tuple") {
-            if (idx.kind === "literal" && typeof idx.value === "number") {
-                return t.elements[idx.value - 1] ?? unknownType
+            if (index.kind === "literal" && typeof index.value === "number") {
+                return t.elements[index.value - 1] ?? nilType
             }
             return union(t.elements)
         }
         if (t.kind === "object") {
-            if (idx.kind === "literal" && typeof idx.value === "string") return this.propertyType(t, idx.value)
+            if (index.kind === "literal" && typeof index.value === "string") {
+                const property = t.properties.get(index.value)
+                if (property) return property.optional ? optional(property.type) : property.type
+                if (t.indexer && isAssignable(index, t.indexer.key)) return t.indexer.value
+                // A key the table does not have reads as nil, as in Lua.
+                return nilType
+            }
             // `map[name]` where `name: K`: which property this reads depends on
             // the call, so the type waits — `RemoteMapType[K]` — and is worked
             // out when `K` is (see `callReturn`).
-            if (containsTypeParam(idx)) return this.reduceType({ kind: "indexedAccess", objectType: t, indexType: idx })
+            if (containsTypeParam(index)) return this.reduceType({ kind: "indexedAccess", objectType: t, indexType: index })
             if (t.indexer) return t.indexer.value
         }
         return unknownType
