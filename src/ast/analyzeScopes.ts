@@ -190,8 +190,9 @@ class Analyzer {
     /** Function declarations already declared by their block's hoisting, with
      *  the function depth of that block. */
     private readonly hoisted = new Map<Identifier, number>()
-    /** Names that resolved to a global from code that runs later. */
-    private readonly deferredGlobals: { node: Identifier; assignment: boolean }[] = []
+    /** Names that resolved to a global from code that runs later, with the
+     *  scope they were read in. */
+    private readonly deferredGlobals: { node: Identifier; scope: Scope; assignment: boolean }[] = []
 
     private hoistFunctions(block: Block, scope: Scope): void {
         for (const statement of block.statements) {
@@ -223,17 +224,19 @@ class Analyzer {
         })
     }
 
-    private noteDeferred(identifier: Identifier, id: BindingId, assignment: boolean): void {
+    private noteDeferred(identifier: Identifier, scope: Scope, id: BindingId, assignment: boolean): void {
         if (this.functionDepth === 0 && this.typeQueryDepth === 0) return
         if (this.bindings.get(id)!.kind !== "global") return
-        this.deferredGlobals.push({ node: identifier, assignment })
+        this.deferredGlobals.push({ node: identifier, scope, assignment })
     }
 
-    /** Point each deferred read of a global at the module's own declaration
-     *  of that name, where there turned out to be one. */
+    /** Point each deferred read of a global at the declaration of that name
+     *  that turned up later — in the module, or in any block around the code
+     *  that reads it. Such code runs after the declaration has: a closure
+     *  written inside a value reads the name the value is bound to. */
     private resolveForwardReferences(): void {
-        for (const { node, assignment } of this.deferredGlobals) {
-            const localId = this.moduleScope.declarations.get(node.name)
+        for (const { node, scope, assignment } of this.deferredGlobals) {
+            const localId = this.lookup(scope, node.name)
             const globalId = this.bindingOf.get(node)
             if (localId === undefined || globalId === undefined || localId === globalId) continue
             const global = this.bindings.get(globalId)!
@@ -326,7 +329,7 @@ class Analyzer {
         this.bindings.get(id)!.references.push(identifier)
         if (this.typeQueryDepth === 0) this.checkTypeOnly(id, identifier)
         this.checkUseBeforeDefine(identifier, id)
-        this.noteDeferred(identifier, id, false)
+        this.noteDeferred(identifier, scope, id, false)
     }
 
     /** Inside `typeof x` in a type, where a type-only import may be named. */
@@ -361,7 +364,7 @@ class Analyzer {
         this.recordPossibleGlobalDefinition(id, identifier)
         this.checkTypeOnly(id, identifier)
         this.checkConstAssign(id, identifier)
-        this.noteDeferred(identifier, id, true)
+        this.noteDeferred(identifier, scope, id, true)
     }
 
     /** `Module.x = 1` through `import * as Module`: a module's exports belong

@@ -121,7 +121,10 @@ scope; like a TypeScript function declaration it cannot be reassigned.
 
 **Hoisting** — a function declaration is visible to its whole block, above
 itself too, so `let r: ReturnType<typeof load>` may come before `function
-load()`. A module's top-level names are visible to code that runs later —
+load()`. A closure reads the name its own value is bound to, as in JavaScript
+(`let m = { clear: function() m.items = {} end }`), and a later name in the
+same block; the compiler declares such a name before the statement that fills
+it. A module's top-level names are visible to code that runs later —
 function bodies and `typeof` — wherever that code is written, since a bundle
 declares them all before the module runs. At the top level the whole function
 is hoisted, and can be called above its declaration. Inside a function only

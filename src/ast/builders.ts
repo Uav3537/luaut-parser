@@ -53,6 +53,29 @@ function spanFrom(start: Span, end: Span): Span {
     }
 }
 
+/** Move a tree parsed from a fragment to where that fragment sits in the file:
+ *  `${a}` inside a template is parsed on its own, from 1:1. */
+function shiftSpans<T>(node: T, line: number, column: number): T {
+    const visit = (value: unknown): void => {
+        if (!value || typeof value !== "object") return
+        if (Array.isArray(value)) {
+            for (const item of value) visit(item)
+            return
+        }
+        const span = value as { line?: { start: number; end: number }; column?: { start: number; end: number } }
+        if (span.line && span.column) {
+            // Only the fragment's first line starts where the `${` does.
+            if (span.column.start !== undefined && span.line.start === 1) span.column.start += column - 1
+            if (span.column.end !== undefined && span.line.end === 1) span.column.end += column - 1
+            span.line.start += line - 1
+            span.line.end += line - 1
+        }
+        for (const child of Object.values(value)) visit(child)
+    }
+    visit(node)
+    return node
+}
+
 /** An Identifier node for a name token. */
 function tokenIdentifier(t: Span & { value?: unknown }): Identifier {
     return { type: "Identifier", name: t.value as string, ...spanFrom(t, t) }
@@ -1377,7 +1400,7 @@ export class Parser {
             } else {
                 let expression: Expression
                 try {
-                    expression = parseExpressionFromSource(p.raw)
+                    expression = shiftSpans(parseExpressionFromSource(p.raw), p.line, p.column)
                 } catch (e) {
                     if (!this.recover || !(e instanceof ParseError || e instanceof LexError)) throw e
                     const at = token as unknown as Span

@@ -500,6 +500,42 @@ const rel = (path: string | undefined): string | undefined =>
         [varargs.bindings.first, varargs.bindings.f, varargs.bindings.s, varargs.bindings.anything],
         ["number", "(...number) -> number", "string", "any"])
 
+    // A closure written inside a value can read the name that value is bound
+    // to — it runs later, as in JavaScript.
+    {
+        const program = parse([
+            "function Setup()",
+            "    let EventManager = {",
+            "        Connections: [],",
+            "        Disconnect: function()",
+            "            return EventManager.Connections",
+            "        end",
+            "    }",
+            "    return EventManager",
+            "end",
+            "function Sibling()",
+            "    const read = function() return later end",
+            "    const later = 7",
+            "    return read()",
+            "end",
+            "const shadow = 1",
+            "do",
+            "    const shadow = shadow + 1",
+            "    print(shadow)",
+            "end",
+        ].join("\n"))
+        const scopes = analyzeScopes(program, { builtinGlobals: ["print"], reportUndeclared: true })
+        const types = analyzeTypes(program, scopes)
+        const bindings: Record<string, string> = {}
+        for (const [id, type] of types.bindingType) bindings[scopes.bindings.get(id)!.name] = formatType(type)
+        check("forward references: a closure reads the name being declared, and a later sibling",
+            [scopes.diagnostics.map(d => d.message), bindings.read], [[], "() -> 7"])
+        // The initializer itself still reads what was there before it.
+        const shadows = [...scopes.bindings.values()].filter(b => b.name === "shadow")
+        check("forward references: but an initializer still shadows rather than reads itself",
+            shadows.length, 2)
+    }
+
     // What a function returns is checked against what it declared.
     const returns = analyze([
         "declare function print(v: unknown): ()",

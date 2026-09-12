@@ -70,6 +70,10 @@ export interface InterpolatedStringPart_String {
 export interface InterpolatedStringPart_Expression {
     kind: "expression"
     raw: string
+    /** Where `raw` starts in the file, so what is parsed from it can be
+     *  placed there rather than at the top of an imaginary one. */
+    line: number
+    column: number
 }
 
 export interface InterpolatedStringToken extends BaseToken {
@@ -480,6 +484,8 @@ export function tokenize(source: string, options: TokenizeOptions = {}): Token[]
                 advance() // '$'
                 advance() // '{'
                 const exprStart = cursor
+                const exprLine = line
+                const exprColumn = column
                 let depth = 1
                 let closed = true
                 while (depth > 0) {
@@ -496,7 +502,7 @@ export function tokenize(source: string, options: TokenizeOptions = {}): Token[]
                     advance()
                 }
                 const exprRaw = source.slice(exprStart, cursor)
-                parts.push({ kind: "expression", raw: exprRaw })
+                parts.push({ kind: "expression", raw: exprRaw, line: exprLine, column: exprColumn })
                 if (!closed) {
                     flushString()
                     break
