@@ -636,6 +636,15 @@ function isAssignableInner(a: Type, b: Type): boolean {
     // `B - E` fits anything `B` fits; the subtraction only removes values.
     if (a.kind === "difference") return isAssignable(a.base, b)
 
+    // Before the union rules: a type parameter stands for one value, and what
+    // it may be is its constraint — `P extends "a" | "b"` fits `"a" | "b"`,
+    // which splitting the target first would deny, since `P` fits neither
+    // `"a"` nor `"b"` on its own.
+    if (a.kind === "typeParam") {
+        if (b.kind === "typeParam" && a.name === b.name) return true
+        return a.constraint ? isAssignable(a.constraint, b) : false
+    }
+
     if (a.kind === "union") return a.types.every(t => isAssignable(t, b))
     if (b.kind === "union") return b.types.some(t => isAssignable(a, t))
     if (b.kind === "intersection") return b.types.every(t => isAssignable(a, t))
@@ -714,10 +723,6 @@ function isAssignableInner(a: Type, b: Type): boolean {
                 !isAssignable(b.params[i].type, a.params[i].type)) return false
         }
         return isAssignable(a.returns, b.returns)
-    }
-    if (a.kind === "typeParam") {
-        if (b.kind === "typeParam" && a.name === b.name) return true
-        return a.constraint ? isAssignable(a.constraint, b) : false
     }
     if (b.kind === "typeParam") return false
     if (a.kind === "genericRef" || b.kind === "genericRef") {

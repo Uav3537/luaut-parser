@@ -667,6 +667,37 @@ const rel = (path: string | undefined): string | undefined =>
         [optionalCall.bindings.said, optionalCall.bindings.got, optionalCall.errors],
         ["string | nil", "number | nil", []])
 
+    // A type parameter stands for one value, and its constraint says which:
+    // passing `P extends "a" | "b"` where that union is wanted is fine.
+    check("type parameters: a constrained parameter fits its own constraint", [
+        analyze([
+            `type Page = "Bones" | "Fire"`,
+            "declare function take(page: Page): ()",
+            "function pass<P extends Page>(page: P)",
+            "    take(page)",
+            "end",
+        ].join("\n")).errors,
+        analyze([
+            `const Rows = { a: [{ Page: "Bones" }, { Page: "Fire" }] } as const`,
+            `type Row = (typeof Rows)["a"][number]`,
+            `declare function take(page: Row["Page"]): ()`,
+            `function pass<P extends Row["Page"]>(page: P)`,
+            "    take(page)",
+            "end",
+        ].join("\n")).errors,
+        // And a parameter that cannot be what is wanted is still an error.
+        analyze([
+            `declare function take(n: number): ()`,
+            `function pass<P extends string>(value: P)`,
+            "    take(value)",
+            "end",
+        ].join("\n")).errors,
+    ], [
+        [],
+        [],
+        ["Argument of type 'P' is not assignable to parameter of type 'number'"],
+    ])
+
     // What one argument is expected to be, once another has pinned the type
     // parameter down: `get("Bones", ...)` wants that page's skills.
     {
