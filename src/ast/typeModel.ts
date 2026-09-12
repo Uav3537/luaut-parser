@@ -582,6 +582,17 @@ export function setAliasExpander(fn: ((t: GenericRefType) => Type) | undefined):
     expandAlias = fn
 }
 
+/** The most a type still waiting on a type parameter could turn out to be —
+ *  `Extract<Rows, { Page: P }>["Skills"][number]` is at most every row's
+ *  skills, whatever `P` is. Only the analyzer can work one out (it takes
+ *  evaluating the parts), so it installs this for the duration of a run; as
+ *  with `expandAlias`, without one nothing changes. */
+let deferredBound: ((t: Type) => Type | undefined) | undefined
+
+export function setDeferredBound(fn: ((t: Type) => Type | undefined) | undefined): void {
+    deferredBound = fn
+}
+
 /** Pairs currently being compared. Recursive types make `isAssignable` re-enter
  *  with the same pair; assuming success on re-entry is the standard
  *  coinductive reading ("assignable unless we can show otherwise") and is what
@@ -635,6 +646,15 @@ function isAssignableInner(a: Type, b: Type): boolean {
     }
     // `B - E` fits anything `B` fits; the subtraction only removes values.
     if (a.kind === "difference") return isAssignable(a.base, b)
+
+    // A value of a type that is still waiting on a type parameter is at most
+    // what that type could become: `Extract<Rows, { Page: P }>["Skills"]
+    // [number]` is one of the rows' skills, so it goes where any of them do.
+    // Without this, every use of such a value is an error until `P` is known.
+    if (a.kind === "conditional" || a.kind === "indexedAccess") {
+        const bound = deferredBound?.(a)
+        if (bound && bound !== a) return isAssignable(bound, b)
+    }
 
     // Before the union rules: a type parameter stands for one value, and what
     // it may be is its constraint — `P extends "a" | "b"` fits `"a" | "b"`,
@@ -1172,7 +1192,7 @@ function formatAtom(t: Type): string {
     // A named intersection prints as a bare alias name, so it needs no parens.
     if (t.kind === "intersection" && t.name) return t.name
     if (t.kind === "union" || t.kind === "intersection" || t.kind === "function" ||
-        t.kind === "difference") {
+        t.kind === "difference" || t.kind === "conditional") {
         return `(${formatType(t)})`
     }
     return formatType(t)

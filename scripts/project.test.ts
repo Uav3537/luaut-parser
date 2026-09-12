@@ -667,6 +667,46 @@ const rel = (path: string | undefined): string | undefined =>
         [optionalCall.bindings.said, optionalCall.bindings.got, optionalCall.errors],
         ["string | nil", "number | nil", []])
 
+    // A type still waiting on a type parameter goes where anything it could
+    // become goes: `Extract<Rows, { Page: P }>["Skills"][number]` is one of
+    // the rows' skills, whatever `P` turns out to be.
+    {
+        const rows = [
+            `const Rows = {`,
+            `    a: [`,
+            `        { Page: "Bones", Skills: ["Bonespam", "Bonewall"] },`,
+            `        { Page: "Fire", Skills: ["Geyser"] },`,
+            `    ],`,
+            `} as const`,
+            `type Row = (typeof Rows)["a"][number]`,
+        ].join("\n")
+        const deferred = analyze([
+            rows,
+            `declare function take(skill: Row["Skills"][number]): ()`,
+            `function pass<P extends Row["Page"]>(skill: Extract<Row, { Page: P }>["Skills"][number])`,
+            "    take(skill)",
+            "end",
+        ].join("\n"))
+        check("deferred types: what is still waiting fits what it could become",
+            deferred.errors, [])
+
+        // And it still cannot go somewhere none of them fit.
+        const wrong = analyze([
+            rows,
+            `declare function takeNumber(n: number): ()`,
+            `function pass<P extends Row["Page"]>(skill: Extract<Row, { Page: P }>["Skills"][number])`,
+            "    takeNumber(skill)",
+            "end",
+        ].join("\n"))
+        check("deferred types: and not where none of them fit",
+            wrong.errors.length, 1)
+
+        // The printed form parenthesises the conditional, so the index does
+        // not read as part of the branch.
+        check("deferred types: printed with the conditional parenthesised",
+            (wrong.errors[0] ?? "").includes(`)["Skills"][number]'`), true)
+    }
+
     // A type parameter stands for one value, and its constraint says which:
     // passing `P extends "a" | "b"` where that union is wanted is fine.
     check("type parameters: a constrained parameter fits its own constraint", [

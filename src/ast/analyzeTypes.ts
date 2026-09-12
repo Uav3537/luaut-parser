@@ -43,7 +43,7 @@ import {
     type GenericRefType,
     anyType, unknownType, neverType, nilType, booleanType, numberType, stringType,
     primitive, literal, arrayOf, tuple, objectType, fn, union, intersection, optional,
-    typeParam, substitute, unify, containsTypeParam, matchInfer, setAliasExpander, difference,
+    typeParam, substitute, unify, containsTypeParam, matchInfer, setAliasExpander, setDeferredBound, difference,
     widen, isAssignable, overlaps, narrowTo, narrowExclude, narrowTruthy, narrowFalsy,
     isPossiblyFalsy,
     formatType,
@@ -604,6 +604,7 @@ class TypeAnalyzer {
         // Let structural comparison see through nominal alias references —
         // unavoidable for recursive types such as a class hierarchy.
         setAliasExpander(t => this.expand(t))
+        setDeferredBound(t => this.deferredBound(t))
         try {
             const env: FlowEnv = new Map()
             this.visitBlock(this.program.body, env)
@@ -611,6 +612,7 @@ class TypeAnalyzer {
             if (this.options.reportUnknownTypes) this.reportUnknownTypes()
         } finally {
             setAliasExpander(undefined)
+            setDeferredBound(undefined)
         }
         return {
             typeOf: this.typeOf,
@@ -3269,6 +3271,37 @@ class TypeAnalyzer {
             if (property) return property.type
         }
         return undefined
+    }
+
+    /** The most a deferred type could turn out to be. A conditional is one of
+     *  its branches, and the true branch stands for a member of what was
+     *  tested (`T` in `T extends U ? T : never`); an indexed access reads
+     *  through the bound of what it indexes. Anything else has no bound worth
+     *  giving — `undefined` leaves the comparison as it was. */
+    private deferredBound(t: Type, depth = 0): Type | undefined {
+        if (depth > 8) return undefined
+        switch (t.kind) {
+            case "conditional": {
+                const check = this.reduceType(t.checkType)
+                if (containsTypeParam(check)) return undefined
+                const subst = new Map<string, Type>()
+                if (t.distributeParam) subst.set(t.distributeParam, check)
+                for (const name of t.inferVars ?? []) subst.set(name, unknownType)
+                const branches = [substitute(t.trueType, subst), t.falseType]
+                    .map(branch => this.reduceType(branch))
+                if (branches.some(branch => containsTypeParam(branch))) return undefined
+                return union(branches)
+            }
+            case "indexedAccess": {
+                const object = this.deferredBound(t.objectType, depth + 1)
+                    ?? (containsTypeParam(t.objectType) ? undefined : t.objectType)
+                const index = this.reduceType(t.indexType)
+                if (!object || containsTypeParam(index)) return undefined
+                return this.indexedType(object, index)
+            }
+            default:
+                return undefined
+        }
     }
 
     private propertyType(raw: Type, name: string): Type {
