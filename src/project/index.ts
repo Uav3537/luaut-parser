@@ -8,6 +8,6 @@ export {
     CONFIG_FILE_NAMES, findConfig, loadConfig, stripJsonComments,
     type LuautConfig, type ConfigProblem, type ConfigLookup,
 } from "./config"
-export { resolveTypeLibraries, type TypeLibraries, type MethodRuntime } from "./libraries"
+export { resolveTypeLibraries, type TypeLibraries, type LoweringModule } from "./libraries"
 export { moduleCandidates, resolveModulePath } from "./modules"
 export { sourceMapTypes, type SourceMapNode, type SourceMapOptions, type SourceMapTypes } from "./sourcemap"
