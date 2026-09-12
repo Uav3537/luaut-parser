@@ -172,32 +172,38 @@ print(names:join(", "), text:trim(), text:replaceAll(",", ";"))
 Which methods those are is not the language's business. The analyzer looks for
 two types by name — `ArrayMethods<T>` and `StringMethods` — and reads an
 array's or a string's members out of whichever type library declared them;
-without such a library an array has no methods at all. A library also says
-which of them need code emitted, in its package.json:
+without such a library an array has no methods at all.
+
+Running them is that library's business too. A library points at a JavaScript
+module in its package.json, and the compiler asks it what a call becomes:
 
 ```json
-"luaut": {
-  "types": "index.d.luaut",
-  "methods": [
-    { "receiver": "array", "runtime": "runtime/array.luau", "names": ["filter", "map"] }
-  ]
+"luaut": { "types": "index.d.luaut", "lowering": "lowering.mjs" }
+```
+
+```ts
+import type { LoweringPlugin } from "luaut-parser"   // the contract, declared here
+
+const plugin: LoweringPlugin = {
+    runtime: { array: "local __NAME__ = {}\nfunction __NAME__.filter(t, test) ... end" },
+    methodCall({ method, receiver, use }) {
+        if (receiver?.kind === "array" && method === "filter") {
+            return { callee: `${use("array")}.filter` }
+        }
+        return undefined
+    },
 }
+export default plugin
 ```
 
-The runtime file defines one table, with `__NAME__` for the local the compiler
-gives it, and each method takes the receiver as its first argument:
+`receiver` is the luaut type the analyzer worked out, `use(key)` gives the
+local name that table got — emitted once, at the top of the output, only if a
+call needed it — and the receiver is passed as the call's first argument. An
+answer of `undefined` leaves an ordinary Luau method call, which is what
+`text:upper()` wants, since a string already answers to it.
 
-```luau
-local __NAME__ = {}
-function __NAME__.filter(t, test) ... end
-```
-
-`names:filter(f)` then becomes a call on that table, emitted once at the top of
-the output and only if something used it. Nothing is attached to the table or
-to the string metatable, so the methods work on any array, including one a
-Luau library returned. A method a library declares but no runtime claims stays
-a plain Luau method call — which is what `text:upper()` wants, since a string
-already answers to it.
+The compiler lowers the language and nothing else: `filter` appears nowhere in
+it.
 
 `@luaut/lua` ships the JavaScript-shaped set; there, indices are Luau's (the
 first element is 1, `indexOf` answers `nil` rather than -1) and `push`, `pop`,

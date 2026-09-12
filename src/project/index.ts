@@ -9,5 +9,6 @@ export {
     type LuautConfig, type ConfigProblem, type ConfigLookup,
 } from "./config"
 export { resolveTypeLibraries, type TypeLibraries, type LoweringModule } from "./libraries"
+export type { LoweringPlugin, MethodCall, MethodLowering } from "./lowering"
 export { moduleCandidates, resolveModulePath } from "./modules"
 export { sourceMapTypes, type SourceMapNode, type SourceMapOptions, type SourceMapTypes } from "./sourcemap"
