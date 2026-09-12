@@ -1023,6 +1023,41 @@ export function overlaps(a: Type, b: Type): boolean {
  *  constructor returns a fresh value), so caching by identity is sound. */
 const formatCache = new WeakMap<object, string>()
 
+/** A constraint as a signature shows it. A long union — every service name —
+ *  is cut short, the way a diagnostic's types are. */
+function briefConstraint(t: Type): string {
+    if (t.kind === "union" && t.types.length > 8) {
+        return `${t.types.slice(0, 6).map(formatType).join(" | ")} | ... ${t.types.length - 6} more`
+    }
+    return formatType(t)
+}
+
+/** Every named type parameter a type mentions that carries a constraint. */
+function collectTypeParams(t: Type | undefined, out: Map<string, Type>, seen = new Set<Type>()): void {
+    if (!t || seen.has(t)) return
+    seen.add(t)
+    switch (t.kind) {
+        case "typeParam":
+            if (t.constraint && !out.has(t.name)) out.set(t.name, t.constraint)
+            collectTypeParams(t.constraint, out, seen)
+            return
+        case "array": collectTypeParams(t.element, out, seen); return
+        case "tuple": for (const e of t.elements) collectTypeParams(e, out, seen); return
+        case "union":
+        case "intersection": for (const m of t.types) collectTypeParams(m, out, seen); return
+        case "keyof": collectTypeParams(t.target, out, seen); return
+        case "indexedAccess":
+            collectTypeParams(t.objectType, out, seen)
+            collectTypeParams(t.indexType, out, seen)
+            return
+        case "genericRef": for (const a of t.typeArguments) collectTypeParams(a, out, seen); return
+        case "object":
+            for (const [, p] of t.properties) collectTypeParams(p.type, out, seen)
+            return
+        default: return
+    }
+}
+
 export function formatType(t: Type): string {
     const cached = formatCache.get(t)
     if (cached !== undefined) return cached
@@ -1058,8 +1093,18 @@ function formatTypeUncached(t: Type): string {
                 t.params.filter(p => p.type.kind === "typeParam" && p.type.isConst)
                     .map(p => (p.type as TypeParamType).name),
             )
+            // The constraints live on the `typeParam` nodes the signature
+            // uses, not on the name list: `<K extends keyof Services>` reads
+            // far better than `<K>`.
+            const constraints = new Map<string, Type>()
+            for (const part of [...t.params.map(p => p.type), t.varargs, t.returns]) {
+                collectTypeParams(part, constraints)
+            }
             const gen = t.typeParams?.length
-                ? `<${t.typeParams.map(n => (consts.has(n) ? `const ${n}` : n)).join(", ")}>`
+                ? `<${t.typeParams.map(n => {
+                    const constraint = constraints.get(n)
+                    return `${consts.has(n) ? "const " : ""}${n}${constraint ? ` extends ${briefConstraint(constraint)}` : ""}`
+                }).join(", ")}>`
                 : ""
             const ps = t.params.map(p => `${p.name ? p.name + ": " : ""}${formatType(p.type)}`)
             if (t.varargs) ps.push(`...${formatType(t.varargs)}`)

@@ -33,7 +33,7 @@
 import type {
     Program, Block, Statement, Expression, TypeNode, TypePackNode,
     Identifier, FunctionBody, FunctionSignature, BindingTarget, GenericTypeParameter,
-    ObjectPattern, ArrayPattern,
+    ObjectPattern, ArrayPattern, ObjectPatternProperty,
     TableExpression, ArrayExpression, IfStatement, TypePredicateNode, DeclareClassStatement, DeclareStatement,
 } from "./nodes"
 import type { ScopeAnalysis, BindingId } from "./analyzeScopes"
@@ -2603,6 +2603,20 @@ class TypeAnalyzer {
         return false
     }
 
+    /** `{ a, ...rest }`: what `rest` holds — the value without the properties
+     *  the pattern already took. */
+    private withoutKeys(raw: Type, properties: readonly ObjectPatternProperty[]): Type {
+        const taken = new Set(properties.flatMap(p => (!p.computed && p.key.type === "Identifier" ? [p.key.name]
+            : !p.computed && p.key.type === "StringLiteral" ? [p.key.value] : [])))
+        if (!taken.size) return raw
+        const t = this.expand(raw)
+        if (t.kind === "union") return union(t.types.map(m => this.withoutKeys(m, properties)))
+        if (t.kind !== "object") return raw
+        const kept: [string, ObjectProperty][] = [...t.properties].filter(([name]) => !taken.has(name))
+        if (kept.length === t.properties.size) return raw
+        return objectType(kept, t.indexer, t.frozen)
+    }
+
     /** Fold a destructuring default (`{ a = 1 }`) into the property's type:
      *  the default applies when the source value is missing/`nil`. */
     private withDefault(base: Type, def: Expression | undefined, env: FlowEnv): Type {
@@ -2636,7 +2650,7 @@ class TypeAnalyzer {
                     const pt = key !== undefined ? this.propertyType(valueType, key) : unknownType
                     this.reassignPattern(p.value, this.withDefault(pt, p.default, env), env)
                 }
-                if (target.rest) this.reassignPattern(target.rest, valueType, env)
+                if (target.rest) this.reassignPattern(target.rest, this.withoutKeys(valueType, target.properties), env)
                 return
             }
             case "ArrayPattern": {
@@ -2676,7 +2690,7 @@ class TypeAnalyzer {
                     const propType = key !== undefined ? this.propertyType(valueType, key) : unknownType
                     this.bindPattern(p.value, this.withDefault(propType, p.default, env), env, mode)
                 }
-                if (target.rest) this.bindPattern(target.rest, valueType, env, mode)
+                if (target.rest) this.bindPattern(target.rest, this.withoutKeys(valueType, target.properties), env, mode)
                 return
             }
             case "ArrayPattern": {
@@ -2732,7 +2746,7 @@ class TypeAnalyzer {
     }
 
     private propertyType(raw: Type, name: string): Type {
-        const t = this.expand(raw)
+        const t = this.deferredAccess(this.expand(raw))
         if (t.kind === "object") {
             const p = t.properties.get(name)
             if (p) return p.optional ? optional(p.type) : p.type
@@ -2768,9 +2782,24 @@ class TypeAnalyzer {
         }
         if (t.kind === "object") {
             if (idx.kind === "literal" && typeof idx.value === "string") return this.propertyType(t, idx.value)
+            // `map[name]` where `name: K`: which property this reads depends on
+            // the call, so the type waits — `RemoteMapType[K]` — and is worked
+            // out when `K` is (see `callReturn`).
+            if (containsTypeParam(idx)) return this.reduceType({ kind: "indexedAccess", objectType: t, indexType: idx })
             if (t.indexer) return t.indexer.value
         }
         return unknownType
+    }
+
+    /** What a deferred `T[K]` can be: every property its index could name.
+     *  Reading a member of one, or calling it, sees that. */
+    private deferredAccess(t: Type): Type {
+        if (t.kind !== "indexedAccess") return t
+        const index = t.indexType.kind === "typeParam" && t.indexType.constraint
+            ? t.indexType.constraint
+            : t.indexType
+        if (containsTypeParam(index)) return unknownType
+        return this.accessType(t.objectType, index)
     }
 
     private elementType(raw: Type, index: number): Type {

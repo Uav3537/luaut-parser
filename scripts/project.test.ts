@@ -464,6 +464,30 @@ const rel = (path: string | undefined): string | undefined =>
         check("undeclared: off unless asked for", analyzeScopes(program).diagnostics, [])
     }
 
+    // `map[name]` with a generic index waits for the call to say which key.
+    const generics = analyze([
+        "type RemoteMap = { Char: number, Telek: string }",
+        "declare map: RemoteMap",
+        "function get<K extends keyof RemoteMap>(name: K)",
+        "    return map[name]",
+        "end",
+        `const char = get("Char")`,
+        `const telek = get("Telek")`,
+        "const signature = get",
+    ].join("\n"))
+    check("generics: an index the call decides is read when it does",
+        [generics.errors, generics.bindings.char, generics.bindings.telek, generics.bindings.signature],
+        [[], "number", "string", `<K extends "Char" | "Telek">(name: K) -> RemoteMap[K]`])
+
+    // `...rest` holds what the pattern did not take.
+    const rest = analyze([
+        "declare t: { a: number, b: number, c: string }",
+        "const { a, ...others } = t",
+        "const { a: first, ...tail } = t",
+    ].join("\n"))
+    check("destructuring: rest drops the properties already named",
+        [rest.bindings.others, rest.bindings.tail], ["{ b: number, c: string }", "{ b: number, c: string }"])
+
     // Hoisting: functions, and a module's names seen from code that runs later.
     {
         const program = parse([
