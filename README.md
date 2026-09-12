@@ -160,8 +160,8 @@ brings in names that are types and nothing else: unlike TypeScript, using one
 as a value is an error, and only type positions — `typeof A` included — may
 name it. Compiled code keeps no trace of it.
 
-**Array and string methods** — an array and a string answer to the methods
-JavaScript gives them, written with `:`:
+**Array and string methods** — an array and a string answer to methods
+written with `:`, the way JavaScript writes them:
 
 ```luau
 const long = names:filter(function(n) return #n > 3 end):map(string.upper)
@@ -169,24 +169,39 @@ const first = names:find(function(n) return n:startsWith("A") end)
 print(names:join(", "), text:trim(), text:replaceAll(",", ";"))
 ```
 
-Nothing is attached to the table or to the string metatable: each call is
-lowered to a plain call on a small library the output carries, so they work on
-any array, including one a Luau library returned. The set is
-`find findIndex filter map forEach some every reduce includes indexOf join
-concat slice flat reverse sort push pop shift unshift` on arrays, and on
-strings Luau's own (`upper`, `sub`, `gsub`, `split`, ...) plus
-`trim trimStart trimEnd startsWith endsWith includes indexOf slice replace
-replaceAll padStart padEnd`.
+Which methods those are is not the language's business. The analyzer looks for
+two types by name — `ArrayMethods<T>` and `StringMethods` — and reads an
+array's or a string's members out of whichever type library declared them;
+without such a library an array has no methods at all. A library also says
+which of them need code emitted, in its package.json:
 
-Indices are Luau's: the first element is 1, `indexOf` and `findIndex` answer
-`nil` rather than -1, `slice` takes an inclusive range (and counts from the
-end when given a negative), and `sort` takes Luau's comparator — true when `a`
-comes first. `push`, `pop`, `shift`, `unshift`, `sort` and `reverse` change
-the array they are called on; the rest return a new one.
+```json
+"luaut": {
+  "types": "index.d.luaut",
+  "methods": [
+    { "receiver": "array", "runtime": "runtime/array.luau", "names": ["filter", "map"] }
+  ]
+}
+```
 
-They are types like any other: the prelude declares them as `ArrayMethods<T>`
-and `StringMethods`, and a file or type library that declares either name
-again replaces the set.
+The runtime file defines one table, with `__NAME__` for the local the compiler
+gives it, and each method takes the receiver as its first argument:
+
+```luau
+local __NAME__ = {}
+function __NAME__.filter(t, test) ... end
+```
+
+`names:filter(f)` then becomes a call on that table, emitted once at the top of
+the output and only if something used it. Nothing is attached to the table or
+to the string metatable, so the methods work on any array, including one a
+Luau library returned. A method a library declares but no runtime claims stays
+a plain Luau method call — which is what `text:upper()` wants, since a string
+already answers to it.
+
+`@luaut/lua` ships the JavaScript-shaped set; there, indices are Luau's (the
+first element is 1, `indexOf` answers `nil` rather than -1) and `push`, `pop`,
+`shift`, `unshift`, `sort` and `reverse` change the array they are called on.
 
 **Optionality** — there is no `T?` shorthand. `?` in type position always
 belongs to a conditional type, and in expression position to a ternary or an

@@ -667,40 +667,62 @@ const rel = (path: string | undefined): string | undefined =>
         [optionalCall.bindings.said, optionalCall.bindings.got, optionalCall.errors],
         ["string | nil", "number | nil", []])
 
-    // The methods arrays and strings answer to, out of the prelude.
-    const methods = analyze([
-        `const names = ["a", "bb"]`,
-        "const found = names:find(function(v) return #v > 1 end)",
-        "const long = names:filter(function(v) return #v > 1 end)",
-        "const sizes = names:map(function(v) return #v end)",
-        `const joined = names:join(", ")`,
-        `const at = names:indexOf("bb")`,
-        "const inline = ([1, 2]):pop()",
-        "declare text: string",
-        "const up = text:upper()",
-        `const parts = text:split(","):join("|")`,
-        "const trimmed = text:trim()",
-        `const has = text:includes("a")`,
-    ].join("\n"))
-    check("array and string methods: their types come from the prelude", [
-        methods.bindings.found, methods.bindings.long, methods.bindings.sizes,
-        methods.bindings.joined, methods.bindings.at, methods.bindings.inline,
-        methods.bindings.up, methods.bindings.parts, methods.bindings.trimmed, methods.bindings.has,
-        methods.errors,
-    ], [
-        "string | nil", "string[]", "number[]", "string", "number | nil", "number | nil",
-        "string", "string", "string", "boolean",
-        [],
-    ])
+    // The methods an array and a string answer to. The analyzer knows only
+    // where to look — `ArrayMethods<T>` and `StringMethods` — and a library
+    // says what is in them.
+    {
+        const library = parse([
+            "type ArrayMethods<T> = {",
+            "    filter: (self: T[], test: (value: T, index: number) -> boolean) -> T[],",
+            "    map: <U>(self: T[], transform: (value: T) -> U) -> U[],",
+            "    pop: (self: T[]) -> T | nil,",
+            "}",
+            "type StringMethods = { upper: (self: string) -> string, trim: (self: string) -> string }",
+        ].join("\n"))
+        const program = parse([
+            `const names = ["a", "bb"]`,
+            "const long = names:filter(function(v) return #v > 1 end)",
+            "const sizes = names:map(function(v) return #v end)",
+            "const last = ([1, 2]):pop()",
+            "declare text: string",
+            "const up = text:upper()",
+            "const trimmed = text:trim()",
+            `const literal = ("x"):trim()`,
+            "const missing = names:nope()",
+        ].join("\n"))
+        const scopes = analyzeScopes(program)
+        const types = analyzeTypes(program, scopes, { libs: [library] })
+        const bindings: Record<string, string> = {}
+        for (const [id, type] of types.bindingType) bindings[scopes.bindings.get(id)!.name] = formatType(type)
+        check("array and string methods: read from the types a library declares", [
+            bindings.long, bindings.sizes, bindings.last,
+            bindings.up, bindings.trimmed, bindings.literal, bindings.missing,
+        ], ["string[]", "number[]", "number | nil", "string", "string", "string", "unknown"])
 
-    // The names are the prelude's, so a file can say something else.
-    check("array methods: a file that declares the set again replaces it",
-        analyze([
-            "type ArrayMethods<T> = { first: (self: T[]) -> T | nil }",
-            "const own = ([1]):first()",
-            "const gone = ([1]):filter(function(v) return true end)",
-        ].join("\n")).bindings,
-        { own: "number | nil", v: "any", gone: "unknown" })
+        // Without a library that declares them, an array has no methods.
+        const bare = analyze("const names = [1]\nconst gone = names:filter(function(v) return true end)")
+        check("array methods: nothing is built in", bare.bindings.gone, "unknown")
+    }
+
+    // Libraries layer over one another; the file itself replaces.
+    {
+        const first = parse("type Set = { one: (self: string) -> string }")
+        const second = parse("type Set = { two: (self: string) -> string }")
+        const layered = parse("declare value: Set\nconst a = value.one\nconst b = value.two")
+        const layeredScopes = analyzeScopes(layered)
+        const layeredTypes = analyzeTypes(layered, layeredScopes, { libs: [first, second] })
+        const names: Record<string, string> = {}
+        for (const [id, type] of layeredTypes.bindingType) names[layeredScopes.bindings.get(id)!.name] = formatType(type)
+        check("layered aliases: a library adds to what an earlier one declared",
+            [names.a, names.b], ["(self: string) -> string", "(self: string) -> string"])
+
+        const own = parse("type Set = { three: (self: string) -> string }\ndeclare value: Set\nconst c = value.one")
+        const ownScopes = analyzeScopes(own)
+        const ownTypes = analyzeTypes(own, ownScopes, { libs: [first, second] })
+        const mine: Record<string, string> = {}
+        for (const [id, type] of ownTypes.bindingType) mine[ownScopes.bindings.get(id)!.name] = formatType(type)
+        check("layered aliases: the file's own replaces them", mine.c, "unknown")
+    }
 
     // A literal written in an argument keeps its literal type when the
     // parameter asks for one — TypeScript's contextual typing.

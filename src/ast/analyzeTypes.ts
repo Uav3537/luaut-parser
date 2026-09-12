@@ -581,8 +581,8 @@ class TypeAnalyzer {
         // The language's own types, then definitions files, then this program
         // — so aliases resolve against the full set, and a later declaration
         // of a name wins over an earlier one.
-        this.registerAliasDefs(preludeProgram().body)
-        for (const lib of this.options.libs ?? []) this.registerAliasDefs(lib.body)
+        this.registerAliasDefs(preludeProgram().body, true)
+        for (const lib of this.options.libs ?? []) this.registerAliasDefs(lib.body, true)
         this.registerAliasDefs(this.program.body)
         for (const lib of this.options.libs ?? []) this.harvestDeclares(lib.body)
         // Imported type names must be known before any annotation resolves.
@@ -681,12 +681,32 @@ class TypeAnalyzer {
         }
     }
 
-    private registerAliasDefs(block: Block): void {
+    /** `layering` is on for the prelude and for definitions files: a second
+     *  library that declares an alias already declared *adds* to it, the way a
+     *  second `declare` of a table's name does, so `@luaut/roblox` can give
+     *  `StringMethods` Luau's `split` without restating Lua's. The file being
+     *  analysed is not a layer: its own alias replaces what the libraries
+     *  gave, which is how a project opts out of a set. */
+    private registerAliasDefs(block: Block, layering = false): void {
         for (const stmt of block.statements) {
             const alias = stmt.type === "TypeAliasStatement" ? stmt
                 : stmt.type === "ExportTypeAliasStatement" ? stmt.alias
                 : undefined
-            if (alias) this.aliasDefs.set(alias.name.name, { params: alias.generics, node: alias.definition })
+            if (alias) {
+                const previous = layering ? this.aliasDefs.get(alias.name.name) : undefined
+                const node = previous && !previous.class
+                    ? ({
+                        type: "IntersectionTypeNode",
+                        types: [previous.node, alias.definition],
+                        line: alias.definition.line,
+                        column: alias.definition.column,
+                    } as TypeNode)
+                    : alias.definition
+                this.aliasDefs.set(alias.name.name, {
+                    params: previous && !previous.class && previous.params.length ? previous.params : alias.generics,
+                    node,
+                })
+            }
             if (stmt.type === "DeclareClassStatement") {
                 this.aliasDefs.set(stmt.name.name, { params: [], node: stmt.body, class: stmt })
             }
@@ -3202,8 +3222,15 @@ class TypeAnalyzer {
         const def = methodTable === undefined ? undefined : this.aliasDefs.get(methodTable)
         if (!def || def.class) return undefined
         const table = this.expand(this.instantiateAlias(def as { params: GenericTypeParameter[]; node: TypeNode }, element !== undefined ? [element] : []))
-        const property = table.kind === "object" ? table.properties.get(name) : undefined
-        return property && property.type
+        // Libraries layer, so the set may be an intersection of what each gave
+        // it; the last to declare a name wins.
+        const parts = table.kind === "intersection" ? table.types.map(m => this.expand(m)) : [table]
+        for (let i = parts.length - 1; i >= 0; i--) {
+            const part = parts[i]
+            const property = part.kind === "object" ? part.properties.get(name) : undefined
+            if (property) return property.type
+        }
+        return undefined
     }
 
     private propertyType(raw: Type, name: string): Type {
