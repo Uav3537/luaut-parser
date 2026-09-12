@@ -667,6 +667,38 @@ const rel = (path: string | undefined): string | undefined =>
         [optionalCall.bindings.said, optionalCall.bindings.got, optionalCall.errors],
         ["string | nil", "number | nil", []])
 
+    // A literal written in an argument keeps its literal type when the
+    // parameter asks for one — TypeScript's contextual typing.
+    const request = [
+        `type Request = { Url: string, Method?: "GET" | "POST", Modes?: ("a" | "b")[] }`,
+        "declare function send(r: Request): number",
+        "declare function keep<T>(v: T): T",
+    ].join("\n")
+    check("contextual literals: an argument's object literal keeps what the parameter asks for", [
+        analyze(`${request}\nconst ok = send({ Url: "u", Method: "GET", Modes: ["a"] })`).errors,
+        analyze(`${request}\nsend({ Url: "u", Method: "FETCH" })`).errors,
+        analyze(`${request}\nconst free = keep({ Method: "GET" })`).bindings.free,
+        analyze([
+            `type Outer = { inner: { mode: "a" | "b" } }`,
+            "declare function f(o: Outer): ()",
+            `f({ inner: { mode: "a" } })`,
+        ].join("\n")).errors,
+    ], [
+        [],
+        [`Argument of type '{ Method: "FETCH", Url: string }' is not assignable to parameter of type 'Request'`],
+        "{ Method: string }",
+        [],
+    ])
+
+    // A shorthand field is the same field.
+    check("contextual literals: a shorthand field too",
+        analyze([
+            `type Request = { Method: "GET" | "POST" }`,
+            "declare function send(r: Request): ()",
+            `const Method = "GET"`,
+            "send({ Method })",
+        ].join("\n")).errors, [])
+
     // Definitions files are layers: `@luaut/roblox` adds to `@luaut/lua`
     // rather than replacing it.
     {

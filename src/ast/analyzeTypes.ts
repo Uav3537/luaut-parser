@@ -2203,13 +2203,16 @@ class TypeAnalyzer {
         const objects = this.expectedMembers(expected).filter((m): m is ObjectType => m.kind === "object")
         if (!objects.length) return
         for (const field of e.fields) {
-            if (field.type !== "TableFieldNamed") continue
-            const key = field.key.type === "Identifier" ? field.key.name : field.key.value
+            if (field.type !== "TableFieldNamed" && field.type !== "TableFieldShorthand") continue
+            const key = field.type === "TableFieldShorthand" ? field.name.name
+                : field.key.type === "Identifier" ? field.key.name : field.key.value
             const types = objects.flatMap(o => {
                 const property = o.properties.get(key)
                 return property ? [property.type] : o.indexer ? [o.indexer.value] : []
             })
-            if (types.length) this.applyContext(field.value, union(types))
+            if (types.length) {
+                this.applyContext(field.type === "TableFieldShorthand" ? field.name : field.value, union(types))
+            }
         }
     }
 
@@ -3593,7 +3596,26 @@ class TypeAnalyzer {
             }
         }
         if (asConst && !hadSpread) return tuple(elems)
-        return arrayOf(elems.length ? union(elems.map(t => asConst ? t : widen(t))) : unknownType)
+        return arrayOf(elems.length
+            ? union(elems.map((t, i) => {
+                const element = expr.elements[i]
+                return asConst || !element || element.type === "SpreadElement"
+                    ? t
+                    : this.widenUnlessAsked(t, element)
+            }))
+            : unknownType)
+    }
+
+    /** A literal written inside a fresh table or array widens — `{ n = 1 }` is
+     *  `{ n: number }` — unless the surroundings said a literal belongs there.
+     *  `request({ Method: "GET" })` keeps `"GET"` when `Method` is a union of
+     *  string literals, exactly as TypeScript's contextual typing does, and
+     *  goes on widening to `string` when the parameter only says `string`.
+     *  The context was recorded by `applyContext` before the value was
+     *  inferred, so this is a lookup rather than a second pass. */
+    private widenUnlessAsked(value: Type, at: Expression): Type {
+        const wanted = this.expectedTypeOf.get(at)
+        return wanted === undefined ? widen(value) : this.keepContextualLiterals(value, wanted)
     }
 
     private inferObject(expr: TableExpression, env: FlowEnv, asConst: boolean): Type {
@@ -3602,16 +3624,23 @@ class TypeAnalyzer {
         for (const field of expr.fields) {
             if (field.type === "TableFieldNamed") {
                 const key = field.key.type === "Identifier" ? field.key.name : field.key.value
-                const v = asConst ? this.inferAsConst(field.value, env) : widen(this.infer(field.value, env))
+                const v = asConst ? this.inferAsConst(field.value, env)
+                    : this.widenUnlessAsked(this.infer(field.value, env), field.value)
                 entries.push([key, { type: v, optional: false, readonly: asConst }])
             } else if (field.type === "TableFieldShorthand") {
                 const v = this.infer(field.name, env)
-                entries.push([field.name.name, { type: asConst ? v : widen(v), optional: false, readonly: asConst }])
+                entries.push([field.name.name, {
+                    type: asConst ? v : this.widenUnlessAsked(v, field.name),
+                    optional: false, readonly: asConst,
+                }])
             } else if (field.type === "TableFieldComputed") {
                 const k = this.infer(field.key, env)
                 const v = this.infer(field.value, env)
                 if (k.kind === "literal" && typeof k.value === "string") {
-                    entries.push([k.value, { type: asConst ? v : widen(v), optional: false, readonly: asConst }])
+                    entries.push([k.value, {
+                        type: asConst ? v : this.widenUnlessAsked(v, field.value),
+                        optional: false, readonly: asConst,
+                    }])
                 } else {
                     indexer = mergeIndexer(indexer, { key: widen(k), value: asConst ? v : widen(v) })
                 }
