@@ -1204,7 +1204,17 @@ export class Parser {
             return v === "(" || v === "{"
         }
         if (after.type === "InterpolatedString") return true
-        return after.type === "Literal" && (after as { kind?: unknown }).kind === "string"
+        if (after.type === "Literal" && (after as { kind?: unknown }).kind === "string") return true
+        // `obj:m<T>(...)` — a method call too, if a call really follows the
+        // type arguments. `cond ? obj : name < 3` must stay a ternary.
+        if (after.type === "Operator" && String((after as { value?: unknown }).value) === "<") {
+            const save = this.cursor
+            this.cursor += offset + 2
+            const found = this.tryCallTypeArguments() !== undefined
+            this.cursor = save
+            return found
+        }
+        return false
     }
 
     /** Does the next token start right where the current one ends? */
@@ -1467,10 +1477,11 @@ export class Parser {
                     this.advance()
                     this.advance()
                     const method = this.parseIdentifier()
+                    const typeArguments = this.tryCallTypeArguments()
                     const args = this.parseCallArguments()
                     base = {
                         type: "MethodCallExpression",
-                        object: base, method, arguments: args, optional: true,
+                        object: base, method, arguments: args, typeArguments, optional: true,
                         ...spanFrom(base, this.previous()),
                     }
                     continue
@@ -1496,16 +1507,28 @@ export class Parser {
             if (this.checkPunctuator(":") && this.startsMethodCall()) {
                 this.advance()
                 const method = this.parseIdentifier()
+                const typeArguments = this.tryCallTypeArguments()
                 const args = this.parseCallArguments()
                 base = {
                     type: "MethodCallExpression",
-                    object: base, method, arguments: args,
+                    object: base, method, arguments: args, typeArguments,
                     ...spanFrom(base, this.previous()),
                 }
                 continue
             }
-            if (this.checkPunctuator("(") || this.checkType("Literal") && (this.current() as any).kind === "string" ||
-                this.checkType("InterpolatedString") || this.checkPunctuator("{")) {
+            if (this.checkOperator("<")) {
+                const typeArguments = this.tryCallTypeArguments()
+                if (typeArguments) {
+                    const args = this.parseCallArguments()
+                    base = {
+                        type: "CallExpression",
+                        callee: base, arguments: args, typeArguments,
+                        ...spanFrom(base, this.previous()),
+                    }
+                    continue
+                }
+            }
+            if (this.startsCallArguments()) {
                 const args = this.parseCallArguments()
                 base = {
                     type: "CallExpression",
@@ -1526,6 +1549,36 @@ export class Parser {
         if (this.checkPunctuator("{")) return this.parseObjectPattern()
         if (this.checkPunctuator("[")) return this.parseArrayPattern()
         return this.parsePrefixExpression()
+    }
+
+    /** Does a call's argument list start here? Lua's three forms: `(`, a
+     *  string, or a table. */
+    private startsCallArguments(): boolean {
+        return this.checkPunctuator("(") || this.checkPunctuator("{") ||
+            this.checkType("InterpolatedString") ||
+            (this.checkType("Literal") && (this.current() as { kind?: unknown }).kind === "string")
+    }
+
+    /** `f<A, B>(x)` — type arguments, when that is what this is. `a < b > (c)`
+     *  is three operators, and only what follows the `>` tells them apart, so
+     *  this reads ahead and puts the cursor back when the guess was wrong. */
+    private tryCallTypeArguments(): (TypeNode | TypePackNode)[] | undefined {
+        if (!this.checkOperator("<")) return undefined
+        const start = this.cursor
+        const errors = this.errors.length
+        try {
+            this.advance()
+            const list: (TypeNode | TypePackNode)[] = [this.parseTypeArgument()]
+            while (this.matchPunctuator(",") && !this.checkOperator(">")) list.push(this.parseTypeArgument())
+            this.expectOperator(">")
+            if (!this.startsCallArguments()) throw new ParseRecover("not a call")
+            return list
+        } catch (e) {
+            if (!(e instanceof ParseError || e instanceof ParseRecover)) throw e
+            this.cursor = start
+            this.errors.length = errors
+            return undefined
+        }
     }
 
     private parseCallArguments(): Expression[] {

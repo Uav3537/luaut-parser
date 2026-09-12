@@ -655,6 +655,37 @@ const rel = (path: string | undefined): string | undefined =>
         "number",
     ])
 
+    // Type arguments written at the call, and `<T = ...>` when they are not.
+    const typeArguments = analyze([
+        "declare class Instance {}",
+        "declare class Folder extends Instance {}",
+        "declare function find<T = Instance>(name: string): T | nil",
+        "declare inst: {",
+        "    Find: <T = Instance>(self: unknown, name: string) -> T | nil,",
+        "    Wait: (<T = Instance>(self: unknown, name: string) -> T) & (<T = Instance>(self: unknown, name: string, timeout: number) -> T | nil),",
+        "}",
+        `const typed = find<Folder>("x")`,
+        `const bare = find("x")`,
+        `const method = inst:Find<Folder>("x")`,
+        `const waited = inst:Wait<Folder>("x")`,
+        `const timed = inst:Wait<Folder>("x", 5)`,
+        `const tooMany = find<Folder, Folder>("x")`,
+        "declare a: number",
+        "declare b: number",
+        "const compared = a < b",
+    ].join("\n"))
+    check("type arguments: written at the call, defaulted when not, and counted", [
+        typeArguments.bindings.typed, typeArguments.bindings.bare, typeArguments.bindings.method,
+        typeArguments.bindings.waited, typeArguments.bindings.timed, typeArguments.bindings.compared,
+        typeArguments.errors,
+    ], [
+        "Folder | nil", "Instance | nil", "Folder | nil",
+        "Folder", "Folder | nil", "boolean",
+        ["Expected 1 type argument, got 2"],
+    ])
+    check("type arguments: `a < b > (c)` is still three operators",
+        parseError("declare a: number\ndeclare b: number\ndeclare c: number\nconst x = (a < b) == (b < c)"), undefined)
+
     // The implementation of an overload set sees what its signatures allow.
     const implementation = analyze([
         "declare class Player {}",

@@ -245,6 +245,11 @@ built in, and written in luaut on top of those rather than special-cased in
 the analyzer. A type library or a file may declare one again; the later
 declaration wins.
 
+A call may write its type arguments out — `find<Folder>("Remotes")`,
+`inst:WaitForChild<Folder>("Remotes")` — and a type parameter may have a
+default (`<T = Instance>`) for the calls that do not. `a < b > (c)` is still
+three operators: only a call after the `>` makes it type arguments.
+
 `<const T>` infers an argument at its narrowest, as in TypeScript 5.
 
 `typeof x` in a type is TypeScript's type query — the type of a value

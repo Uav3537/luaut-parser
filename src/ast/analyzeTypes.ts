@@ -1203,13 +1203,13 @@ class TypeAnalyzer {
                             : this.resolveType(p.typeAnnotation),
                         optional: p.optional,
                     }))
-                    return fn(
+                    return this.withTypeParamDefaults(fn(
                         params,
                         this.resolveType(node.returnType),
                         node.hasVarargs ? (node.varargType ? this.resolveType(node.varargType) : anyType) : undefined,
                         names,
                         this.resolvePredicate(node.predicate, params),
-                    )
+                    ), node.generics)
                 })
             }
             case "TypeofTypeNode": {
@@ -2283,11 +2283,11 @@ class TypeAnalyzer {
 
     /** Return type of calling `f` with `argTypes`. For a generic function,
      *  infers the type parameters from the arguments and substitutes. */
-    private callReturn(f: Extract<Type, { kind: "function" }>, argTypes: Type[]): Type {
+    private callReturn(f: Extract<Type, { kind: "function" }>, argTypes: Type[], explicit?: readonly Type[]): Type {
         if (!f.typeParams?.length) return f.returns
         // Reduce after substituting: a return type such as `Services[K]` is a
         // deferred indexed access until `K` is known, which is exactly now.
-        return this.reduceType(substitute(f.returns, this.inferTypeArgs(f, argTypes)))
+        return this.reduceType(substitute(f.returns, this.inferTypeArgs(f, argTypes, explicit)))
     }
 
     /** Infer a generic call's type arguments from the argument types.
@@ -2296,9 +2296,47 @@ class TypeAnalyzer {
      *  `1` — *except* against a parameter whose constraint is made of literal
      *  types, where the literal is the whole point. That is what lets
      *  `<K extends keyof T>(name: K) -> T[K]` pick out one property. */
-    private inferTypeArgs(f: FunctionType, argTypes: Type[]): Map<string, Type> {
-        const vars = new Set(f.typeParams ?? [])
+    /** The type arguments a call writes out, checked for count. */
+    private explicitTypeArguments(
+        expr: { typeArguments?: (TypeNode | TypePackNode)[] },
+        fns: readonly FunctionType[],
+    ): Type[] | undefined {
+        const written = expr.typeArguments
+        if (!written?.length) return undefined
+        const resolved = written.map(node => this.resolveType(node as TypeNode))
+        const most = Math.max(0, ...fns.map(f => f.typeParams?.length ?? 0))
+        if (this.emitDiagnostics && resolved.length > most) {
+            this.diagnostics.push({
+                node: written[most] as TypeNode,
+                message: most === 0
+                    ? "This call takes no type arguments"
+                    : `Expected ${most} type argument${most === 1 ? "" : "s"}, got ${resolved.length}`,
+            })
+        }
+        return resolved
+    }
+
+    /** `<T = Instance>`: what a call falls back to for a parameter it neither
+     *  is given nor can infer. */
+    private withTypeParamDefaults(type: Type, generics: readonly GenericTypeParameter[]): Type {
+        if (type.kind !== "function") return type
+        const defaults: Record<string, Type> = {}
+        for (const generic of generics) {
+            if (generic.default && !generic.isPack) defaults[generic.name] = this.resolveType(generic.default as TypeNode)
+        }
+        return Object.keys(defaults).length ? { ...type, typeParamDefaults: defaults } : type
+    }
+
+    private inferTypeArgs(f: FunctionType, argTypes: Type[], explicit?: readonly Type[]): Map<string, Type> {
         const subst = new Map<string, Type>()
+        // `f<Folder>(x)`: what the call says takes precedence over what its
+        // arguments would suggest.
+        if (explicit?.length) {
+            (f.typeParams ?? []).forEach((name, i) => {
+                if (explicit[i]) subst.set(name, explicit[i])
+            })
+        }
+        const vars = new Set((f.typeParams ?? []).filter(name => !subst.has(name)))
         f.params.forEach((p, i) => {
             const arg = argTypes[i]
             if (arg === undefined) return
@@ -2310,7 +2348,9 @@ class TypeAnalyzer {
                 : p.type
             unify(p.type, keepsLiterals(param) ? arg : widen(arg), vars, subst)
         })
-        for (const name of f.typeParams ?? []) if (!subst.has(name)) subst.set(name, unknownType)
+        for (const name of f.typeParams ?? []) {
+            if (!subst.has(name)) subst.set(name, f.typeParamDefaults?.[name] ?? unknownType)
+        }
         return subst
     }
 
@@ -3287,6 +3327,7 @@ class TypeAnalyzer {
 
     private inferCall(expr: Extract<Expression, { type: "CallExpression" }>, callee: Type, env: FlowEnv): Type {
         const fns = this.overloadsOf(callee)
+        const explicit = this.explicitTypeArguments(expr, fns)
         const expected = this.expectedArguments(expr.arguments, fns, () => 0)
         expr.arguments.forEach((a, i) => this.applyContext(a, expected[i]))
         const argTypes = expr.arguments.map(a => this.infer(a, env))
@@ -3298,18 +3339,19 @@ class TypeAnalyzer {
             if (distributed) return distributed
             if (picked) {
                 this.checkInferredArguments(expr, expr.arguments, picked, argTypes, 0)
-                return this.callReturn(picked, this.constArgs(picked, expr.arguments, argTypes, env))
+                return this.callReturn(picked, this.constArgs(picked, expr.arguments, argTypes, env), explicit)
             }
             if (arityFits) this.reportArguments(expr, expr.arguments, fns, () => argTypes, () => 0)
             // Nothing accepts these arguments — the union of what any
             // signature could return is the most we can honestly say.
-            return union(fns.map(f => this.callReturn(f, argTypes)))
+            return union(fns.map(f => this.callReturn(f, argTypes, explicit)))
         }
         return callee.kind === "any" ? anyType : unknownType
     }
 
     private inferMethodCall(expr: Extract<Expression, { type: "MethodCallExpression" }>, objType: Type, env: FlowEnv): Type {
         const fns = this.overloadsOf(this.propertyType(objType, expr.method.name))
+        const explicit = this.explicitTypeArguments(expr, fns)
         const expected = this.expectedArguments(expr.arguments, fns, f => (this.takesSelf(f) ? 1 : 0))
         expr.arguments.forEach((a, i) => this.applyContext(a, expected[i]))
         const argTypes = expr.arguments.map(a => this.infer(a, env))
@@ -3333,10 +3375,10 @@ class TypeAnalyzer {
                 const self = this.takesSelf(picked) ? 1 : 0
                 this.checkInferredArguments(expr, expr.arguments, picked, withSelf(picked), self)
                 const written = this.constArgs(picked, expr.arguments, argTypes, env, self)
-                return this.callReturn(picked, this.takesSelf(picked) ? [objType, ...written] : written)
+                return this.callReturn(picked, this.takesSelf(picked) ? [objType, ...written] : written, explicit)
             }
             if (arityFits) this.reportArguments(expr, expr.arguments, fns, withSelf, selfOf)
-            return union(fns.map(f => this.callReturn(f, withSelf(f))))
+            return union(fns.map(f => this.callReturn(f, withSelf(f), explicit)))
         }
         return objType.kind === "any" ? anyType : unknownType
     }

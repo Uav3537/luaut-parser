@@ -118,6 +118,9 @@ export interface FunctionType {
     /** Names of the function's own generic parameters (`function f<T>(...)`).
      *  `params` / `returns` may contain `typeParam` nodes for these. */
     typeParams?: string[]
+    /** `<T = Instance>` — what a call uses for a parameter it is not given and
+     *  cannot infer. */
+    typeParamDefaults?: Record<string, Type>
     /** Set when the function was declared with an `x is T` / `asserts x` return. */
     predicate?: TypePredicate
 }
@@ -325,6 +328,7 @@ export function substitute(t: Type, subst: Map<string, Type>): Type {
                 varargs,
                 returns: substitute(t.returns, inner),
                 typeParams: t.typeParams,
+                typeParamDefaults: t.typeParamDefaults,
                 predicate: t.predicate && {
                     ...t.predicate,
                     type: t.predicate.type && substitute(t.predicate.type, inner),

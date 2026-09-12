@@ -548,6 +548,8 @@ export interface CallExpression extends BaseNode {
     type: "CallExpression"
     callee: Expression
     arguments: Expression[]
+    /** `f<T>(x)` — type arguments written out rather than inferred. */
+    typeArguments?: (TypeNode | TypePackNode)[]
 }
 
 export interface MethodCallExpression extends BaseNode {
@@ -555,6 +557,8 @@ export interface MethodCallExpression extends BaseNode {
     object: Expression
     method: Identifier
     arguments: Expression[]
+    /** `obj:m<T>(x)` — see `CallExpression.typeArguments`. */
+    typeArguments?: (TypeNode | TypePackNode)[]
     /** `object?:method(...)` — see `MemberExpression.optional`. The
      *  arguments are not evaluated when `object` is nil. */
     optional?: boolean
