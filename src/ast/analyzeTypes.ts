@@ -1650,6 +1650,7 @@ class TypeAnalyzer {
                     if (stmt.kind === "const") {
                         this.correlateDestructuring(target, inferred, env)
                         this.correlateIndexed(target, source, env)
+                        this.aliasReference(target, source)
                     }
                 })
                 return
@@ -2842,6 +2843,68 @@ class TypeAnalyzer {
      *  member, so testing `kind` narrows `payload` (TypeScript's destructured
      *  discriminated unions). Only plain `name` / `key: name` properties take
      *  part. */
+    /** Names that denote one and the same value: `const c = player.Character`
+     *  makes `c` and `player.Character` two spellings of one reference. Kept
+     *  as an undirected graph of flow keys. */
+    private readonly refAliases = new Map<RefKey, Set<RefKey>>()
+
+    /** `const c = a.b` — `c` cannot be re-bound and the path was read once, so
+     *  a test of either name is a test of the same value. Only property paths
+     *  take part: `const c = other` would tie `c` to a name that may itself be
+     *  assigned a different value later. */
+    private aliasReference(target: BindingTarget, init: Expression | undefined): void {
+        if (target.type !== "IdentifierPattern" || !init) return
+        const source = unwrapParens(init)
+        if (source.type !== "MemberExpression" && source.type !== "IndexExpression") return
+        const path = this.refKeyOf(source)
+        const id = this.bindingIdByName(target.name, target)
+        if (path === undefined || id === undefined) return
+        const name = bindKey(id)
+        for (const [a, b] of [[name, path], [path, name]]) {
+            const set = this.refAliases.get(a) ?? new Set<RefKey>()
+            set.add(b)
+            this.refAliases.set(a, set)
+        }
+    }
+
+    /** A reference was narrowed: give every other spelling of the same value
+     *  the same news. Walks the alias graph, so a path with two names told by
+     *  one of them reaches the other. Each alias keeps whatever it already
+     *  knew — the narrowing only ever cuts the type further down. */
+    private propagateAliases(env: FlowEnv, into: FlowEnv, key: RefKey, narrowed: Type): void {
+        if (!this.refAliases.size) return
+        const seen = new Set<RefKey>([key])
+        const queue: [RefKey, Type][] = [[key, narrowed]]
+        const learn = (at: RefKey, t: Type): void => {
+            seen.add(at)
+            this.setRef(into, at, t)
+            this.correlate(into, at, t)
+            queue.push([at, t])
+        }
+        for (let at = 0; at < queue.length; at++) {
+            const [from, t] = queue[at]
+            for (const other of this.refAliases.get(from) ?? []) {
+                if (seen.has(other)) continue
+                const current = into.get(other) ?? env.get(other) ?? this.declaredAtRef(other)
+                const next = narrowTo(current, t)
+                learn(other, next.kind === "never" ? t : next)
+                // The alias may itself be a property of something — the same
+                // walk up the path `narrowRef` does for the tested reference,
+                // so a copied discriminant still picks its union member.
+                for (let child = other, value = into.get(other)!; ;) {
+                    const cut = child.lastIndexOf(".")
+                    if (cut <= 0) break
+                    const parent = child.slice(0, cut)
+                    if (seen.has(parent)) break
+                    const had = into.get(parent) ?? env.get(parent) ?? this.declaredAtRef(parent)
+                    value = this.filterByProperty(had, child.slice(cut + 1), value)
+                    learn(parent, value)
+                    child = parent
+                }
+            }
+        }
+    }
+
     /** `const path = paths[stat]` where `stat` is one of several keys: which
      *  value came back says which key was asked for. Testing the value then
      *  narrows the key — the `else` of `if path then` leaves exactly the keys
@@ -3998,6 +4061,8 @@ class TypeAnalyzer {
         this.setRef(f, key, no)
         this.correlate(t, key, yes)
         this.correlate(f, key, no)
+        this.propagateAliases(env, t, key, yes)
+        this.propagateAliases(env, f, key, no)
 
         const inner = expr.type === "ParenthesizedExpression" ? expr.expression : expr
         if (inner.type !== "MemberExpression" && inner.type !== "IndexExpression") return
@@ -4037,6 +4102,16 @@ class TypeAnalyzer {
         env.set(key, t)
     }
 
+    /** An assignment to a path (or to anything it hangs off) means the name
+     *  that copied it no longer holds that value: forget the alias. */
+    private unalias(key: RefKey): void {
+        for (const k of [...this.refAliases.keys()]) {
+            if (k !== key && !k.startsWith(`${key}.`) && !k.startsWith(`${key}#`)) continue
+            for (const other of this.refAliases.get(k) ?? []) this.refAliases.get(other)?.delete(k)
+            this.refAliases.delete(k)
+        }
+    }
+
     /** Drop every narrowing recorded for a path strictly under `key`. */
     private invalidateBelow(env: FlowEnv, key: RefKey): void {
         for (const k of [...env.keys()]) {
@@ -4050,6 +4125,7 @@ class TypeAnalyzer {
         const key = this.refKeyOf(expr)
         if (key === undefined) return
         this.invalidateBelow(env, key)
+        this.unalias(key)
         env.set(key, value)
     }
 

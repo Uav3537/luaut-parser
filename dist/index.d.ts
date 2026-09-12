@@ -54,6 +54,10 @@ interface InterpolatedStringPart_String {
 interface InterpolatedStringPart_Expression {
     kind: "expression";
     raw: string;
+    /** Where `raw` starts in the file, so what is parsed from it can be
+     *  placed there rather than at the top of an imaginary one. */
+    line: number;
+    column: number;
 }
 interface InterpolatedStringToken extends BaseToken {
     type: "InterpolatedString";
@@ -68,7 +72,72 @@ declare class LexError extends Error {
     column: number;
     constructor(message: string, line: number, column: number);
 }
-declare function tokenize(source: string): Token[];
+/** A `--` comment: its text after the dashes (a long comment's content), and
+ *  where it starts and ends. */
+interface SourceComment {
+    text: string;
+    line: number;
+    column: number;
+    endLine: number;
+}
+interface TokenizeOptions {
+    /** When given, a malformed token is recorded here instead of thrown, and
+     *  lexing goes on: an unclosed string or comment ends at the end of its
+     *  line (a long bracket at the end of the source), and a character that
+     *  starts no token is skipped. An editor mid-keystroke still gets every
+     *  other token. */
+    errors?: LexError[];
+    /** When given, every comment is collected here, in order. */
+    comments?: SourceComment[];
+}
+declare function tokenize(source: string, options?: TokenizeOptions): Token[];
+
+/**
+ * Comments that switch checking off, as TypeScript's `// @ts-...` comments do:
+ *
+ *     --@luaut-nocheck         no scope or type errors anywhere in this file
+ *     --@luaut-ignore          none on the next line of code
+ *     --@luaut-expect-error    none on the next line of code, and an error if
+ *                              that line has none to suppress
+ *
+ * A space after `--` is fine, and so is text after the directive (a reason).
+ * `nocheck` counts only in the comments before the first line of code, as in
+ * TypeScript. Syntax errors are never suppressed: code that does not parse
+ * cannot be compiled either way.
+ */
+type DirectiveKind = "nocheck" | "ignore" | "expect-error";
+interface Directive {
+    kind: DirectiveKind;
+    /** Where the comment starts. */
+    line: number;
+    column: number;
+    /** `ignore` / `expect-error`: the line whose diagnostics it covers — the
+     *  next line with code on it. */
+    target?: number;
+}
+interface Directives {
+    /** The file has `--@luaut-nocheck` before its first line of code. */
+    nocheck: boolean;
+    /** Every directive, in order — a `nocheck` after the code starts included,
+     *  so a tool can point out that it does nothing. */
+    all: Directive[];
+}
+/** The directives in `comments`, placed against `tokens` (both from one
+ *  `tokenize` of the file). */
+declare function readDirectives(comments: readonly SourceComment[], tokens: readonly Token[]): Directives;
+/** The directives of `source`, for a caller that parsed it some other way. */
+declare function directivesOf(source: string): Directives;
+interface DirectiveOutcome<T> {
+    /** The diagnostics no directive suppresses. */
+    kept: T[];
+    /** `--@luaut-expect-error` comments with nothing to suppress. Each is an
+     *  error to report: "Unused '@luaut-expect-error' directive". */
+    unusedExpectErrors: Directive[];
+}
+/** Filter scope and type diagnostics — never syntax errors — through the
+ *  file's directives. `lineOf` gives the line a diagnostic starts on. */
+declare function applyDirectives<T>(directives: Directives, diagnostics: readonly T[], lineOf: (diagnostic: T) => number): DirectiveOutcome<T>;
+declare const UNUSED_EXPECT_ERROR = "Unused '@luaut-expect-error' directive";
 
 interface BaseNode {
     line: {
@@ -99,11 +168,17 @@ interface ImportStatement extends BaseNode {
     type: "ImportStatement";
     /** `import Default from '...'` */
     defaultImport?: Identifier;
+    /** `import * as Module from '...'` — the module's exports as one value. */
+    namespaceImport?: Identifier;
+    /** `import type { A } from '...'`: every name it brings in is a type and
+     *  may only be used as one — never as a value. It exists for the type
+     *  checker alone, and leaves nothing in compiled code. */
+    isTypeOnly?: boolean;
     /** `import { a, b as c } from '...'` */
     specifiers: ImportSpecifier[];
     source: StringLiteral;
 }
-/** `export const x = 1`, `export let y = 2`, `export const function f() end` */
+/** `export const x = 1`, `export let y = 2`, `export function f() end` */
 interface ExportStatement extends BaseNode {
     type: "ExportStatement";
     declaration: VariableDeclaration | FunctionDeclaration;
@@ -135,7 +210,7 @@ interface ExportAllStatement extends BaseNode {
     type: "ExportAllStatement";
     source: StringLiteral;
 }
-type Statement = VariableDeclaration | FunctionDeclaration | FunctionDeclarationStatement | AssignmentStatement | CompoundAssignmentStatement | CallStatement | DoStatement | WhileStatement | RepeatStatement | IfStatement | NumericForStatement | GenericForStatement | ReturnStatement | BreakStatement | ContinueStatement | TypeAliasStatement | ExportTypeAliasStatement | ImportStatement | ExportStatement | ExportDefaultStatement | ExportNamedStatement | ExportAllStatement | DeclareStatement | ErrorStatement;
+type Statement = VariableDeclaration | FunctionDeclaration | FunctionDeclarationStatement | AssignmentStatement | CompoundAssignmentStatement | CallStatement | DoStatement | WhileStatement | RepeatStatement | IfStatement | NumericForStatement | GenericForStatement | ReturnStatement | BreakStatement | ContinueStatement | TypeAliasStatement | ExportTypeAliasStatement | ImportStatement | ExportStatement | ExportDefaultStatement | ExportNamedStatement | ExportAllStatement | DeclareStatement | DeclareClassStatement | ErrorStatement;
 /** `declare game: DataModel` / `declare function require(m: string): unknown`
  *  — an ambient value/function declaration for a definitions file (`.d.luaut`).
  *  Contributes a global type; emits no runtime code. */
@@ -146,6 +221,18 @@ interface DeclareStatement extends BaseNode {
     id: Identifier;
     /** the declared value's type (function form is lowered to a FunctionTypeNode) */
     valueType: TypeNode;
+}
+/** `declare class Part extends BasePart { Shape: EnumItem }` — a *nominal*
+ *  type for a definitions file, the way Roblox's own classes are: a `Part` is
+ *  an `Instance` because it extends one, not because it has the same members,
+ *  and no table literal is ever a `Part`. The body lists the members the class
+ *  adds; it inherits the rest. Declares a type only, no value. */
+interface DeclareClassStatement extends BaseNode {
+    type: "DeclareClassStatement";
+    name: Identifier;
+    /** `extends Base` — another class. */
+    superclass?: TypeReference;
+    body: TableTypeNode;
 }
 /** A statement position that could not be parsed. Only produced when parsing
  *  in recovery mode (`parseWithRecovery`); its span covers the skipped tokens
@@ -202,17 +289,22 @@ interface ArrayPatternElement extends BaseNode {
     value: BindingTarget;
     default?: Expression;
 }
-/** `const function f() ... end` / `let function f() ... end` — a named,
- *  self-referential (recursive) function binding. */
+/** `function f() ... end` — declares `f` in the enclosing scope, visible to
+ *  its own body (so it can recurse). Like TypeScript's function declaration,
+ *  the name cannot be reassigned. `function a.b() end` and `function T:m() end`
+ *  assign to a member instead: see `FunctionDeclarationStatement`. */
 interface FunctionDeclaration extends BaseNode {
     type: "FunctionDeclaration";
-    kind: "const" | "let";
+    /** The name on the line the body is written on, when the declaration is
+     *  an overload set — `name` is the first signature's. */
+    implementationName?: Identifier;
     name: Identifier;
     func: FunctionBody;
     attributes?: string[];
     /** TS-style overload signatures preceding the implementation (`func`). */
     signatures?: FunctionSignature[];
 }
+/** `function a.b() end` / `function T:m() end` — defines a member. */
 interface FunctionDeclarationStatement extends BaseNode {
     type: "FunctionDeclarationStatement";
     target: FunctionName;
@@ -227,6 +319,9 @@ interface FunctionDeclarationStatement extends BaseNode {
  *  followed by the implementation `function f(...) ... end`. */
 interface FunctionSignature extends BaseNode {
     type: "FunctionSignature";
+    /** The name this signature was written with — one line of an overload
+     *  set, each of which a tool can point at on its own. */
+    name?: Identifier;
     generics: GenericTypeParameter[];
     params: FunctionParameter[];
     hasVarargs: boolean;
@@ -327,7 +422,14 @@ interface GenericTypeParameter extends BaseNode {
     constraint?: TypeNode;
     default?: TypeNode | TypePackNode;
 }
-type Expression = Identifier | NilLiteral | BooleanLiteral | NumberLiteral | StringLiteral | InterpolatedStringExpression | VarargExpression | FunctionExpression | TableExpression | ArrayExpression | BinaryExpression | UnaryExpression | MemberExpression | IndexExpression | CallExpression | MethodCallExpression | ParenthesizedExpression | TypeAssertionExpression | SatisfiesExpression | AsConstExpression | IfElseExpression;
+type Expression = Identifier | NilLiteral | BooleanLiteral | NumberLiteral | StringLiteral | InterpolatedStringExpression | VarargExpression | FunctionExpression | TableExpression | ArrayExpression | BinaryExpression | UnaryExpression | MemberExpression | IndexExpression | CallExpression | MethodCallExpression | ParenthesizedExpression | TypeAssertionExpression | SatisfiesExpression | AsConstExpression | IfElseExpression | ErrorExpression;
+/** An expression that could not be parsed. Only produced in recovery mode
+ *  (`parseWithRecovery`), where a broken initializer, condition, field value or
+ *  argument keeps its place in the tree; its span covers the skipped tokens
+ *  (and is empty when nothing was written). Its type is `any`. */
+interface ErrorExpression extends BaseNode {
+    type: "ErrorExpression";
+}
 interface Identifier extends BaseNode {
     type: "Identifier";
     name: string;
@@ -454,6 +556,9 @@ interface MemberExpression extends BaseNode {
     type: "MemberExpression";
     object: Expression;
     property: Identifier;
+    /** `object?.property` — when `object` is nil, the whole chain this link
+     *  belongs to is nil and nothing after it is evaluated. */
+    optional?: boolean;
 }
 interface IndexExpression extends BaseNode {
     type: "IndexExpression";
@@ -464,12 +569,19 @@ interface CallExpression extends BaseNode {
     type: "CallExpression";
     callee: Expression;
     arguments: Expression[];
+    /** `f<T>(x)` — type arguments written out rather than inferred. */
+    typeArguments?: (TypeNode | TypePackNode)[];
 }
 interface MethodCallExpression extends BaseNode {
     type: "MethodCallExpression";
     object: Expression;
     method: Identifier;
     arguments: Expression[];
+    /** `obj:m<T>(x)` — see `CallExpression.typeArguments`. */
+    typeArguments?: (TypeNode | TypePackNode)[];
+    /** `object?:method(...)` — see `MemberExpression.optional`. The
+     *  arguments are not evaluated when `object` is nil. */
+    optional?: boolean;
 }
 interface ParenthesizedExpression extends BaseNode {
     type: "ParenthesizedExpression";
@@ -704,6 +816,11 @@ interface ParserOptions {
      *  first one. The returned AST has an `ErrorStatement` wherever a statement
      *  could not be parsed. */
     recover?: boolean;
+    /** Recovery only: read where a block ends from indentation when an `end`
+     *  is missing — a line indented no deeper than the line that opened the
+     *  block is past it. Valid code never needs this; `parseWithRecovery`
+     *  reparses with it when the first pass found an `end` missing. */
+    indentation?: boolean;
 }
 declare function parse(source: string): Program;
 declare function parseTokens(tokens: Token[]): Program;
@@ -711,13 +828,16 @@ declare function parseExpressionFromSource(raw: string): Expression;
 interface RecoverResult {
     program: Program;
     errors: ParseError[];
+    /** The file's `--@luaut-...` comments; see `applyDirectives`. */
+    directives: Directives;
 }
 /**
- * Like `parse`, but never throws on a syntax error: it records every error,
- * synchronizes to the next statement boundary, and returns a best-effort AST
- * (with `ErrorStatement` nodes where statements were skipped). A lexer error
- * still can't produce a partial token stream, so it comes back as the sole
- * entry in `errors` alongside an empty program.
+ * Like `parse`, but never throws on a syntax error: it records every error and
+ * returns a best-effort AST. A broken expression becomes an `ErrorExpression`,
+ * a broken field or argument is skipped to the next `,`, a missing `)`, `}`,
+ * `then`, `do` or `end` is recorded and read past, and only what none of those
+ * cover becomes an `ErrorStatement`. A malformed token (an unclosed string) is
+ * an error too, and the rest of the file still lexes.
  *
  * This is the entry point a language server should use for open documents.
  */
@@ -746,8 +866,12 @@ interface Binding {
      *  bindings are never given a `declarationNode` from assignment
      *  inference, since they're not really "defined" in this file. */
     isBuiltin?: boolean;
-    /** True for a `const` binding — reassigning it is an error. */
+    /** True for a binding that cannot be reassigned: a `const`, an import, or
+     *  a function declaration. */
     isConst?: boolean;
+    /** Set when the binding comes from something other than `const` / `let`,
+     *  which is also what an error about reassigning it names. */
+    declaredBy?: "import" | "namespace" | "function" | "type";
 }
 interface ScopeDiagnostic {
     /** the offending node (redeclaration site, or assignment target) */
@@ -762,7 +886,7 @@ interface ScopeDiagnostic {
         };
     };
     message: string;
-    kind: "redeclare" | "const-assign";
+    kind: "redeclare" | "const-assign" | "type-only" | "undeclared" | "use-before-define";
 }
 interface ScopeAnalysis {
     /** Every Identifier that appears in a variable *usage* position (i.e.
@@ -788,6 +912,12 @@ interface AnalyzeScopesOptions {
      *  one of these does not count as "defining" it, so `declarationNode`
      *  is left unset even though the binding exists up front. */
     builtinGlobals?: readonly string[];
+    /** Report each read of a name nothing declares — not a local, not one of
+     *  `builtinGlobals`, not `declare`d in the file, never assigned as a
+     *  global: "Cannot find name 'x'", as TypeScript says. Only meaningful
+     *  when `builtinGlobals` lists everything the file's type libraries
+     *  declare, so it is off unless asked for. */
+    reportUndeclared?: boolean;
 }
 declare function getBinding(analysis: ScopeAnalysis, id: Identifier | IdentifierPattern): Binding | undefined;
 declare function isGlobal(binding: Binding): boolean;
@@ -858,7 +988,26 @@ interface ObjectType {
     /** The alias this object was resolved from — display only, ignored by
      *  `isAssignable` (the type is structural). Dropped on `widen`/`substitute`. */
     name?: string;
+    /** Set on a `declare class` — the type is then *nominal*. See `ClassInfo`. */
+    class?: ClassInfo;
 }
+/** What makes an object a class instance. `properties` then holds every
+ *  member, inherited ones included. Only the class itself and the classes
+ *  extending it are assignable to it — no table literal, no structurally
+ *  identical class. Going the other way, a class satisfies a shape naming
+ *  members it has (`{ Name: string }`) but is not a table: never a
+ *  `{ [K]: V }` or `{}`, which is what keeps `typeof(part)` from matching the
+ *  `{ [unknown]: unknown }` overload. */
+interface ClassInfo {
+    name: string;
+    /** The class it directly extends, if any. */
+    superclass?: string;
+    /** The class itself, then each class it extends, nearest first. */
+    ancestors: readonly string[];
+}
+declare function isClassType(t: Type): t is ObjectType & {
+    class: ClassInfo;
+};
 interface FunctionParam {
     name?: string;
     type: Type;
@@ -884,6 +1033,9 @@ interface FunctionType {
     /** Names of the function's own generic parameters (`function f<T>(...)`).
      *  `params` / `returns` may contain `typeParam` nodes for these. */
     typeParams?: string[];
+    /** `<T = Instance>` — what a call uses for a parameter it is not given and
+     *  cannot infer. */
+    typeParamDefaults?: Record<string, Type>;
     /** Set when the function was declared with an `x is T` / `asserts x` return. */
     predicate?: TypePredicate;
 }
@@ -1065,7 +1217,10 @@ declare function overlaps(a: Type, b: Type): boolean;
 declare function formatType(t: Type): string;
 
 interface TypeDiagnostic {
-    node: Expression | Statement;
+    /** Usually an expression or statement; a type where the type is wrong
+     *  (`declare class A extends NotAClass`), or a block where nothing in it
+     *  is to blame (a function that never returns). Only its span is read. */
+    node: Expression | Statement | TypeNode | Block;
     message: string;
 }
 interface TypeAnalysis {
@@ -1080,6 +1235,12 @@ interface TypeAnalysis {
      *  `typeof x`, a property's type inside `{ ... }`. Inside a generic alias or
      *  function its parameters stay unresolved (`T`). */
     readonly typeOfTypeNode: Map<TypeNode | TypePackNode, Type>;
+    /** What each call argument is expected to be: the parameter it lands on,
+     *  with the signature's type parameters replaced by their constraints — a
+     *  union when an overload set disagrees. Recorded even for a call that does
+     *  not type-check, since that is exactly when an editor wants to offer the
+     *  values that would. */
+    readonly expectedTypeOf: Map<Expression, Type>;
     /** Top-level type aliases, resolved — and the type names this module
      *  imports, so tooling treats both alike. */
     readonly aliases: Map<string, Type>;
@@ -1093,7 +1254,7 @@ interface ExportedType {
 }
 /** What a module makes available to `import`. See `moduleExports`. */
 interface ModuleExports {
-    /** `export const` / `export let` / `export const function` names. */
+    /** `export const` / `export let` / `export function` names. */
     readonly values: ReadonlyMap<string, Type>;
     /** `export type` names. */
     readonly types: ReadonlyMap<string, ExportedType>;
@@ -1111,7 +1272,8 @@ interface AnalyzeTypesOptions {
     libTypes?: Record<string, Type>;
     /** Parsed definitions files (`.d.luaut`): their `type` aliases become
      *  available to annotations and their `declare` statements seed global
-     *  types. See `robloxLib`. */
+     *  types. A project lists them under `types` in `luaut.config.json`; see
+     *  `resolveTypeLibraries`. */
     libs?: readonly Program[];
     /** Resolve an `import`'s module path to what that module exports. Called
      *  once per distinct path. Return `undefined` when there is no such module:
@@ -1120,6 +1282,11 @@ interface AnalyzeTypesOptions {
     resolveModule?: (specifier: string) => ModuleExports | undefined;
     /** Emit assignability diagnostics (default: true). */
     diagnostics?: boolean;
+    /** Report each type name nothing declares: "Cannot find name 'Nope'".
+     *  Only meaningful when `libs` holds everything the file can name, so it
+     *  is off unless asked for — exactly like `analyzeScopes`'s
+     *  `reportUndeclared`. */
+    reportUnknownTypes?: boolean;
 }
 declare function analyzeTypes(program: Program, scopes: ScopeAnalysis, options?: AnalyzeTypesOptions): TypeAnalysis;
 /** The exports of an analyzed module, in the shape another module's
@@ -1128,29 +1295,111 @@ declare function moduleExports(program: Program, scopes: ScopeAnalysis, types: T
 /** For `export ... from`: the same resolver the module was analyzed with. */
 resolveModule?: (specifier: string) => ModuleExports | undefined): ModuleExports;
 
-/** Absolute path to the shipped `luau.d.luaut`. */
-declare const luauDefsPath: string;
-/** Raw source of the core definitions. */
-declare const luauDefs: string;
-/** Parsed core Luau definitions. */
-declare const luauLib: Program;
-
-/** Absolute path to the shipped `roblox.d.luaut`. */
-declare const robloxDefsPath: string;
-/** Raw source of the baseline definitions. */
-declare const robloxDefs: string;
-/** Parsed baseline definitions — pass as `analyzeTypes(..., { libs: [robloxLib] })`. */
-declare const robloxLib: Program;
-
-/** Core Luau plus the Roblox baseline, in the order `analyzeTypes` expects.
+/**
+ * The types that belong to the language itself, available in every file with
+ * or without a type library — as TypeScript's `Partial` and `ReturnType` are.
  *
- *  The analyzer has no built-in knowledge of `type` / `typeof` — they are
- *  ordinary overload sets declared in these files, and narrowing is derived
- *  from them. Pass this (or your own list) or those built-ins narrow nothing:
+ * They are written in luaut on top of `keyof`, `T[K]`, conditional types with
+ * `infer`, mapped types and set difference; the analyzer knows none of these
+ * names. A type library or the file itself may declare one of them again, and
+ * that declaration wins.
  *
- *      analyzeTypes(program, scopes, { libs: defaultLibs })
+ * What a runtime provides — `print`, `string`, `game` — is not here: that is a
+ * type library's job (`@luaut/luau`, `@luaut/roblox`).
  */
-declare const defaultLibs: readonly Program[];
+declare const PRELUDE_SOURCE = "\n-- In Luau only `nil` and `false` are falsy: `0` and `\"\"` are truthy.\n-- These are what truthiness narrowing computes, made available to write down.\ntype Falsy = nil | false\ntype Truthy<T> = T - Falsy\n\n-- `-` is set difference. Over a union it drops members; over a concrete type\n-- it simplifies away; over an opaque type (`unknown`, an unresolved parameter)\n-- it is kept, so `Exclude<unknown, 1>` stays `unknown - 1`.\ntype Exclude<T, U> = T - U\ntype Extract<T, U> = T extends U ? T : never\ntype NonNullable<T> = T - nil\n\ntype ReturnType<T> = T extends (...unknown) -> infer R ? R : never\ntype Parameters<T> = T extends (...infer P) -> unknown ? P : never\n\ntype Partial<T> = { [K in keyof T]?: T[K] }\ntype Required<T> = { [K in keyof T]-?: T[K] }\ntype Readonly<T> = { readonly [K in keyof T]: T[K] }\ntype Mutable<T> = { -readonly [K in keyof T]: T[K] }\n\ntype Pick<T, K> = { [P in K]: T[P] }\ntype Omit<T, K> = Pick<T, Exclude<keyof T, K>>\ntype Record<K, V> = { [P in K]: V }\n";
+
+interface ProjectHost {
+    /** A file's text, or `undefined` when there is no such file. */
+    readFile(path: string): string | undefined;
+}
+declare const nodeHost: ProjectHost;
+
+declare const CONFIG_FILE_NAMES: readonly ["luaut.config.json", "luaut.config.jsonc"];
+interface LuautConfig {
+    /** Absolute path of the config file. */
+    readonly path: string;
+    /** The folder it sits in. Relative paths in it resolve from here. */
+    readonly directory: string;
+    /** The config file's text, for locating problems in it. */
+    readonly source: string;
+    /** Type libraries to load, in order: `"luau"`, `"@luaut/roblox"`, `"./types"`. */
+    readonly types: readonly string[];
+    /** Import path aliases, as in tsconfig: `{ "@shared/*": ["src/shared/*"] }`. */
+    readonly paths: Readonly<Record<string, readonly string[]>>;
+    /** Where `paths` targets resolve from, absolute. The config's folder unless set. */
+    readonly baseUrl: string;
+    /** Absolute path of a Rojo sourcemap, or `null` for none. */
+    readonly sourceMap: string | null;
+}
+interface ConfigProblem {
+    /** The file the problem is about: a config file, or a sourcemap it names. */
+    readonly file: string;
+    readonly message: string;
+    /** 1-based position in `file`, when the problem has one. */
+    readonly line?: number;
+    readonly column?: number;
+}
+interface ConfigLookup {
+    /** The config that applies, if one was found and could be read. */
+    readonly config?: LuautConfig;
+    readonly problems: readonly ConfigProblem[];
+    /** Every config path looked at on the way up, found or not — what a cache
+     *  must watch, so that creating or deleting a config is noticed. */
+    readonly searched: readonly string[];
+}
+/** The config that applies to `file`: the nearest one in its folder or above. */
+declare function findConfig(file: string, host?: ProjectHost): ConfigLookup;
+/** Read and check one config file. Problems do not stop the rest of it from
+ *  applying: an unknown option is reported and the known ones still work. */
+declare function loadConfig(path: string, host?: ProjectHost): {
+    config?: LuautConfig;
+    problems: ConfigProblem[];
+};
+/** Blank out `//` and `/* *\/` comments and trailing commas, keeping every
+ *  other character where it was — so a JSON error's position still points
+ *  into the original text. */
+declare function stripJsonComments(text: string): string;
+
+interface TypeLibraries {
+    /** Definitions files, dependencies before what depends on them. */
+    readonly files: readonly string[];
+    readonly problems: readonly ConfigProblem[];
+}
+declare function resolveTypeLibraries(config: LuautConfig, host?: ProjectHost): TypeLibraries;
+
+/** Every file `specifier` could mean from `fromFile`, in the order they are
+ *  tried. A resolver that caches should watch all of them: creating an earlier
+ *  candidate changes what the import means. */
+declare function moduleCandidates(fromFile: string, specifier: string, config?: LuautConfig): string[];
+/** The file `specifier` names from `fromFile`, if it exists. */
+declare function resolveModulePath(fromFile: string, specifier: string, config?: LuautConfig, host?: ProjectHost): string | undefined;
+
+interface SourceMapNode {
+    name: string;
+    className: string;
+    filePaths?: string[];
+    children?: SourceMapNode[];
+}
+interface SourceMapOptions {
+    /** The type names the loaded libraries define. An instance of a class not
+     *  among them is typed as `Instance`. */
+    readonly classes: ReadonlySet<string>;
+    /** A class's own member names. A child whose name a member already takes
+     *  is left out — Roblox resolves the member first. Defaults to the members
+     *  every instance has. */
+    readonly membersOf?: (className: string) => ReadonlySet<string>;
+}
+interface SourceMapTypes {
+    /** The tree's classes, and `game` / `workspace` for a place. */
+    readonly program: Program;
+    /** `declare script: ...` for a file the tree maps, or `undefined`. */
+    scriptFor(file: string): Program | undefined;
+}
+declare function sourceMapTypes(text: string, path: string, options: SourceMapOptions): {
+    types?: SourceMapTypes;
+    problem?: string;
+};
 
 declare const luautparser: {
     readonly tokenize: typeof tokenize;
@@ -1165,4 +1414,4 @@ declare const luautparser: {
     readonly analyzeTypes: typeof analyzeTypes;
 };
 
-export { type AnalyzeTypesOptions, type AnyType, type ArrayExpression, type ArrayPattern, type ArrayPatternElement, type ArrayType, type ArrayTypeNode, type AsConstExpression, type AssignmentStatement, type BaseNode, type BaseToken, type BinaryExpression, BinaryOperators, type Binding, type BindingId, type BindingKind, type BindingTarget, type Block, type BooleanLiteral, type BreakStatement, type CallExpression, type CallStatement, type CompoundAssignmentStatement, type ConditionalType, type ConditionalTypeNode, type ContinueStatement, type DeclareStatement, type DifferenceType, type DifferenceTypeNode, type DoStatement, type EOFToken, type ErrorStatement, type ExportAllStatement, type ExportDefaultStatement, type ExportNamedStatement, type ExportSpecifier, type ExportStatement, type ExportTypeAliasStatement, type ExportedType, type Expression, type FunctionBody, type FunctionDeclaration, type FunctionDeclarationStatement, type FunctionExpression, type FunctionName, type FunctionParam, type FunctionParameter, type FunctionSignature, type FunctionType, type FunctionTypeNode, type FunctionTypeParameter, type GenericForStatement, type GenericRefType, type GenericTypeParameter, type Identifier, type IdentifierPattern, type IdentifierToken, type IfClause, type IfElseExpression, type IfStatement, type ImportSpecifier, type ImportStatement, type IndexExpression, type IndexedAccessType, type IndexedAccessTypeNode, type InferType, type InferTypeNode, type InterpolatedStringExpression, type InterpolatedStringPart, type InterpolatedStringPart_Expression, type InterpolatedStringPart_String, type InterpolatedStringToken, type IntersectionType, type IntersectionTypeNode, type KeyofType, type KeyofTypeNode, type KeywordToken, Keywords, LexError, type LiteralToken, type LiteralType, type MappedType, type MappedTypeNode, type MemberExpression, type MethodCallExpression, type ModuleExports, type NeverType, type NilLiteral, type Node, type NumberLiteral, type NumericForStatement, type ObjectPattern, type ObjectPatternProperty, type ObjectProperty, type ObjectType, type OperatorToken, Operators, type ParenthesizedExpression, type ParenthesizedTypeNode, ParseError, type ParserOptions, type PrimitiveName, type PrimitiveType, type Program, type PunctuatorToken, Punctuators, type RecoverResult, type RepeatStatement, type ReturnStatement, type SatisfiesExpression, type ScopeAnalysis, type ScopeDiagnostic, type SpreadElement, type Statement, type StringLiteral, type TableExpression, type TableField, type TableTypeNode, type TableTypeProperty, type TemplateLiteralType, type TemplateLiteralTypeNode, type Token, type TupleType, type TupleTypeNode, type Type, type TypeAliasStatement, type TypeAnalysis, type TypeAssertionExpression, type TypeDiagnostic, type TypeLiteralBoolean, type TypeLiteralNumber, type TypeLiteralString, type TypeNode, type TypePackNode, type TypeParamType, type TypePredicate, type TypePredicateNode, type TypeReference, type TypedIdentifier, type TypeofTypeNode, type UnaryExpression, UnaryOperators, type UnionType, type UnionTypeNode, type UnknownType, type VarargExpression, type VariableDeclaration, type VariadicTypeNode, type WhileStatement, analyzeScopes, analyzeTypes, anyType, arrayOf, booleanType, bufferType, containsTypeParam, luautparser as default, defaultLibs, difference, equalTypes, falsyType, fn, formatType, getBinding, intersection, isAssignable, isGlobal, isPossiblyFalsy, isPossiblyTruthy, isUnassignedGlobal, literal, luauDefs, luauDefsPath, luauLib, luautparser, matchInfer, moduleExports, narrowExclude, narrowFalsy, narrowTo, narrowTruthy, neverType, nilType, numberType, objectType, optional, overlaps, parse, parseExpressionFromSource, parseTokens, parseWithRecovery, primitive, robloxDefs, robloxDefsPath, robloxLib, setAliasExpander, stringType, substitute, templateMatches, threadType, tokenize, tuple, typeParam, unify, union, unknownType, widen };
+export { type AnalyzeTypesOptions, type AnyType, type ArrayExpression, type ArrayPattern, type ArrayPatternElement, type ArrayType, type ArrayTypeNode, type AsConstExpression, type AssignmentStatement, type BaseNode, type BaseToken, type BinaryExpression, BinaryOperators, type Binding, type BindingId, type BindingKind, type BindingTarget, type Block, type BooleanLiteral, type BreakStatement, CONFIG_FILE_NAMES, type CallExpression, type CallStatement, type ClassInfo, type CompoundAssignmentStatement, type ConditionalType, type ConditionalTypeNode, type ConfigLookup, type ConfigProblem, type ContinueStatement, type DeclareClassStatement, type DeclareStatement, type DifferenceType, type DifferenceTypeNode, type Directive, type DirectiveKind, type DirectiveOutcome, type Directives, type DoStatement, type EOFToken, type ErrorExpression, type ErrorStatement, type ExportAllStatement, type ExportDefaultStatement, type ExportNamedStatement, type ExportSpecifier, type ExportStatement, type ExportTypeAliasStatement, type ExportedType, type Expression, type FunctionBody, type FunctionDeclaration, type FunctionDeclarationStatement, type FunctionExpression, type FunctionName, type FunctionParam, type FunctionParameter, type FunctionSignature, type FunctionType, type FunctionTypeNode, type FunctionTypeParameter, type GenericForStatement, type GenericRefType, type GenericTypeParameter, type Identifier, type IdentifierPattern, type IdentifierToken, type IfClause, type IfElseExpression, type IfStatement, type ImportSpecifier, type ImportStatement, type IndexExpression, type IndexedAccessType, type IndexedAccessTypeNode, type InferType, type InferTypeNode, type InterpolatedStringExpression, type InterpolatedStringPart, type InterpolatedStringPart_Expression, type InterpolatedStringPart_String, type InterpolatedStringToken, type IntersectionType, type IntersectionTypeNode, type KeyofType, type KeyofTypeNode, type KeywordToken, Keywords, LexError, type LiteralToken, type LiteralType, type LuautConfig, type MappedType, type MappedTypeNode, type MemberExpression, type MethodCallExpression, type ModuleExports, type NeverType, type NilLiteral, type Node, type NumberLiteral, type NumericForStatement, type ObjectPattern, type ObjectPatternProperty, type ObjectProperty, type ObjectType, type OperatorToken, Operators, PRELUDE_SOURCE, type ParenthesizedExpression, type ParenthesizedTypeNode, ParseError, type ParserOptions, type PrimitiveName, type PrimitiveType, type Program, type ProjectHost, type PunctuatorToken, Punctuators, type RecoverResult, type RepeatStatement, type ReturnStatement, type SatisfiesExpression, type ScopeAnalysis, type ScopeDiagnostic, type SourceComment, type SourceMapNode, type SourceMapOptions, type SourceMapTypes, type SpreadElement, type Statement, type StringLiteral, type TableExpression, type TableField, type TableTypeNode, type TableTypeProperty, type TemplateLiteralType, type TemplateLiteralTypeNode, type Token, type TokenizeOptions, type TupleType, type TupleTypeNode, type Type, type TypeAliasStatement, type TypeAnalysis, type TypeAssertionExpression, type TypeDiagnostic, type TypeLibraries, type TypeLiteralBoolean, type TypeLiteralNumber, type TypeLiteralString, type TypeNode, type TypePackNode, type TypeParamType, type TypePredicate, type TypePredicateNode, type TypeReference, type TypedIdentifier, type TypeofTypeNode, UNUSED_EXPECT_ERROR, type UnaryExpression, UnaryOperators, type UnionType, type UnionTypeNode, type UnknownType, type VarargExpression, type VariableDeclaration, type VariadicTypeNode, type WhileStatement, analyzeScopes, analyzeTypes, anyType, applyDirectives, arrayOf, booleanType, bufferType, containsTypeParam, luautparser as default, difference, directivesOf, equalTypes, falsyType, findConfig, fn, formatType, getBinding, intersection, isAssignable, isClassType, isGlobal, isPossiblyFalsy, isPossiblyTruthy, isUnassignedGlobal, literal, loadConfig, luautparser, matchInfer, moduleCandidates, moduleExports, narrowExclude, narrowFalsy, narrowTo, narrowTruthy, neverType, nilType, nodeHost, numberType, objectType, optional, overlaps, parse, parseExpressionFromSource, parseTokens, parseWithRecovery, primitive, readDirectives, resolveModulePath, resolveTypeLibraries, setAliasExpander, sourceMapTypes, stringType, stripJsonComments, substitute, templateMatches, threadType, tokenize, tuple, typeParam, unify, union, unknownType, widen };

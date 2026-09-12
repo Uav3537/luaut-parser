@@ -655,6 +655,48 @@ const rel = (path: string | undefined): string | undefined =>
         "number",
     ])
 
+    // `const c = player.Character`: the two names hold one value.
+    const player = `type Char = { Name: string }\ndeclare player: { Character: Char | nil }\n`
+    const alias = analyze(`${player}function f()
+    const character = player.Character
+    if not player.Character then return nil end
+    const kept = character
+end
+function g()
+    const character = player.Character
+    if character then
+        const reverse = player.Character
+    else
+        const gone = character
+    end
+end`)
+    check("alias: a guard on the path narrows the name that copied it, and back",
+        [alias.bindings.kept, alias.bindings.reverse, alias.bindings.gone],
+        ["Char", "Char", "nil"])
+
+    const discriminant = analyze([
+        `type Shape = { kind: "circle", r: number } | { kind: "square", s: number }`,
+        "declare shape: Shape",
+        "function f()",
+        "    const kind = shape.kind",
+        `    if kind == "circle" then`,
+        "        const picked = shape",
+        "    end",
+        "end",
+    ].join("\n"))
+    check("alias: a copied discriminant still picks the union member",
+        discriminant.bindings.picked, `{ kind: "circle", r: number }`)
+
+    const reassigned = analyze(`${player}function f()
+    const character = player.Character
+    player.Character = nil
+    if player.Character then
+        const stale = character
+    end
+end`)
+    check("alias: an assignment through the path ends the alias",
+        reassigned.bindings.stale, "Char | nil")
+
     // `const path = paths[stat]`: testing one narrows the other.
     const correlated = analyze([
         "const Paths = {",
