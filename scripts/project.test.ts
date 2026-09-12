@@ -500,6 +500,26 @@ const rel = (path: string | undefined): string | undefined =>
         [varargs.bindings.first, varargs.bindings.f, varargs.bindings.s, varargs.bindings.anything],
         ["number", "(...number) -> number", "string", "any"])
 
+    // `export function` overloads: one declaration, exported once.
+    const overloadModule = [
+        "export function Tags(a: number, b: number): boolean",
+        "export function Tags(a?: number, b?: number): string",
+        "export function Tags(a: number = 1, b?: number): string",
+        `    return "x"`,
+        "end",
+    ].join("\n")
+    const exportedOverloads = analyze([
+        `import { Tags } from "./tags"`,
+        "const two = Tags(1, 2)",
+        "const none = Tags()",
+    ].join("\n"), { "./tags": overloadModule })
+    check("overloads: `export function` signatures make one exported overload set",
+        [exportedOverloads.errors, exportedOverloads.bindings.two, exportedOverloads.bindings.none],
+        [[], "boolean", "string"])
+    check("overloads: mixing `export` and plain signatures is an error",
+        parseError("function f(a: number): boolean\nexport function f(a?: number): string\n    return \"x\"\nend"),
+        "Overload signatures must all be exported or non-exported")
+
     // A constraint is a type like any other: `typeof` in one reads a value.
     const constraints = analyze([
         "const Skills = {",

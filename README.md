@@ -128,6 +128,11 @@ is hoisted, and can be called above its declaration. Inside a function only
 the name is: other functions can call it, but a call straight in the block
 above the declaration is an error, because nothing is there yet.
 
+**Overloads** — a `function name(...)` with no body is a signature for the
+declaration that follows it, as in TypeScript: the signatures are what a call
+sees, and the last one, with the body, is the implementation. `export` goes on
+every line of the set or none of them.
+
 **Modules** — `import { a, b as c } from "./m"`, `import D from "./m"` and
 `import * as M from "./m"`; `export const`, `export function`, `export default`,
 `export { a as b }`, `export { a } from "./m"` and `export * from "./m"`.

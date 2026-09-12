@@ -789,7 +789,7 @@ export class Parser {
         }
 
         if (this.checkKeyword("function")) {
-            const declaration = this.parseFunctionStatement()
+            const declaration = this.parseFunctionStatement(true)
             if (declaration.type !== "FunctionDeclaration") this.error("An exported function needs a plain name: 'export function name()'")
             return { type: "ExportStatement", declaration: declaration as FunctionDeclaration, ...spanFrom(start, this.previous()) }
         }
@@ -960,7 +960,9 @@ export class Parser {
 
     /** `function name() end` declares `name`; `function a.b() end` and
      *  `function T:m() end` define a member. */
-    private parseFunctionStatement(): FunctionDeclaration | FunctionDeclarationStatement {
+    /** `exported` — the `export` before this `function` has been consumed, so
+     *  each overload signature after it must carry one as well. */
+    private parseFunctionStatement(exported = false): FunctionDeclaration | FunctionDeclarationStatement {
         const start = this.current()
         this.expectKeyword("function")
         const target = this.parseFunctionName()
@@ -974,6 +976,12 @@ export class Parser {
             const head = this.parseFunctionHead()
             if (simpleName !== undefined && this.isOverloadContinuation(simpleName)) {
                 signatures.push(this.headToSignature(head))
+                // As in TypeScript, every signature of an overload set agrees
+                // about `export` — the set is one declaration.
+                const nextExported = this.matchKeyword("export")
+                if (nextExported !== exported) {
+                    this.problem("Overload signatures must all be exported or non-exported")
+                }
                 this.expectKeyword("function")
                 this.parseFunctionName() // consume the repeated name
                 continue
@@ -1005,8 +1013,23 @@ export class Parser {
      *  declaration for the same simple `name` (making the head an overload
      *  signature rather than an implementation)? */
     private isOverloadContinuation(name: string): boolean {
-        return this.checkKeyword("function") &&
-            this.peek(1).type === "Identifier" && (this.peek(1) as any).value === name
+        const named = (offset: number): boolean =>
+            this.peek(offset).type === "Identifier" && (this.peek(offset) as { value?: unknown }).value === name
+        if (this.checkKeyword("function")) return named(1)
+        // `export function f(...)` repeated: an exported overload set.
+        return this.checkKeyword("export") &&
+            this.peek(1).type === "Keyword" && (this.peek(1) as { value?: unknown }).value === "function" &&
+            named(2)
+    }
+
+    /** A mistake that does not stop the parse: refused outside recovery, where
+     *  the compiler must not accept it, and recorded inside. The message says
+     *  what is wrong on its own — no token is appended. */
+    private problem(message: string): void {
+        const t = this.current()
+        const error = new ParseError(message, t.line.start, t.column.start)
+        if (!this.recover) throw error
+        this.record(error)
     }
 
     private parseFunctionName(): FunctionName {
