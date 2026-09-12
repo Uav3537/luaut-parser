@@ -496,6 +496,12 @@ class Analyzer {
                 // Declared when its block started (hoisting), so calls from
                 // anywhere in the block, its own body included, resolve to it.
                 if (!this.hoisted.has(stmt.name)) this.declare(scope, stmt.name.name, "local", stmt.name, true, "function")
+                // Every other line of an overload set writes the name again;
+                // each of those is a use of the same binding.
+                for (const signature of stmt.signatures ?? []) {
+                    if (signature.name && signature.name !== stmt.name) this.reference(scope, signature.name)
+                }
+                if (stmt.implementationName) this.reference(scope, stmt.implementationName)
                 for (const signature of stmt.signatures ?? []) this.visitSignature(signature, scope)
                 this.visitFunctionBody(stmt.func, scope)
                 return

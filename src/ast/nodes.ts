@@ -221,6 +221,9 @@ export interface ArrayPatternElement extends BaseNode {
  *  assign to a member instead: see `FunctionDeclarationStatement`. */
 export interface FunctionDeclaration extends BaseNode {
     type: "FunctionDeclaration"
+    /** The name on the line the body is written on, when the declaration is
+     *  an overload set — `name` is the first signature's. */
+    implementationName?: Identifier
     name: Identifier
     func: FunctionBody
     attributes?: string[]
@@ -244,6 +247,9 @@ export interface FunctionDeclarationStatement extends BaseNode {
  *  followed by the implementation `function f(...) ... end`. */
 export interface FunctionSignature extends BaseNode {
     type: "FunctionSignature"
+    /** The name this signature was written with — one line of an overload
+     *  set, each of which a tool can point at on its own. */
+    name?: Identifier
     generics: GenericTypeParameter[]
     params: FunctionParameter[]
     hasVarargs: boolean

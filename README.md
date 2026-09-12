@@ -223,6 +223,11 @@ where that parameter is.
 lists, call arguments, generic parameters and type arguments, tables, arrays,
 tuples, imports and exports.
 
+A value read by a key narrows the key: after `const path = paths[stat]`, the
+`else` of `if path then` leaves `stat` as exactly the keys `paths` does not
+have — the same correlation `pairs` over a record and a destructured union
+already get.
+
 **Narrowing** follows TypeScript's model: references (`x`, `x.a.b`, `x["k"]`)
 rather than just variables, discriminated unions at any depth, `and`/`or`,
 early return, `break`/`continue`, `error()` (declared `-> never`), user type

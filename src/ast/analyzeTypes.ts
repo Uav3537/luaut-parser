@@ -1647,7 +1647,10 @@ class TypeAnalyzer {
                         : !isFreshLiteralExpr(source) ? "keep"
                         : stmt.kind === "const" ? "const" : "widen"
                     this.bindPattern(target, inferred, env, mode)
-                    if (stmt.kind === "const") this.correlateDestructuring(target, inferred, env)
+                    if (stmt.kind === "const") {
+                        this.correlateDestructuring(target, inferred, env)
+                        this.correlateIndexed(target, source, env)
+                    }
                 })
                 return
             }
@@ -2631,7 +2634,13 @@ class TypeAnalyzer {
 
     private signatureToFnType(sig: FunctionSignature): Type {
         const names = sig.generics.map(g => g.name)
-        return this.withTypeParams(sig.generics, () => {
+        // Recorded against the signature itself: one line of an overload set
+        // reads as what that line declares, not as the whole set.
+        const record = (type: Type): Type => {
+            this.typeOfTypeNode.set(sig as unknown as TypeNode, type)
+            return type
+        }
+        return record(this.withTypeParams(sig.generics, () => {
             const params = sig.params.map(p => ({
                 name: p.pattern ? undefined : p.name,
                 type: this.paramType(p, new Map()),
@@ -2644,7 +2653,7 @@ class TypeAnalyzer {
                 names,
                 this.resolvePredicate(sig.predicate, params),
             )
-        })
+        }))
     }
 
     /** Turn a parsed `v is T` / `asserts v` annotation into a `TypePredicate`,
@@ -2833,6 +2842,25 @@ class TypeAnalyzer {
      *  member, so testing `kind` narrows `payload` (TypeScript's destructured
      *  discriminated unions). Only plain `name` / `key: name` properties take
      *  part. */
+    /** `const path = paths[stat]` where `stat` is one of several keys: which
+     *  value came back says which key was asked for. Testing the value then
+     *  narrows the key — the `else` of `if path then` leaves exactly the keys
+     *  the table does not have. */
+    private correlateIndexed(target: BindingTarget, init: Expression | undefined, env: FlowEnv): void {
+        if (target.type !== "IdentifierPattern" || !init) return
+        const source = unwrapParens(init)
+        if (source.type !== "IndexExpression" || source.index.type !== "Identifier") return
+        const valueId = this.bindingIdByName(target.name, target)
+        const keyId = this.bindingIdOf(source.index)
+        if (valueId === undefined || keyId === undefined) return
+        const key = this.expand(this.currentType(keyId, env))
+        if (key.kind !== "union" || key.types.length < 2 || key.types.length > 64) return
+        if (!key.types.every(m => m.kind === "literal")) return
+        const object = this.expand(this.typeOf.get(source.object) ?? unknownType)
+        if (object.kind !== "object") return
+        this.correlateBindings(env, [keyId, valueId], key.types.map(m => [m, this.indexedType(object, m)]))
+    }
+
     private correlateDestructuring(pattern: BindingTarget, source: Type, env: FlowEnv): void {
         if (pattern.type !== "ObjectPattern") return
         const members = this.expand(source)

@@ -655,6 +655,49 @@ const rel = (path: string | undefined): string | undefined =>
         "number",
     ])
 
+    // `const path = paths[stat]`: testing one narrows the other.
+    const correlated = analyze([
+        "const Paths = {",
+        `    Blocking: ["Blocking"],`,
+        `    Health: ["Health"],`,
+        "} as const satisfies { [string]: string[] }",
+        `declare stat: "Blocking" | "Health" | "KB" | "Knocked"`,
+        "function read()",
+        "    const path = Paths[stat]",
+        "    if path then",
+        "        const inMap = stat",
+        "        const thePath = path",
+        "    else",
+        "        const missing = stat",
+        "    end",
+        "end",
+    ].join("\n"))
+    check("correlation: a value read by key says which key it was",
+        [correlated.bindings.inMap, correlated.bindings.thePath, correlated.bindings.missing],
+        [`"Blocking" | "Health"`, `["Blocking"] | ["Health"]`, `"KB" | "Knocked"`])
+
+    // Each line of an overload set is a node of its own.
+    {
+        const program = parse([
+            `export function f(x: "a"): number`,
+            `export function f(x: "b"): string`,
+            "export function f(x)",
+            "    return nil",
+            "end",
+        ].join("\n"))
+        const declaration = (program.body.statements[0] as { declaration: {
+            signatures?: { name?: { name: string } }[]
+            implementationName?: { line: { start: number } }
+        } }).declaration
+        check("overloads: every line keeps its name",
+            [declaration.signatures?.map(sig => sig.name?.name), declaration.implementationName?.line.start],
+            [["f", "f"], 3])
+        const scopes = analyzeScopes(program)
+        const binding = [...scopes.bindings.values()].find(b => b.name === "f")
+        check("overloads: and each name is a use of the one binding",
+            binding?.references.length, 2)
+    }
+
     // Type arguments written at the call, and `<T = ...>` when they are not.
     const typeArguments = analyze([
         "declare class Instance {}",

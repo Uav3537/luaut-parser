@@ -995,10 +995,13 @@ export class Parser {
         const simpleName = !isMethod && target.path.length === 0 ? target.base.name : undefined
 
         const signatures: FunctionSignature[] = []
+        // Each line of an overload set is written with the name again; every
+        // one of them is a node, so each can be pointed at and coloured.
+        let written = target.base
         while (true) {
             const head = this.parseFunctionHead()
             if (simpleName !== undefined && this.isOverloadContinuation(simpleName)) {
-                signatures.push(this.headToSignature(head))
+                signatures.push({ ...this.headToSignature(head), name: written })
                 // As in TypeScript, every signature of an overload set agrees
                 // about `export` — the set is one declaration.
                 const nextExported = this.matchKeyword("export")
@@ -1006,7 +1009,7 @@ export class Parser {
                     this.problem("Overload signatures must all be exported or non-exported")
                 }
                 this.expectKeyword("function")
-                this.parseFunctionName() // consume the repeated name
+                written = this.parseFunctionName().base
                 continue
             }
             const func = this.headToBody(head, start)
@@ -1014,6 +1017,7 @@ export class Parser {
                 return {
                     type: "FunctionDeclaration", name: target.base, func,
                     signatures: signatures.length ? signatures : undefined,
+                    implementationName: signatures.length ? written : undefined,
                     ...spanFrom(start, this.previous()),
                 }
             }
