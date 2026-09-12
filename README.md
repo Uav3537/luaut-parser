@@ -265,9 +265,10 @@ checking, and compiled code keeps neither.
 
 **Undeclared names** — `analyzeScopes(program, { builtinGlobals, reportUndeclared: true })`
 reports each read of a name nothing declares: "Cannot find name 'x'". A global
-assigned in the file (`x = 1`) and a `declare` count as declarations. It is
-off by default, since it is only right when `builtinGlobals` lists what the
-type libraries declare.
+assigned in the file (`x = 1`) and a `declare` count as declarations.
+`analyzeTypes(program, scopes, { reportUnknownTypes: true })` does the same for
+type names. Both are off by default, since they are only right when the type
+libraries the file names are loaded.
 
 **Directives** — comments that switch checking off, as TypeScript's
 `// @ts-...` do. They silence scope and type errors, never syntax errors:

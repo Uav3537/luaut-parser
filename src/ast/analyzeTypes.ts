@@ -122,6 +122,11 @@ export interface AnalyzeTypesOptions {
     resolveModule?: (specifier: string) => ModuleExports | undefined
     /** Emit assignability diagnostics (default: true). */
     diagnostics?: boolean
+    /** Report each type name nothing declares: "Cannot find name 'Nope'".
+     *  Only meaningful when `libs` holds everything the file can name, so it
+     *  is off unless asked for — exactly like `analyzeScopes`'s
+     *  `reportUndeclared`. */
+    reportUnknownTypes?: boolean
 }
 
 export function analyzeTypes(
@@ -602,6 +607,7 @@ class TypeAnalyzer {
             const env: FlowEnv = new Map()
             this.visitBlock(this.program.body, env)
             this.resolveDeferredDeclares()
+            if (this.options.reportUnknownTypes) this.reportUnknownTypes()
         } finally {
             setAliasExpander(undefined)
         }
@@ -858,6 +864,79 @@ class TypeAnalyzer {
 
     /** The aliases `resolveAllAliases` left for later, now that every binding
      *  has its type. */
+    /** Names this file imports. A module that could not be found is reported
+     *  as the missing module it is; the names it was to bring are not also
+     *  typos. */
+    private importedNames(): Set<string> {
+        if (this.imported) return this.imported
+        this.imported = new Set<string>()
+        for (const statement of this.program.body.statements) {
+            if (statement.type !== "ImportStatement") continue
+            if (statement.defaultImport) this.imported.add(statement.defaultImport.name)
+            if (statement.namespaceImport) this.imported.add(statement.namespaceImport.name)
+            for (const specifier of statement.specifiers) this.imported.add(specifier.local.name)
+        }
+        return this.imported
+    }
+    private imported?: Set<string>
+
+    /** Does this type rest on a name nothing declares? Such a type says
+     *  nothing about what fits it, so checking against it only piles a second
+     *  complaint on top of "Cannot find name". */
+    private namesNothing(t: Type, seen = new Set<Type>()): boolean {
+        if (seen.has(t)) return false
+        seen.add(t)
+        if (t.kind === "genericRef") {
+            return !this.aliasDefs.has(t.name) && !this.importedTypes.has(t.name) &&
+                this.options.libTypes?.[t.name] === undefined
+        }
+        switch (t.kind) {
+            case "union":
+            case "intersection": return t.types.some(m => this.namesNothing(m, seen))
+            case "array": return this.namesNothing(t.element, seen)
+            case "tuple": return t.elements.some(e => this.namesNothing(e, seen))
+            case "object":
+                if (t.class) return false
+                return [...t.properties.values()].some(v => this.namesNothing(v.type, seen))
+            default: return false
+        }
+    }
+
+    /** Every type name in the program that resolved to nothing — a typo, or a
+     *  library the config does not load. A name that resolves to a type
+     *  parameter, an alias (even one still being resolved), an imported type or
+     *  a primitive is fine; what is left is a reference that stayed itself. */
+    private reportUnknownTypes(): void {
+        if (!this.emitDiagnostics) return
+        const reported = new Set<string>()
+        const visit = (node: unknown): void => {
+            if (!node || typeof node !== "object") return
+            if (Array.isArray(node)) {
+                for (const item of node) visit(item)
+                return
+            }
+            const record = node as { type?: unknown; base?: unknown; namespace?: unknown }
+            if (record.type === "TypeReference" && typeof record.base === "string") {
+                const name = typeof record.namespace === "string" ? `${record.namespace}.${record.base}` : record.base
+                const resolved = this.typeOfTypeNode.get(node as TypeNode)
+                const unresolved = resolved?.kind === "genericRef" && resolved.name === name &&
+                    !this.aliasDefs.has(name) && !this.importedTypes.has(name) &&
+                    this.options.libTypes?.[name] === undefined &&
+                    !STRING_INTRINSICS.has(name) && !this.importedNames().has(name.split(".")[0])
+                const at = node as unknown as { line: { start: number }; column: { start: number } }
+                const key = `${at.line.start}:${at.column.start}`
+                if (unresolved && !reported.has(key)) {
+                    reported.add(key)
+                    this.diagnostics.push({ node: node as TypeNode, message: `Cannot find name '${name}'` })
+                }
+            }
+            for (const [key, value] of Object.entries(node)) {
+                if (key !== "line" && key !== "column" && value && typeof value === "object") visit(value)
+            }
+        }
+        visit(this.program.body)
+    }
+
     /** Deferred `declare`s nothing used, typed now for tools that ask. */
     private resolveDeferredDeclares(): void {
         for (const name of this.deferredDeclares.keys()) {
@@ -1486,7 +1565,8 @@ class TypeAnalyzer {
                     if (this.emitDiagnostics && target.type === "IdentifierPattern" &&
                         target.typeAnnotation && source) {
                         const declared = this.resolveType(target.typeAnnotation)
-                        if (declared.kind !== "any" && !this.fitsAnnotation(source, declared, inferred, env)) {
+                        if (declared.kind !== "any" && !this.namesNothing(declared) &&
+                            !this.fitsAnnotation(source, declared, inferred, env)) {
                             this.diagnostics.push({
                                 node: stmt,
                                 message: `Type '${formatType(inferred)}' is not assignable to '${formatType(declared)}'`,
@@ -1945,6 +2025,9 @@ class TypeAnalyzer {
         // is `nil` in Luau — so the parameter's type is `T | nil`.
         if (p.typeAnnotation) {
             const t = this.resolveType(p.typeAnnotation)
+            // `function f(mode: Mode = "fast")` — the default is written where
+            // the annotation says what fits.
+            if (p.default) this.applyContext(p.default, t)
             return p.optional ? optional(t) : t
         }
         if (p.pattern) return this.patternToType(p.pattern, env)
@@ -1965,6 +2048,10 @@ class TypeAnalyzer {
         let e = expr
         while (e.type === "ParenthesizedExpression") e = e.expression
         if (!expected) return
+        // What belongs here, for whoever asks — an editor completing a string
+        // inside `const mode: Mode = "|"` reads this.
+        this.expectedTypeOf.set(expr, expected)
+        this.expectedTypeOf.set(e, expected)
         if (e.type === "ArrayExpression") return this.applyArrayContext(e, expected)
         if (e.type === "TableExpression") return this.applyTableContext(e, expected)
         if (e.type !== "FunctionExpression") return
@@ -3976,6 +4063,10 @@ function containsTypeQuery(node: unknown): boolean {
     if ((node as { type?: unknown }).type === "TypeofTypeNode") return true
     return Object.values(node).some(containsTypeQuery)
 }
+
+/** `Uppercase<T>` and friends are built in, and resolve only once their
+ *  argument is a known string. */
+const STRING_INTRINSICS = new Set(["Uppercase", "Lowercase", "Capitalize", "Uncapitalize"])
 
 /** A type for a message. A long union of literals — every service name — is
  *  cut short the way TypeScript does, so the message stays readable. */

@@ -500,6 +500,34 @@ const rel = (path: string | undefined): string | undefined =>
         [varargs.bindings.first, varargs.bindings.f, varargs.bindings.s, varargs.bindings.anything],
         ["number", "(...number) -> number", "string", "any"])
 
+    // A type name nothing declares, when asked for.
+    {
+        const program = parse([
+            "type Mine = { a: number }",
+            "declare class Part {}",
+            "const ok: Mine | Part | number = 1",
+            "function generic<T>(v: T): T",
+            "    return v",
+            "end",
+            "const bad: Nope = 1",
+            "const alsoBad: Partial<Missing> = {}",
+            "function f(a: NoParam): NoReturn",
+            "    return a",
+            "end",
+        ].join("\n"))
+        const scopes = analyzeScopes(program)
+        const types = analyzeTypes(program, scopes, { reportUnknownTypes: true })
+        check("types: a name nothing declares is reported, once, and nothing else is",
+            types.diagnostics.map(d => `${d.node.line.start}: ${d.message}`), [
+                "7: Cannot find name 'Nope'",
+                "8: Cannot find name 'Missing'",
+                "9: Cannot find name 'NoParam'",
+                "9: Cannot find name 'NoReturn'",
+            ])
+        check("types: and it is off unless asked for",
+            analyzeTypes(program, analyzeScopes(program)).diagnostics.length, 0)
+    }
+
     // `export function` overloads: one declaration, exported once.
     const overloadModule = [
         "export function Tags(a: number, b: number): boolean",
