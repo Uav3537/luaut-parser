@@ -480,7 +480,7 @@ function expressionLabel(e: Expression, depth = 0): string | undefined {
         }
         case "CallExpression": {
             const o = expressionLabel(e.callee, depth + 1)
-            return o === undefined ? undefined : `${o}${args(e.arguments)}`
+            return o === undefined ? undefined : `${o}${e.optional ? "?." : ""}${args(e.arguments)}`
         }
         case "IndexExpression": {
             const o = expressionLabel(e.object, depth + 1)

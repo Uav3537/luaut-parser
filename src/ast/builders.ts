@@ -1477,6 +1477,17 @@ export class Parser {
                     base = { type: "MemberExpression", object: base, property: prop, optional: true, ...spanFrom(base, prop) }
                     continue
                 }
+                if (punct === "." && this.punctuatorAt(2, "(")) {
+                    this.advance()
+                    this.advance()
+                    const args = this.parseCallArguments()
+                    base = {
+                        type: "CallExpression",
+                        callee: base, arguments: args, optional: true,
+                        ...spanFrom(base, this.previous()),
+                    }
+                    continue
+                }
                 if (punct === ":" && this.startsMethodCall(1)) {
                     this.advance()
                     this.advance()
@@ -1545,6 +1556,12 @@ export class Parser {
         }
 
         return base
+    }
+
+    /** Is the token `ahead` places on the punctuator `value`? */
+    private punctuatorAt(ahead: number, value: string): boolean {
+        const token = this.peek(ahead)
+        return token.type === "Punctuator" && (token as { value?: unknown }).value === value
     }
 
     /** An assignment target after the first: a prefix expression (`a.b`,

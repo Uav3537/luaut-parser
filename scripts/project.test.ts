@@ -655,6 +655,18 @@ const rel = (path: string | undefined): string | undefined =>
         "number",
     ])
 
+    // `f?.()` — call it only when it is there.
+    const optionalCall = analyze([
+        "declare f: ((n: number) -> string) | nil",
+        `declare t: { m: (() -> number) | nil }`,
+        "const said = f?.(1)",
+        "const got = t.m?.()",
+        "f?.(2)",
+    ].join("\n"))
+    check("optional call: the result takes nil, and the call is a statement of its own",
+        [optionalCall.bindings.said, optionalCall.bindings.got, optionalCall.errors],
+        ["string | nil", "number | nil", []])
+
     // An index signature over a finite set of keys names exactly those keys.
     const names = `type Names = "GTFrisk" | "XTFrisk"\n`
     check("finite indexer: a key outside the set is excess",

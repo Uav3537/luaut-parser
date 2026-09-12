@@ -556,6 +556,9 @@ export interface CallExpression extends BaseNode {
     arguments: Expression[]
     /** `f<T>(x)` — type arguments written out rather than inferred. */
     typeArguments?: (TypeNode | TypePackNode)[]
+    /** `f?.(...)` — see `MemberExpression.optional`. The call does not happen,
+     *  and the arguments are not evaluated, when `callee` is nil. */
+    optional?: boolean
 }
 
 export interface MethodCallExpression extends BaseNode {
