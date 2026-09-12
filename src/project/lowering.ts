@@ -9,14 +9,14 @@
  * and asks a library about everything else.
  *
  * These types are declarations only: nothing here runs, and the parser never
- * loads a lowering module. They live here so a library can be written in
- * TypeScript against the same contract the compiler implements, without
- * depending on the compiler.
+ * loads a lowering module. They live here so a library can be checked against
+ * the same contract the compiler implements, without depending on the
+ * compiler — in TypeScript, or by JSDoc in the JavaScript it ships:
  *
- *     // lowering.ts, in a type library
- *     import type { LoweringPlugin } from "luaut-parser"
- *
- *     const plugin: LoweringPlugin = {
+ *     // lowering.mjs, in a type library
+ *     // @ts-check
+ *     /** @type {import("luaut-parser").LoweringPlugin} *\/
+ *     const plugin = {
  *         runtime: { array: "local __NAME__ = {}\n..." },
  *         methodCall({ method, receiver, use }) {
  *             if (receiver?.kind === "array" && method === "filter") {

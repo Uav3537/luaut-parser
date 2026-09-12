@@ -181,10 +181,10 @@ module in its package.json, and the compiler asks it what a call becomes:
 "luaut": { "types": "index.d.luaut", "lowering": "lowering.mjs" }
 ```
 
-```ts
-import type { LoweringPlugin } from "luaut-parser"   // the contract, declared here
-
-const plugin: LoweringPlugin = {
+```js
+// @ts-check
+/** @type {import("luaut-parser").LoweringPlugin} */   // the contract, declared here
+const plugin = {
     runtime: { array: "local __NAME__ = {}\nfunction __NAME__.filter(t, test) ... end" },
     methodCall({ method, receiver, use }) {
         if (receiver?.kind === "array" && method === "filter") {
