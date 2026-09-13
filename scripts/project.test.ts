@@ -667,6 +667,43 @@ const rel = (path: string | undefined): string | undefined =>
         [optionalCall.bindings.said, optionalCall.bindings.got, optionalCall.errors],
         ["string | nil", "number | nil", []])
 
+    // `for x in it`: an iterator function says what the loop holds.
+    {
+        const lib = parse([
+            "declare function gmatch(s: string, pattern: string): () -> ...string",
+            "declare function rows(): () -> (string, number)",
+        ].join("\n"))
+        const program = parse([
+            `for part in gmatch("a/b", "[^/]+") do`,
+            "    const word = part",
+            "end",
+            "for name, count in rows() do",
+            "    const who = name",
+            "    const many = count",
+            "end",
+        ].join("\n"))
+        const scopes = analyzeScopes(program)
+        const types = analyzeTypes(program, scopes, { libs: [lib] })
+        const bindings: Record<string, string> = {}
+        for (const [id, type] of types.bindingType) bindings[scopes.bindings.get(id)!.name] = formatType(type)
+        check("generic for: the loop variables come from the iterator",
+            [bindings.word, bindings.who, bindings.many], ["string", "string", "number"])
+    }
+
+    // `unknown - nil` is itself, whichever way round the union is written.
+    check("subtraction: one fits another that removes no more", [
+        analyze([
+            `declare value: unknown`,
+            "declare function take(v: string | (unknown - (nil | false))): ()",
+            "if value then take(value) end",
+        ].join("\n")).errors,
+        analyze([
+            "declare function takeString(v: string): ()",
+            `declare value: unknown`,
+            "if value then takeString(value) end",
+        ].join("\n")).errors.length,
+    ], [[], 1])
+
     // `x or []` is how Lua writes a default: the context reaches both sides.
     check("contextual typing: through `or`, and into a generic annotation", [
         analyze([

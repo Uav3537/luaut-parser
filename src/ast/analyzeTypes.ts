@@ -3052,6 +3052,17 @@ class TypeAnalyzer {
                 if (src.kind === "array") return [numberType, src.element]
             }
         }
+        // `for x in it`: an iterator function gives the loop its variables —
+        // `string.gmatch`'s `() -> ...string` hands out strings, `next`-like
+        // iterators a key and a value.
+        const iterator = this.expand(iterType)
+        if (iterator.kind === "function") {
+            const returns = this.expand(iterator.returns)
+            const parts = returns.kind === "tuple" ? returns.elements.map(m => this.expand(m)) : [returns]
+            const at = (i: number): Type => parts[i] ?? (parts.length === 1 ? parts[0] : unknownType)
+            return [at(0), at(1)]
+        }
+
         // generalized iteration `for x in t` / `for i, x in t`
         const t = this.expand(iterType)
         if (t.kind === "array") return varCount >= 2 ? [numberType, t.element] : [t.element, unknownType]
@@ -3310,14 +3321,46 @@ class TypeAnalyzer {
             }
             case "indexedAccess": {
                 const object = this.deferredBound(t.objectType, depth + 1)
-                    ?? (containsTypeParam(t.objectType) ? undefined : t.objectType)
-                const index = this.reduceType(t.indexType)
-                if (!object || containsTypeParam(index)) return undefined
+                    ?? this.atConstraints(t.objectType)
+                const index = this.atConstraints(this.reduceType(t.indexType))
+                if (!object || !index) return undefined
                 return this.indexedType(object, index)
             }
             default:
                 return undefined
         }
+    }
+
+    /** `t` with every type parameter standing at its constraint: `Map[K]`
+     *  where `K extends "a" | "b"` is at most what those two keys hold. A
+     *  parameter with no constraint bounds nothing, and says so. */
+    private atConstraints(t: Type): Type | undefined {
+        if (!containsTypeParam(t)) return t
+        const bounds = new Map<string, Type>()
+        const seen = new WeakSet<object>()
+        let open = false
+        const walk = (value: unknown): void => {
+            if (!value || typeof value !== "object" || seen.has(value)) return
+            seen.add(value)
+            if (value instanceof Map) {
+                value.forEach(walk)
+                return
+            }
+            const part = value as { kind?: unknown; name?: unknown; constraint?: Type; class?: unknown }
+            if (part.kind === "object" && part.class) return
+            if (part.kind === "typeParam" && typeof part.name === "string") {
+                if (part.constraint && !containsTypeParam(part.constraint)) {
+                    bounds.set(part.name, this.reduceType(part.constraint))
+                } else {
+                    open = true
+                }
+            }
+            for (const child of Object.values(value)) walk(child)
+        }
+        walk(t)
+        if (open) return undefined
+        const applied = this.reduceType(substitute(t, bounds))
+        return containsTypeParam(applied) ? undefined : applied
     }
 
     /** What `text["upper"]` reads: a string answers only to its methods, the

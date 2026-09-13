@@ -640,18 +640,35 @@ function isAssignableInner(a: Type, b: Type): boolean {
     if (b.kind === "never") return false
     if (a.kind === "unknown") return false
 
+    // One subtraction fits another when its base does and it already excludes
+    // everything the target excludes — `unknown - nil` is itself, which the
+    // rules below would deny (`unknown` overlaps `nil`).
+    if (a.kind === "difference" && b.kind === "difference") {
+        return isAssignable(a.base, b.base) && isAssignable(b.excluded, a.excluded)
+    }
     // `x` fits `B - E` when it fits `B` and cannot be an `E` at all.
     if (b.kind === "difference") {
         return isAssignable(a, b.base) && !overlaps(a, b.excluded)
     }
-    // `B - E` fits anything `B` fits; the subtraction only removes values.
-    if (a.kind === "difference") return isAssignable(a.base, b)
+    // `B - E` fits anything `B` fits; the subtraction only removes values —
+    // but first see whether one member of a union target takes it as it is,
+    // since `B` alone rarely fits anything the subtraction does.
+    if (a.kind === "difference") {
+        if (b.kind === "union" && b.types.some(m => isAssignable(a, m))) return true
+        return isAssignable(a.base, b)
+    }
 
     // A value of a type that is still waiting on a type parameter is at most
     // what that type could become: `Extract<Rows, { Page: P }>["Skills"]
     // [number]` is one of the rows' skills, so it goes where any of them do.
     // Without this, every use of such a value is an error until `P` is known.
     if (a.kind === "conditional" || a.kind === "indexedAccess") {
+        // The same unevaluated type on both sides is the same values, even
+        // though neither can be worked out yet.
+        if ((b.kind === "conditional" || b.kind === "indexedAccess" || b.kind === "union") && equalTypes(a, b)) {
+            return true
+        }
+        if (b.kind === "union" && b.types.some(m => equalTypes(a, m))) return true
         const bound = deferredBound?.(a)
         if (bound && bound !== a) return isAssignable(bound, b)
     }
