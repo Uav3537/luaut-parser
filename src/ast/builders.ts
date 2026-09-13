@@ -655,6 +655,7 @@ export class Parser {
                 name: p.name || undefined,
                 id: p.name ? nameIdentifier(p.name, p) : undefined,
                 optional: p.optional,
+                rest: p.rest,
                 typeAnnotation: p.typeAnnotation ?? { type: "TypeReference", base: "any", typeArguments: [], line: p.line, column: p.column },
                 line: p.line,
                 column: p.column,
@@ -2231,8 +2232,28 @@ export class Parser {
         if (!this.checkPunctuator(")")) {
             while (true) {
                 if (this.checkOperator("...")) {
-                    this.advance()
+                    const dots = this.advance()
                     hasVarargs = true
+                    // `...rest: T[]` — JavaScript's rest parameter: everything
+                    // from here on, as an array. Bare `...` and `...: T` stay
+                    // Lua's pack, which `const a, b = ...` reads.
+                    if (this.checkType("Identifier")) {
+                        const nameTok = this.expectIdentifier()
+                        let typeAnnotation: TypeNode | undefined
+                        if (this.matchPunctuator(":")) {
+                            typeAnnotation = this.typeOr(() => this.checkPunctuator(")"))
+                        }
+                        params.push({
+                            type: "FunctionParameter",
+                            name: nameTok.value as string,
+                            typeAnnotation, rest: true,
+                            ...spanFrom(dots, this.previous()),
+                        })
+                        if (this.checkPunctuator(",")) {
+                            this.problem("A rest parameter is the last one: nothing can follow '...'")
+                        }
+                        break
+                    }
                     if (this.matchPunctuator(":")) {
                         varargTypeAnnotation = this.parseTypeOrTypePackReference()
                     }
@@ -2606,8 +2627,23 @@ export class Parser {
         if (!this.checkPunctuator(")")) {
             while (true) {
                 if (this.checkOperator("...")) {
-                    this.advance()
+                    const dots = this.advance()
                     hasVarargs = true
+                    // `(...rest: T[]) -> R`: the same call signature as
+                    // `(...T) -> R`, written the way the body receives it.
+                    if (this.checkType("Identifier") && this.punctuatorAt(1, ":")) {
+                        const nameTok = this.expectIdentifier()
+                        this.advance() // ':'
+                        params.push({
+                            type: "FunctionTypeParameter",
+                            name: nameTok.value as string,
+                            id: tokenIdentifier(nameTok),
+                            typeAnnotation: this.parseType(),
+                            rest: true,
+                            ...spanFrom(dots, this.previous()),
+                        })
+                        break
+                    }
                     varargType = this.parseType()
                     break
                 }

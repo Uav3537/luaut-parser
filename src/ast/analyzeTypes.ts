@@ -1834,17 +1834,21 @@ class TypeAnalyzer {
             case "FunctionTypeNode": {
                 const names = node.generics.map(g => g.name)
                 return this.withTypeParams(node.generics, () => {
-                    const params = node.params.map(p => ({
+                    const params = node.params.filter(p => !p.rest).map(p => ({
                         name: p.name,
                         type: p.optional
                             ? optional(this.resolveType(p.typeAnnotation))
                             : this.resolveType(p.typeAnnotation),
                         optional: p.optional,
                     }))
+                    const restParam = node.params.find(p => p.rest)
+                    const restElement = restParam ? this.resolveType(restParam.typeAnnotation) : undefined
                     return this.withTypeParamDefaults(fn(
                         params,
                         this.resolveType(node.returnType),
-                        node.hasVarargs ? (node.varargType ? this.resolveType(node.varargType) : anyType) : undefined,
+                        restParam
+                            ? (restElement?.kind === "array" ? restElement.element : unknownType)
+                            : node.hasVarargs ? (node.varargType ? this.resolveType(node.varargType) : anyType) : undefined,
                         names,
                         this.resolvePredicate(node.predicate, params),
                     ), node.generics)
@@ -2265,7 +2269,7 @@ class TypeAnalyzer {
                         this.applyContext(stmt.init[i], this.resolveType(target.typeAnnotation))
                     }
                 })
-                const { types: valueTypes, sources } = this.valueList(stmt.init, env)
+                const { types: valueTypes, sources } = this.valueList(stmt.init, env, stmt.names.length)
                 stmt.names.forEach((target, i) => {
                     const inferred = valueTypes[i] ?? (stmt.init.length ? unknownType : nilType)
                     const source = sources[i]
@@ -2385,7 +2389,7 @@ class TypeAnalyzer {
                         if (id !== undefined && this.annotated.has(id)) this.applyContext(value, this.bindingType.get(id))
                     }
                 })
-                const { types: valueTypes, sources } = this.valueList(stmt.values, env)
+                const { types: valueTypes, sources } = this.valueList(stmt.values, env, stmt.targets.length)
                 stmt.targets.forEach((target, i) => {
                     const vt = valueTypes[i] ?? unknownType
                     const source = sources[i]
@@ -2636,12 +2640,24 @@ class TypeAnalyzer {
     private valueList(
         exprs: readonly Expression[],
         env: FlowEnv,
+        /** How many values the caller has room for. `...` ends the list with
+         *  as many of what it holds as are asked for: `const a, b = ...` is
+         *  two of them, not one and a gap. */
+        want = 0,
     ): { types: Type[]; sources: (Expression | undefined)[] } {
         const types: Type[] = []
         const sources: (Expression | undefined)[] = []
         exprs.forEach((e, i) => {
             const t = this.infer(e, env)
             const last = i === exprs.length - 1
+            if (last && e.type === "VarargExpression") {
+                // Every remaining name reads one more of the pack.
+                do {
+                    types.push(t)
+                    sources.push(types.length - 1 === i ? e : undefined)
+                } while (types.length < want)
+                return
+            }
             if (last && t.kind === "tuple" && t.isPack && producesMultipleValues(e)) {
                 t.elements.forEach((el, j) => {
                     types.push(el)
@@ -2755,6 +2771,7 @@ class TypeAnalyzer {
             typeAnnotation?: TypeNode
             default?: Expression
             optional?: boolean
+            rest?: boolean
             pattern?: ObjectPattern | ArrayPattern
         },
         env: FlowEnv,
@@ -2777,6 +2794,7 @@ class TypeAnalyzer {
             if (p.default) this.applyContext(p.default, t)
             return p.optional ? optional(t) : t
         }
+        if (p.rest) return arrayOf(unknownType)
         if (p.pattern) return this.patternToType(p.pattern, env)
         if (p.default) return widen(this.infer(p.default, env))
         return this.contextualParams.get(p) ?? anyType
@@ -2914,6 +2932,24 @@ class TypeAnalyzer {
         return tuple(target.elements.map(el => el ? leaf(el.value, el.default) : anyType))
     }
 
+    /** What a vararg function's `...` holds, one value at a time.
+     *
+     *  Written three ways, and they mean the same call: `...` says nothing,
+     *  `...: T` says each value is a `T`, and `...rest: T[]` collects them
+     *  into an array the body reads by name. Only the last changes what the
+     *  body sees — the signature is the same either way. */
+    private varargElement(func: {
+        hasVarargs: boolean
+        varargTypeAnnotation?: TypeNode
+        params: readonly { rest?: boolean; typeAnnotation?: TypeNode }[]
+    }): Type | undefined {
+        if (!func.hasVarargs) return undefined
+        const rest = func.params.find(p => p.rest)
+        if (!rest) return func.varargTypeAnnotation ? this.resolveType(func.varargTypeAnnotation) : anyType
+        const declared = rest.typeAnnotation ? this.resolveType(rest.typeAnnotation) : undefined
+        return declared?.kind === "array" ? declared.element : unknownType
+    }
+
     /** The type of `...` in each function body being walked. */
     private readonly varargs: (Type | undefined)[] = []
     /** What each function body being walked declared it returns. */
@@ -2921,9 +2957,7 @@ class TypeAnalyzer {
 
     /** Run `body` with `...` and `return` as `func` declares them. */
     private withVarargs<T>(func: FunctionBody, body: () => T): T {
-        this.varargs.push(func.hasVarargs
-            ? (func.varargTypeAnnotation ? this.resolveType(func.varargTypeAnnotation) : anyType)
-            : undefined)
+        this.varargs.push(this.varargElement(func))
         this.declaredReturns.push(func.predicate
             ? booleanType
             : func.returnType ? this.resolveType(func.returnType) : undefined)
@@ -3025,6 +3059,15 @@ class TypeAnalyzer {
                 : p.type
             unify(p.type, keepsLiterals(param) ? arg : widen(arg), vars, subst)
         })
+        // The arguments `...` takes say what it holds, the way a parameter's
+        // does: `firstOf(1, 2)` of a `(...items: T[])` reads `T` as `number`.
+        if (f.varargs) {
+            const keeps = keepsLiterals(f.varargs)
+            for (let i = f.params.length; i < argTypes.length; i++) {
+                const arg = argTypes[i]
+                if (arg !== undefined) unify(f.varargs, keeps ? arg : widen(arg), vars, subst)
+            }
+        }
         for (const name of f.typeParams ?? []) {
             if (!subst.has(name)) subst.set(name, f.typeParamDefaults?.[name] ?? unknownType)
         }
@@ -3111,6 +3154,14 @@ class TypeAnalyzer {
      *  accepts `"Players"` but not `""`. */
     private overloadAccepts(f: FunctionType, argTypes: Type[]): boolean {
         if (!f.varargs && argTypes.length > f.params.length) return false
+        // What `...` holds is checked too — that is what `...: string` and
+        // `...rest: string[]` say. A generic signature is left to inference,
+        // which checks the arguments once it knows what its parameters are.
+        if (f.varargs && !f.typeParams?.length) {
+            for (let i = f.params.length; i < argTypes.length; i++) {
+                if (!isAssignable(argTypes[i], f.varargs)) return false
+            }
+        }
         const params = this.boundParams(f)
         return f.params.every((p, i) => {
             // Only `?` (or a default) makes an argument omissible. A parameter
@@ -3217,10 +3268,12 @@ class TypeAnalyzer {
         // A parameter nothing pinned down stands for anything, and checking
         // against what it fell back to would invent errors.
         for (const bound of subst.values()) if (bound.kind === "unknown") return
-        for (let i = 0; i < f.params.length; i++) {
+        const declaredAt = (i: number): Type | undefined =>
+            i < f.params.length ? f.params[i].type : f.varargs
+        for (let i = 0; i < Math.max(f.params.length, argTypes.length); i++) {
             const arg = argTypes[i]
-            const declared = f.params[i].type
-            if (arg === undefined || !containsTypeParam(declared)) continue
+            const declared = declaredAt(i)
+            if (arg === undefined || declared === undefined || !containsTypeParam(declared)) continue
             const expected = this.reduceType(substitute(declared, subst))
             if (containsTypeParam(expected) || expected.kind === "any" || expected.kind === "unknown") continue
             if (isAssignable(arg, expected) || isAssignable(widen(arg), expected)) continue
@@ -3257,18 +3310,33 @@ class TypeAnalyzer {
             })
             return
         }
+        if (!f.varargs || f.typeParams?.length) return
+        for (let i = f.params.length; i < args.length; i++) {
+            if (isAssignable(args[i], f.varargs)) continue
+            this.diagnostics.push({
+                node: written[i - self] ?? call,
+                message: `Argument of type '${formatType(args[i])}' is not assignable to parameter of type '${briefType(f.varargs)}'`,
+            })
+            return
+        }
     }
 
     /** A required parameter may not follow an optional one — otherwise the
      *  optional one could never actually be omitted. Same rule as TypeScript,
      *  and it applies to a default (`a = 1`) as much as to a `?`. */
     private checkParamOrder(
-        params: readonly { name?: string; optional?: boolean; default?: unknown }[],
+        params: readonly { name?: string; optional?: boolean; rest?: boolean; default?: unknown }[],
         node: Expression | Statement | ClassMember,
     ): void {
         if (!this.emitDiagnostics) return
         let seenOptional: string | undefined
         for (const p of params) {
+            // A rest parameter takes whatever is left, so nothing about the
+            // order before it is wrong.
+            if (p.rest === true) {
+                this.checkRestType(p, node)
+                continue
+            }
             const isOptional = p.optional === true || p.default !== undefined
             if (isOptional) {
                 if (seenOptional === undefined) seenOptional = p.name ?? "parameter"
@@ -3346,7 +3414,7 @@ class TypeAnalyzer {
             return type
         }
         return record(this.withTypeParams(sig.generics, () => {
-            const params = sig.params.map(p => ({
+            const params = sig.params.filter(p => !p.rest).map(p => ({
                 name: p.pattern ? undefined : p.name,
                 type: this.paramType(p, new Map()),
                 optional: p.optional || p.default !== undefined,
@@ -3354,11 +3422,27 @@ class TypeAnalyzer {
             return fn(
                 params,
                 sig.returnType ? this.resolveType(sig.returnType) : sig.predicate ? booleanType : anyType,
-                sig.hasVarargs ? (sig.varargTypeAnnotation ? this.resolveType(sig.varargTypeAnnotation) : anyType) : undefined,
+                this.varargElement(sig),
                 names,
                 this.resolvePredicate(sig.predicate, params),
             )
         }))
+    }
+
+    /** `...rest: T[]` holds every argument from its position on, so its type
+     *  is an array of what each one is. */
+    private checkRestType(
+        p: { name?: string; typeAnnotation?: unknown },
+        node: TypeDiagnostic["node"],
+    ): void {
+        if (!this.emitDiagnostics || !p.typeAnnotation) return
+        const declared = this.resolveType(p.typeAnnotation as TypeNode)
+        if (declared.kind === "array" || declared.kind === "any" || declared.kind === "typeParam") return
+        this.diagnostics.push({
+            node,
+            message: `A rest parameter holds every argument from its position on, so '${p.name ?? "..."}' `
+                + `is an array: '${formatType(declared)}[]', not '${formatType(declared)}'`,
+        })
     }
 
     /** Turn a parsed `v is T` / `asserts v` annotation into a `TypePredicate`,
@@ -3382,7 +3466,7 @@ class TypeAnalyzer {
     private inferFunctionBody(func: FunctionBody, env: FlowEnv): Type {
         const names = func.generics.map(g => g.name)
         return this.withTypeParams(func.generics, () => {
-            const params = func.params.map(p => {
+            const params = func.params.flatMap(p => {
                 const type = this.paramType(p, env)
                 // Record each parameter's type before the next one's annotation
                 // is read, so `(limit: number, value: typeof limit)` sees
@@ -3391,11 +3475,13 @@ class TypeAnalyzer {
                     const id = this.bindingIdByName(p.name, p)
                     if (id !== undefined && !this.bindingType.has(id)) this.bindingType.set(id, type)
                 }
-                return {
+                // A rest parameter is the varargs, not a parameter of its own.
+                if (p.rest) return []
+                return [{
                     name: p.pattern ? undefined : p.name,
                     type,
                     optional: p.optional || p.default !== undefined,
-                }
+                }]
             })
             // Infer the return type with the parameters bound, so `return { x: p }`
             // sees `p`'s type rather than `any`.
@@ -3432,7 +3518,7 @@ class TypeAnalyzer {
             }
             return fn(
                 params, returns,
-                func.hasVarargs ? (func.varargTypeAnnotation ? this.resolveType(func.varargTypeAnnotation) : anyType) : undefined,
+                this.varargElement(func),
                 names,
                 this.resolvePredicate(func.predicate, params),
             )

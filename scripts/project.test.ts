@@ -1560,6 +1560,99 @@ end`)
         [[], "string[]", "(number | string)[]", "string[]"])
 }
 
+// --- rest parameters ---------------------------------------------------
+{
+    const analyze = (code: string) => {
+        const program = parse(code)
+        const scopes = analyzeScopes(program)
+        const types = analyzeTypes(program, scopes, {})
+        const bindings: Record<string, string> = {}
+        for (const [id, type] of types.bindingType) bindings[scopes.bindings.get(id)!.name] = formatType(type)
+        return { errors: [...scopes.diagnostics, ...types.diagnostics].map(d => d.message), bindings }
+    }
+
+    // `...rest: T[]` is an array in the body and `...` in the signature.
+    const rest = analyze([
+        "function join(sep: string, ...parts: string[]): string",
+        "    const held = parts",
+        "    return table.concat(parts, sep)",
+        "end",
+        "declare table: { concat: (t: string[], sep: string) -> string }",
+        "const signature = join",
+        `join("-", "a", "b")`,
+        `join("-", 1)`,
+        "join()",
+    ].join("\n"))
+    check("rest: an array inside, the varargs outside",
+        [rest.errors, rest.bindings.held, rest.bindings.signature],
+        [[
+            "Argument of type '1' is not assignable to parameter of type 'string'",
+            "Expected at least 1 arguments, got 0",
+        ], "string[]", "(sep: string, ...string) -> string"])
+
+    // `...` on its own is still Lua's pack, and every name reads one of it.
+    const pack = analyze([
+        "function firstTwo(...: number): (number, number)",
+        "    const a, b = ...",
+        "    const all = [...]",
+        "    return a, b",
+        "end",
+        "function untyped(...)",
+        "    const x, y = ...",
+        "end",
+    ].join("\n"))
+    check("rest: `...` on its own is the pack it always was, and fills every name",
+        [pack.errors, pack.bindings.a, pack.bindings.b, pack.bindings.all, pack.bindings.y],
+        [[], "number", "number", "number[]", "any"])
+
+    // The two spellings describe the same call.
+    const both = analyze([
+        "declare function withPack(...: string): ()",
+        "declare function withRest(...items: string[]): ()",
+        "const asPack = withPack",
+        "const asRest = withRest",
+    ].join("\n"))
+    check("rest: both spellings are the same signature",
+        [both.bindings.asPack, both.bindings.asRest], ["(...string) -> ()", "(...string) -> ()"])
+
+    // And in a type.
+    const written = analyze([
+        "declare log: (level: string, ...lines: string[]) -> ()",
+        `log("info", "a", "b")`,
+        `log("info", 1)`,
+    ].join("\n"))
+    check("rest: a type can be written with one too",
+        written.errors, ["Argument of type '1' is not assignable to parameter of type 'string'"])
+
+    // What `...` holds says what a type parameter is.
+    const generic = analyze([
+        "function firstOf<T>(...items: T[]): T | nil",
+        "    return items[1]",
+        "end",
+        "const ofNumbers = firstOf(1, 2, 3)",
+        `const ofStrings = firstOf("a")`,
+    ].join("\n"))
+    check("rest: the arguments say what a generic rest parameter holds",
+        [generic.errors, generic.bindings.ofNumbers, generic.bindings.ofStrings],
+        [[], "number | nil", "string | nil"])
+
+    check("rest: no annotation is an array of anything",
+        analyze("function f(...rest)\n    const held = rest\nend").bindings.held, "unknown[]")
+
+    check("rest: its type is an array",
+        analyze("function f(...a: string)\nend").errors,
+        ["A rest parameter holds every argument from its position on, so 'a' is an array: 'string[]', not 'string'"])
+
+    check("rest: nothing follows it", (() => {
+        try {
+            parse("function f(...a: string[], b: number)\nend")
+            return undefined
+        } catch (error) {
+            return (error as Error).message
+        }
+    })(), "A rest parameter is the last one: nothing can follow '...' (1:26)")
+}
+
 // --- classes -----------------------------------------------------------
 {
     const analyze = (code: string, modules: Record<string, string> = {}) => {

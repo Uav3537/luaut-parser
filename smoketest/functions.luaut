@@ -30,3 +30,42 @@ function T:configure({ verbose = false, retries = 3 })
 end
 
 print(makeEnemy({ name: "bat" }), sum([1, 2]), applyN(1, [2, 3]), greet("world"))
+
+-- ============================================================
+-- Rest parameters
+-- ============================================================
+
+-- `...` on its own is Lua's pack: `const a, b = ...` reads it, and `[...]`
+-- puts it in an array.
+function firstTwo(...: number): (number, number)
+    const a, b = ...
+    return a, b
+end
+
+-- `...rest: T[]` is JavaScript's rest parameter: everything from here on, as
+-- an array. The call signature is the same either way.
+function join(separator: string, ...parts: string[]): string
+    return table.concat(parts, separator)
+end
+
+function total(...numbers: number[]): number
+    let sum = 0
+    for _, n in numbers do
+        sum += n
+    end
+    return sum
+end
+
+-- What the arguments are says what a generic one holds.
+function firstOf<T>(...items: T[]): T | nil
+    return items[1]
+end
+
+const two: number = firstTwo(1, 2)
+const joined: string = join("-", "a", "b", "c")
+const summed: number = total(1, 2, 3)
+const picked: number | nil = firstOf(1, 2)
+const written: string | nil = firstOf("a")
+
+-- A type can be written with one too.
+type Reporter = (level: string, ...lines: string[]) -> ()

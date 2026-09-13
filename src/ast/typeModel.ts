@@ -735,6 +735,10 @@ function isAssignableInner(a: Type, b: Type): boolean {
     // `"a"` nor `"b"` on its own.
     if (a.kind === "typeParam") {
         if (b.kind === "typeParam" && a.name === b.name) return true
+        // `T` fits `T | nil`: the target names the same parameter, whatever it
+        // turns out to be. Asked before the constraint, which an unconstrained
+        // parameter has none of.
+        if (b.kind === "union" && b.types.some(m => m.kind === "typeParam" && m.name === a.name)) return true
         return a.constraint ? isAssignable(a.constraint, b) : false
     }
 

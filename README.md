@@ -377,6 +377,34 @@ the compiler builds the class table out of (`new`, `ClassObject`,
 `ParentClass`, `__init`, `__index`, `__newindex`, `__getters`, `__setters`,
 `__dynamic`).
 
+**Varargs** — `...` is Lua's pack, and every name on the left reads one of
+it: with `...: number`, `const a, b = ...` gives two numbers. `[...]` puts the
+whole pack in an array.
+
+**Rest parameters** — `...name: T[]` is JavaScript's: every argument from that
+position on, as an array. It is last, and the call signature is the same one
+`...: T` describes — the difference is only what the body sees.
+
+```luau
+function join(separator: string, ...parts: string[]): string
+    return table.concat(parts, separator)   -- `parts` is a string[] here
+end
+
+join("-", "a", "b")       -- and a vararg call out here
+join("-", 1)              -- Argument of type '1' is not assignable to 'string'
+
+function firstOf<T>(...items: T[]): T | nil
+    return items[1]
+end
+
+firstOf(1, 2)             -- number | nil: the arguments say what `T` is
+```
+
+A type is written the same way: `type Reporter = (level: string, ...lines:
+string[]) -> ()` describes the same calls as `(level: string, ...string) ->
+()`. Without an annotation a rest parameter is `unknown[]`; annotated with
+something that is not an array, it is reported.
+
 **Callbacks** — a function written where a function type is expected takes
 its parameter types from it: in `signal:Connect(function(player) ... end)`,
 `player` is typed from `Connect`. The same applies to an annotated `const`

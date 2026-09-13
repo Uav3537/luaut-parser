@@ -564,6 +564,11 @@ interface VarargExpression extends BaseNode {
 }
 interface FunctionParameter extends BaseNode {
     type: "FunctionParameter";
+    /** `...rest: T[]` — every argument from this position on, as an array,
+     *  the way JavaScript's rest parameter collects them. It is always last,
+     *  and the function is a vararg function: `...` still means Lua's pack
+     *  (`const a, b = ...`), and this is the array of it. */
+    rest?: boolean;
     /** `name?: T` — the argument may be omitted, and its type admits `nil`. */
     optional?: boolean;
     /** the parameter name, or `""` when `pattern` is set */
@@ -866,6 +871,8 @@ interface TupleTypeNode extends BaseNode {
 }
 interface FunctionTypeParameter extends BaseNode {
     type: "FunctionTypeParameter";
+    /** `(...rest: T[]) -> R` — see `FunctionParameter.rest`. */
+    rest?: boolean;
     /** `name?: T` — the argument may be omitted, and its type admits `nil`. */
     optional?: boolean;
     name?: string;
