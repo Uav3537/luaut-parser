@@ -3,6 +3,7 @@ _: number
 a: number
 a: number
 applyN: (n: number, number[]) -> number
+around: string
 b: number
 b: number
 braces: (x: number) -> string
@@ -11,6 +12,7 @@ dx: number
 dy: number
 firstOf: <T>(...T) -> T | nil
 firstTwo: (...number) -> (number, number)
+forward: (...string) -> string
 greet: (who: string, punct: string) -> string
 hp: number
 items: T[]
@@ -20,6 +22,7 @@ makeEnemy: ({ hp?: number, name: any, pos: { x?: number, y?: number } }) -> { hp
 n: number
 n: number
 name: any
+names: string[]
 numbers: number[]
 parts: string[]
 picked: number | nil
@@ -27,10 +30,12 @@ punct: string
 retries: number
 self: {}
 separator: string
+spread: string
 sum: (number[]) -> number
 sum: number
 summed: number
 total: (...number) -> number
+twice: string
 two: number
 verbose: boolean
 who: string

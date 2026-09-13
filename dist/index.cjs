@@ -2291,6 +2291,21 @@ var Parser = class {
     const args = this.parseCallArguments();
     return { type: "NewExpression", callee, arguments: args, typeArguments, ...spanFrom(start, this.previous()) };
   }
+  /** After `...`, is there something to spread? Nothing following it means
+   *  the vararg pack, which is what `f(...)` has always passed on. */
+  startsSpread() {
+    const next = this.peek(1);
+    if (next.type === "Punctuator") {
+      const value = next.value;
+      return value === "(" || value === "{" || value === "[";
+    }
+    return next.type === "Identifier" || next.type === "Literal" || next.type === "InterpolatedString";
+  }
+  parseSpreadArgument(stop) {
+    const dots = this.advance();
+    const argument = this.expressionOr(stop);
+    return { type: "SpreadElement", argument, ...spanFrom(dots, argument) };
+  }
   /** Is the token `ahead` places on the punctuator `value`? */
   punctuatorAt(ahead, value) {
     const token = this.peek(ahead);
@@ -2337,7 +2352,7 @@ var Parser = class {
         while (true) {
           if (this.recover && this.onNewLine() && this.startsTableField() && !this.startsMethodCall(1)) break;
           const before = this.cursor;
-          const argument = this.expressionOr(stop);
+          const argument = this.checkOperator("...") && this.startsSpread() ? this.parseSpreadArgument(stop) : this.expressionOr(stop);
           if (argument.type !== "ErrorExpression" || this.cursor > before || list.length) list.push(argument);
           if (this.matchPunctuator(",") && !this.checkPunctuator(")")) continue;
           if (!this.recover || this.checkPunctuator(")")) break;
@@ -3967,6 +3982,9 @@ var Analyzer = class {
         for (const argument of expr.typeArguments ?? []) this.visitType(argument, scope);
         return;
       case "SuperExpression":
+        return;
+      case "SpreadElement":
+        this.visitExpression(expr.argument, scope);
         return;
       case "ClassExpression": {
         const inner = childScope(scope);
@@ -7268,11 +7286,11 @@ var TypeAnalyzer = class {
    *  after every concrete signature has been tried. That ordering is what
    *  lets `typeof` declare `(v: number) -> "number"` alongside a trailing
    *  `<T>(v: T) -> string` and still pick the precise one. */
-  pickOverload(fns, argTypes, argsFor) {
+  pickOverload(fns, argTypes, argsFor, spread) {
     for (const generic of [false, true]) {
       for (const f of fns) {
         if ((f.typeParams?.length ?? 0) > 0 !== generic) continue;
-        if (this.overloadAccepts(f, argsFor ? argsFor(f) : argTypes)) return f;
+        if (this.overloadAccepts(f, argsFor ? argsFor(f) : argTypes, spread)) return f;
       }
     }
     return void 0;
@@ -7307,17 +7325,27 @@ var TypeAnalyzer = class {
    *  own type parameters stand for what the call would infer, so each is
    *  checked only against its constraint — `<K extends keyof Services>`
    *  accepts `"Players"` but not `""`. */
-  overloadAccepts(f, argTypes) {
-    if (!f.varargs && argTypes.length > f.params.length) return false;
+  overloadAccepts(f, argTypes, spread) {
+    const at = (i) => {
+      if (!spread || i < spread.index) return argTypes[i];
+      if (!spread.elements) return argTypes[spread.index];
+      const held = spread.elements[i - spread.index];
+      return held ?? argTypes[i - spread.index + 1 + spread.elements.length - 1];
+    };
+    const written = spread?.elements ? argTypes.length + spread.elements.length - 1 : argTypes.length;
+    if (!f.varargs && (!spread || spread.elements) && written > f.params.length) return false;
     if (f.varargs && !f.typeParams?.length) {
-      for (let i = f.params.length; i < argTypes.length; i++) {
-        if (!isAssignable(argTypes[i], f.varargs)) return false;
+      const last = spread && !spread.elements ? Math.max(f.params.length + 1, written) : written;
+      for (let i = f.params.length; i < last; i++) {
+        const arg = at(i);
+        if (arg !== void 0 && !isAssignable(arg, f.varargs)) return false;
       }
     }
     const params = this.boundParams(f);
     return f.params.every((p, i) => {
-      if (argTypes[i] === void 0) return p.optional === true;
-      return isAssignable(argTypes[i], params[i]);
+      const arg = at(i);
+      if (arg === void 0) return p.optional === true;
+      return isAssignable(arg, params[i]);
     });
   }
   /** A signature's parameter types as a call site sees them before inference:
@@ -7416,11 +7444,13 @@ var TypeAnalyzer = class {
     const args = argsFor(f);
     const params = this.boundParams(f);
     const self = selfOf(f);
+    const spread = this.spreadOf(written, self);
     for (let i = 0; i < f.params.length; i++) {
-      const arg = args[i];
-      if (arg === void 0 || isAssignable(arg, params[i])) continue;
+      const arg = spread && i >= spread.index ? this.spreadValue(spread, i) : args[i];
+      if (spread && i > spread.index && !spread.elements) break;
+      if (arg === void 0 || arg.kind === "never" || isAssignable(arg, params[i])) continue;
       this.diagnostics.push({
-        node: written[i - self] ?? call,
+        node: (spread && i >= spread.index ? written[spread.index - self] : written[i - self]) ?? call,
         message: `Argument of type '${formatType(arg)}' is not assignable to parameter of type '${briefType(params[i])}'`
       });
       return;
@@ -7471,8 +7501,10 @@ var TypeAnalyzer = class {
    *  when *no* overload accepts the count, so an overload set still reports
    *  once, against its first signature. Returns whether the count fits, so
    *  an argument's type is only complained about when its count is right. */
-  checkArity(node, fns, argCount, selfArgs) {
+  checkArity(node, fns, argCount, selfArgs, spread) {
     if (!fns.length) return true;
+    if (spread && !spread.elements) return true;
+    if (spread?.elements) argCount += spread.elements.length - 1;
     const fits = fns.some((f) => {
       const { min: min2, max: max2 } = this.arityOf(f);
       const n = argCount + selfArgs;
@@ -8214,6 +8246,20 @@ var TypeAnalyzer = class {
       // `...` holds what the function declared it takes.
       case "VarargExpression":
         return this.varargs[this.varargs.length - 1] ?? anyType;
+      // `f(a, ...rest)` — every value the array holds, one after
+      // another. Each of them is an element, so that is what the
+      // parameters it fills are checked against.
+      case "SpreadElement": {
+        const spread = this.infer(expr.argument, env);
+        const element = this.spreadElement(spread);
+        if (element === void 0 && this.emitDiagnostics) {
+          this.diagnostics.push({
+            node: expr,
+            message: `Only an array can be spread, and '${formatType(spread)}' is not one`
+          });
+        }
+        return element ?? anyType;
+      }
       // Broken syntax is reported by the parser; nothing more to say.
       case "ErrorExpression":
         return anyType;
@@ -8419,8 +8465,9 @@ var TypeAnalyzer = class {
     const argTypes = expr.arguments.map((a) => this.infer(a, env));
     if (fns.length) {
       this.recordExpected(expr.arguments, fns, () => 0, () => argTypes);
-      const arityFits = this.checkArity(expr, fns, argTypes.length, 0);
-      const picked = this.pickOverload(fns, argTypes);
+      const spread = this.spreadOf(expr.arguments);
+      const arityFits = this.checkArity(expr, fns, argTypes.length, 0, spread);
+      const picked = this.pickOverload(fns, argTypes, void 0, spread);
       const distributed = this.distributedReturn(fns, argTypes, picked, (_, args) => args);
       if (distributed) return distributed;
       if (picked) {
@@ -8457,8 +8504,10 @@ var TypeAnalyzer = class {
       const withSelf = (f) => this.takesSelf(f) ? [objType, ...argTypes] : argTypes;
       const selfOf = (f) => this.takesSelf(f) ? 1 : 0;
       this.recordExpected(expr.arguments, fns, selfOf, withSelf);
-      const arityFits = this.checkArity(expr, fns, argTypes.length, this.takesSelf(fns[0]) ? 1 : 0);
-      const picked = this.pickOverload(fns, argTypes, withSelf);
+      const self0 = this.takesSelf(fns[0]) ? 1 : 0;
+      const spread = this.spreadOf(expr.arguments, self0);
+      const arityFits = this.checkArity(expr, fns, argTypes.length, self0, spread);
+      const picked = this.pickOverload(fns, argTypes, withSelf, spread);
       const distributed = this.distributedReturn(
         fns,
         argTypes,
@@ -9109,6 +9158,37 @@ var TypeAnalyzer = class {
   takesSelf(f) {
     const first = f.params[0]?.name;
     return first === "self" || first === "this";
+  }
+  /** What one value of a spread array is, or `undefined` when the thing
+   *  spread is not a list of values at all. */
+  spreadElement(t) {
+    const spread = this.expand(t);
+    if (spread.kind === "array") return spread.element;
+    if (spread.kind === "tuple") return union(spread.elements);
+    if (spread.kind === "any") return anyType;
+    return void 0;
+  }
+  /** Where a call's arguments stop being one each, and what fills the rest.
+   *  From a spread on, every remaining parameter is filled by one of the
+   *  array's values — however many that turns out to be, so neither the
+   *  count nor the positions after it are known. A *tuple* is the exception:
+   *  it holds a known value at each position, and `elements` says which. */
+  spreadOf(args, self = 0) {
+    const index = args.findIndex((a) => a.type === "SpreadElement");
+    if (index < 0) return void 0;
+    const spread = args[index];
+    const held = this.typeOf.get(spread.argument);
+    const expanded = held && this.expand(held);
+    return {
+      index: index + self,
+      element: this.typeOf.get(spread) ?? unknownType,
+      elements: expanded?.kind === "tuple" ? expanded.elements : void 0
+    };
+  }
+  /** One of `spread`'s values, at the position `i` of a call's arguments. */
+  spreadValue(spread, i) {
+    if (!spread.elements) return spread.element;
+    return spread.elements[i - spread.index] ?? neverType;
   }
   /** A function type as a list of call signatures: a lone function is a
    *  one-element list, an intersection is the overload set in source order. */

@@ -69,3 +69,15 @@ const written: string | nil = firstOf("a")
 
 -- A type can be written with one too.
 type Reporter = (level: string, ...lines: string[]) -> ()
+
+-- `f(...xs)` spreads an array into the arguments, as JavaScript does. Bare
+-- `f(...)` is unchanged: that is the pack being passed on.
+const names: string[] = ["a", "b", "c"]
+
+const spread: string = join("-", ...names)
+const around: string = join("-", ...names, "z")
+const twice: string = join("-", ...names, ...names)
+
+function forward(...: string): string
+    return join("-", ...)
+end

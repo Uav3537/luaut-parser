@@ -1653,6 +1653,86 @@ end`)
     })(), "A rest parameter is the last one: nothing can follow '...' (1:26)")
 }
 
+// --- spread arguments --------------------------------------------------
+{
+    const analyze = (code: string) => {
+        const program = parse(code)
+        const scopes = analyzeScopes(program)
+        const types = analyzeTypes(program, scopes, {})
+        const bindings: Record<string, string> = {}
+        for (const [id, type] of types.bindingType) bindings[scopes.bindings.get(id)!.name] = formatType(type)
+        return { errors: [...scopes.diagnostics, ...types.diagnostics].map(d => d.message), bindings }
+    }
+
+    const DECLARED = [
+        "declare function add3(a: number, b: number, c: number): number",
+        "declare function join(sep: string, ...parts: string[]): string",
+        "declare nums: number[]",
+        "declare words: string[]",
+    ].join("\n")
+
+    const fills = analyze([
+        DECLARED,
+        "const summed = add3(...nums)",
+        "const withOne = add3(1, ...nums)",
+        `const joined = join("-", ...words)`,
+    ].join("\n"))
+    check("spread: an array fills the parameters from there on",
+        [fills.errors, fills.bindings.summed, fills.bindings.withOne, fills.bindings.joined],
+        [[], "number", "number", "string"])
+
+    check("spread: and what it holds still has to fit", analyze([
+        DECLARED,
+        "add3(...words)",
+        `join("-", ...nums)`,
+    ].join("\n")).errors, [
+        "Argument of type 'string' is not assignable to parameter of type 'number'",
+        "Argument of type 'number' is not assignable to parameter of type 'string'",
+    ])
+
+    // How many an array holds is not known, so the count says nothing — but a
+    // tuple's is, and it does.
+    check("spread: an array says nothing about how many, a tuple says exactly", analyze([
+        DECLARED,
+        "declare pair: [number, string]",
+        "declare trio: [number, number, number]",
+        "declare function takes(a: number, b: string): ()",
+        "add3(...nums)",
+        "add3()",
+        "takes(...pair)",
+        "add3(...trio)",
+        "takes(...trio)",
+    ].join("\n")).errors, [
+        "Expected 3 arguments, got 0",
+        "Expected 2 arguments, got 3",
+    ])
+
+    check("spread: only a list can be spread", analyze([
+        DECLARED,
+        "declare n: number",
+        "add3(...n)",
+    ].join("\n")).errors, ["Only an array can be spread, and 'number' is not one"])
+
+    const generic = analyze([
+        "declare function firstOf<T>(...items: T[]): T | nil",
+        "declare nums: number[]",
+        "const picked = firstOf(...nums)",
+    ].join("\n"))
+    check("spread: a generic reads what it holds through one",
+        [generic.errors, generic.bindings.picked], [[], "number | nil"])
+
+    // `...` on its own is untouched: it is still the pack being passed on.
+    const pack = analyze([
+        "declare function join(sep: string, ...parts: string[]): string",
+        "function pass(...: string): string",
+        `    return join("-", ...)`,
+        "end",
+        "const passed = pass",
+    ].join("\n"))
+    check("spread: bare `...` still passes the pack on",
+        [pack.errors, pack.bindings.passed], [[], "(...string) -> string"])
+}
+
 // --- classes -----------------------------------------------------------
 {
     const analyze = (code: string, modules: Record<string, string> = {}) => {

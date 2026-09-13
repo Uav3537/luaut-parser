@@ -493,6 +493,7 @@ export type Expression =
     | NewExpression
     | SuperExpression
     | ClassExpression
+    | SpreadElement
     | ParenthesizedExpression
     | TypeAssertionExpression
     | SatisfiesExpression
@@ -617,7 +618,15 @@ export interface ArrayExpression extends BaseNode {
     elements: (Expression | SpreadElement)[]
 }
 
-/** `...expr` inside an array literal. */
+/** `...expr` — the values of an array, one after another, where a list of
+ *  values is written: inside an array literal (`[...xs, 1]`) and in a call's
+ *  arguments (`f(a, ...rest)`). It is not a value of its own, and the parser
+ *  only produces one in those two places.
+ *
+ *  Lua spreads with `table.unpack`, which only yields every value when it is
+ *  written last; anywhere else the compiler builds the whole list first. Bare
+ *  `...` is unaffected — that is the vararg pack, and `f(...)` passes it on
+ *  as it always did. */
 export interface SpreadElement extends BaseNode {
     type: "SpreadElement"
     argument: Expression

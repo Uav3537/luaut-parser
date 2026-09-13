@@ -414,6 +414,16 @@ function keepsLiterals(paramType: Type): boolean {
  *  `ParentClass`. They are each class's own, never inherited. */
 const CLASS_LINKS = new Set(["new", "ClassObject", "ParentClass"])
 
+/** Where a call stops having one argument per parameter. See `spreadOf`. */
+interface SpreadInfo {
+    /** The parameter position the spread starts filling. */
+    index: number
+    /** One of the array's values, when how many there are is unknown. */
+    element: Type
+    /** A tuple's values, in order: then how many there are *is* known. */
+    elements?: readonly Type[]
+}
+
 /** A class declaration's members, as types. Built once, filled in place:
  *  the fields land first so a method body can already read `this.x`. */
 interface ClassShape {
@@ -3104,11 +3114,12 @@ class TypeAnalyzer {
         fns: FunctionType[],
         argTypes: Type[],
         argsFor?: (f: FunctionType) => Type[],
+        spread?: SpreadInfo,
     ): FunctionType | undefined {
         for (const generic of [false, true]) {
             for (const f of fns) {
                 if (((f.typeParams?.length ?? 0) > 0) !== generic) continue
-                if (this.overloadAccepts(f, argsFor ? argsFor(f) : argTypes)) return f
+                if (this.overloadAccepts(f, argsFor ? argsFor(f) : argTypes, spread)) return f
             }
         }
         return undefined
@@ -3152,14 +3163,26 @@ class TypeAnalyzer {
      *  own type parameters stand for what the call would infer, so each is
      *  checked only against its constraint — `<K extends keyof Services>`
      *  accepts `"Players"` but not `""`. */
-    private overloadAccepts(f: FunctionType, argTypes: Type[]): boolean {
-        if (!f.varargs && argTypes.length > f.params.length) return false
+    private overloadAccepts(f: FunctionType, argTypes: Type[], spread?: SpreadInfo): boolean {
+        // From a spread on, every argument is one of the array's values.
+        const at = (i: number): Type | undefined => {
+            if (!spread || i < spread.index) return argTypes[i]
+            if (!spread.elements) return argTypes[spread.index]
+            const held = spread.elements[i - spread.index]
+            return held ?? argTypes[i - spread.index + 1 + spread.elements.length - 1]
+        }
+        const written = spread?.elements
+            ? argTypes.length + spread.elements.length - 1
+            : argTypes.length
+        if (!f.varargs && (!spread || spread.elements) && written > f.params.length) return false
         // What `...` holds is checked too — that is what `...: string` and
         // `...rest: string[]` say. A generic signature is left to inference,
         // which checks the arguments once it knows what its parameters are.
         if (f.varargs && !f.typeParams?.length) {
-            for (let i = f.params.length; i < argTypes.length; i++) {
-                if (!isAssignable(argTypes[i], f.varargs)) return false
+            const last = spread && !spread.elements ? Math.max(f.params.length + 1, written) : written
+            for (let i = f.params.length; i < last; i++) {
+                const arg = at(i)
+                if (arg !== undefined && !isAssignable(arg, f.varargs)) return false
             }
         }
         const params = this.boundParams(f)
@@ -3167,8 +3190,9 @@ class TypeAnalyzer {
             // Only `?` (or a default) makes an argument omissible. A parameter
             // typed `T | nil` still has to be passed something — `nil`, if
             // that is what you mean — exactly as in TypeScript.
-            if (argTypes[i] === undefined) return p.optional === true
-            return isAssignable(argTypes[i], params[i])
+            const arg = at(i)
+            if (arg === undefined) return p.optional === true
+            return isAssignable(arg, params[i])
         })
     }
 
@@ -3301,11 +3325,15 @@ class TypeAnalyzer {
         const args = argsFor(f)
         const params = this.boundParams(f)
         const self = selfOf(f)
+        const spread = this.spreadOf(written, self)
         for (let i = 0; i < f.params.length; i++) {
-            const arg = args[i]
-            if (arg === undefined || isAssignable(arg, params[i])) continue
+            // From the spread on, its values fill the remaining parameters,
+            // and the first one that refuses is what is reported.
+            const arg = spread && i >= spread.index ? this.spreadValue(spread, i) : args[i]
+            if (spread && i > spread.index && !spread.elements) break
+            if (arg === undefined || arg.kind === "never" || isAssignable(arg, params[i])) continue
             this.diagnostics.push({
-                node: written[i - self] ?? call,
+                node: (spread && i >= spread.index ? written[spread.index - self] : written[i - self]) ?? call,
                 message: `Argument of type '${formatType(arg)}' is not assignable to parameter of type '${briefType(params[i])}'`,
             })
             return
@@ -3364,8 +3392,15 @@ class TypeAnalyzer {
      *  when *no* overload accepts the count, so an overload set still reports
      *  once, against its first signature. Returns whether the count fits, so
      *  an argument's type is only complained about when its count is right. */
-    private checkArity(node: Expression, fns: FunctionType[], argCount: number, selfArgs: number): boolean {
+    private checkArity(
+        node: Expression, fns: FunctionType[], argCount: number, selfArgs: number,
+        spread?: SpreadInfo,
+    ): boolean {
         if (!fns.length) return true
+        // A spread array may hold any number of values, this call included. A
+        // tuple holds a known number, so the count is known after all.
+        if (spread && !spread.elements) return true
+        if (spread?.elements) argCount += spread.elements.length - 1
         const fits = fns.some(f => {
             const { min, max } = this.arityOf(f)
             const n = argCount + selfArgs
@@ -4248,6 +4283,23 @@ class TypeAnalyzer {
             }
             // `...` holds what the function declared it takes.
             case "VarargExpression": return this.varargs[this.varargs.length - 1] ?? anyType
+
+            // `f(a, ...rest)` — every value the array holds, one after
+            // another. Each of them is an element, so that is what the
+            // parameters it fills are checked against.
+            case "SpreadElement": {
+                const spread = this.infer(expr.argument, env)
+                const element = this.spreadElement(spread)
+                if (element === undefined && this.emitDiagnostics) {
+                    this.diagnostics.push({
+                        node: expr,
+                        message: `Only an array can be spread, and '${formatType(spread)}' is not one`,
+                    })
+                }
+                // Already reported: `any` so the parameters it was meant to
+                // fill are not each reported as well.
+                return element ?? anyType
+            }
             // Broken syntax is reported by the parser; nothing more to say.
             case "ErrorExpression": return anyType
 
@@ -4475,8 +4527,9 @@ class TypeAnalyzer {
         const argTypes = expr.arguments.map(a => this.infer(a, env))
         if (fns.length) {
             this.recordExpected(expr.arguments, fns, () => 0, () => argTypes)
-            const arityFits = this.checkArity(expr, fns, argTypes.length, 0)
-            const picked = this.pickOverload(fns, argTypes)
+            const spread = this.spreadOf(expr.arguments)
+            const arityFits = this.checkArity(expr, fns, argTypes.length, 0, spread)
+            const picked = this.pickOverload(fns, argTypes, undefined, spread)
             const distributed = this.distributedReturn(fns, argTypes, picked, (_, args) => args)
             if (distributed) return distributed
             if (picked) {
@@ -4525,8 +4578,10 @@ class TypeAnalyzer {
             this.recordExpected(expr.arguments, fns, selfOf, withSelf)
             // The receiver fills the `self` slot, so it does not count
             // against what the caller wrote.
-            const arityFits = this.checkArity(expr, fns, argTypes.length, this.takesSelf(fns[0]) ? 1 : 0)
-            const picked = this.pickOverload(fns, argTypes, withSelf)
+            const self0 = this.takesSelf(fns[0]) ? 1 : 0
+            const spread = this.spreadOf(expr.arguments, self0)
+            const arityFits = this.checkArity(expr, fns, argTypes.length, self0, spread)
+            const picked = this.pickOverload(fns, argTypes, withSelf, spread)
             const distributed = this.distributedReturn(fns, argTypes, picked,
                 (f, args) => (this.takesSelf(f) ? [objType, ...args] : args))
             if (distributed) return distributed
@@ -5304,6 +5359,40 @@ class TypeAnalyzer {
     private takesSelf(f: FunctionType): boolean {
         const first = f.params[0]?.name
         return first === "self" || first === "this"
+    }
+
+    /** What one value of a spread array is, or `undefined` when the thing
+     *  spread is not a list of values at all. */
+    private spreadElement(t: Type): Type | undefined {
+        const spread = this.expand(t)
+        if (spread.kind === "array") return spread.element
+        if (spread.kind === "tuple") return union(spread.elements)
+        if (spread.kind === "any") return anyType
+        return undefined
+    }
+
+    /** Where a call's arguments stop being one each, and what fills the rest.
+     *  From a spread on, every remaining parameter is filled by one of the
+     *  array's values — however many that turns out to be, so neither the
+     *  count nor the positions after it are known. A *tuple* is the exception:
+     *  it holds a known value at each position, and `elements` says which. */
+    private spreadOf(args: readonly Expression[], self = 0): SpreadInfo | undefined {
+        const index = args.findIndex(a => a.type === "SpreadElement")
+        if (index < 0) return undefined
+        const spread = args[index] as Extract<Expression, { type: "SpreadElement" }>
+        const held = this.typeOf.get(spread.argument)
+        const expanded = held && this.expand(held)
+        return {
+            index: index + self,
+            element: this.typeOf.get(spread) ?? unknownType,
+            elements: expanded?.kind === "tuple" ? expanded.elements : undefined,
+        }
+    }
+
+    /** One of `spread`'s values, at the position `i` of a call's arguments. */
+    private spreadValue(spread: SpreadInfo, i: number): Type {
+        if (!spread.elements) return spread.element
+        return spread.elements[i - spread.index] ?? neverType
     }
 
     /** A function type as a list of call signatures: a lone function is a

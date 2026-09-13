@@ -512,7 +512,7 @@ interface GenericTypeParameter extends BaseNode {
     constraint?: TypeNode;
     default?: TypeNode | TypePackNode;
 }
-type Expression = Identifier | NilLiteral | BooleanLiteral | NumberLiteral | StringLiteral | InterpolatedStringExpression | VarargExpression | FunctionExpression | TableExpression | ArrayExpression | BinaryExpression | UnaryExpression | MemberExpression | IndexExpression | CallExpression | MethodCallExpression | NewExpression | SuperExpression | ClassExpression | ParenthesizedExpression | TypeAssertionExpression | SatisfiesExpression | AsConstExpression | IfElseExpression | ErrorExpression;
+type Expression = Identifier | NilLiteral | BooleanLiteral | NumberLiteral | StringLiteral | InterpolatedStringExpression | VarargExpression | FunctionExpression | TableExpression | ArrayExpression | BinaryExpression | UnaryExpression | MemberExpression | IndexExpression | CallExpression | MethodCallExpression | NewExpression | SuperExpression | ClassExpression | SpreadElement | ParenthesizedExpression | TypeAssertionExpression | SatisfiesExpression | AsConstExpression | IfElseExpression | ErrorExpression;
 /** An expression that could not be parsed. Only produced in recovery mode
  *  (`parseWithRecovery`), where a broken initializer, condition, field value or
  *  argument keeps its place in the tree; its span covers the skipped tokens
@@ -629,7 +629,15 @@ interface ArrayExpression extends BaseNode {
     type: "ArrayExpression";
     elements: (Expression | SpreadElement)[];
 }
-/** `...expr` inside an array literal. */
+/** `...expr` — the values of an array, one after another, where a list of
+ *  values is written: inside an array literal (`[...xs, 1]`) and in a call's
+ *  arguments (`f(a, ...rest)`). It is not a value of its own, and the parser
+ *  only produces one in those two places.
+ *
+ *  Lua spreads with `table.unpack`, which only yields every value when it is
+ *  written last; anywhere else the compiler builds the whole list first. Bare
+ *  `...` is unaffected — that is the vararg pack, and `f(...)` passes it on
+ *  as it always did. */
 interface SpreadElement extends BaseNode {
     type: "SpreadElement";
     argument: Expression;

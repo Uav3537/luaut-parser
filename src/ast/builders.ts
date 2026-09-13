@@ -1838,6 +1838,23 @@ export class Parser {
         return { type: "NewExpression", callee, arguments: args, typeArguments, ...spanFrom(start, this.previous()) }
     }
 
+    /** After `...`, is there something to spread? Nothing following it means
+     *  the vararg pack, which is what `f(...)` has always passed on. */
+    private startsSpread(): boolean {
+        const next = this.peek(1)
+        if (next.type === "Punctuator") {
+            const value = (next as { value?: unknown }).value
+            return value === "(" || value === "{" || value === "["
+        }
+        return next.type === "Identifier" || next.type === "Literal" || next.type === "InterpolatedString"
+    }
+
+    private parseSpreadArgument(stop: () => boolean): SpreadElement {
+        const dots = this.advance()
+        const argument = this.expressionOr(stop)
+        return { type: "SpreadElement", argument, ...spanFrom(dots, argument) }
+    }
+
     /** Is the token `ahead` places on the punctuator `value`? */
     private punctuatorAt(ahead: number, value: string): boolean {
         const token = this.peek(ahead)
@@ -1892,7 +1909,10 @@ export class Parser {
                     // was never closed, and that is the enclosing object's field.
                     if (this.recover && this.onNewLine() && this.startsTableField() && !this.startsMethodCall(1)) break
                     const before = this.cursor
-                    const argument = this.expressionOr(stop)
+                    // `f(...xs)` spreads an array; bare `f(...)` is the pack.
+                    const argument = this.checkOperator("...") && this.startsSpread()
+                        ? this.parseSpreadArgument(stop)
+                        : this.expressionOr(stop)
                     // `f(` with nothing written yet is no argument.
                     if (argument.type !== "ErrorExpression" || this.cursor > before || list.length) list.push(argument)
                     if (this.matchPunctuator(",") && !this.checkPunctuator(")")) continue

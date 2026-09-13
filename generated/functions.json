@@ -3501,23 +3501,607 @@
           "start": 1,
           "end": 58
         }
+      },
+      {
+        "type": "VariableDeclaration",
+        "kind": "const",
+        "names": [
+          {
+            "type": "IdentifierPattern",
+            "name": "names",
+            "line": {
+              "start": 75,
+              "end": 75
+            },
+            "column": {
+              "start": 7,
+              "end": 12
+            },
+            "typeAnnotation": {
+              "type": "ArrayTypeNode",
+              "element": {
+                "type": "TypeReference",
+                "base": "string",
+                "typeArguments": [],
+                "line": {
+                  "start": 75,
+                  "end": 75
+                },
+                "column": {
+                  "start": 14,
+                  "end": 20
+                }
+              },
+              "line": {
+                "start": 75,
+                "end": 75
+              },
+              "column": {
+                "start": 14,
+                "end": 22
+              }
+            }
+          }
+        ],
+        "init": [
+          {
+            "type": "ArrayExpression",
+            "elements": [
+              {
+                "type": "StringLiteral",
+                "value": "a",
+                "raw": "\"a\"",
+                "line": {
+                  "start": 75,
+                  "end": 75
+                },
+                "column": {
+                  "start": 26,
+                  "end": 29
+                }
+              },
+              {
+                "type": "StringLiteral",
+                "value": "b",
+                "raw": "\"b\"",
+                "line": {
+                  "start": 75,
+                  "end": 75
+                },
+                "column": {
+                  "start": 31,
+                  "end": 34
+                }
+              },
+              {
+                "type": "StringLiteral",
+                "value": "c",
+                "raw": "\"c\"",
+                "line": {
+                  "start": 75,
+                  "end": 75
+                },
+                "column": {
+                  "start": 36,
+                  "end": 39
+                }
+              }
+            ],
+            "line": {
+              "start": 75,
+              "end": 75
+            },
+            "column": {
+              "start": 25,
+              "end": 40
+            }
+          }
+        ],
+        "line": {
+          "start": 75,
+          "end": 75
+        },
+        "column": {
+          "start": 1,
+          "end": 40
+        }
+      },
+      {
+        "type": "VariableDeclaration",
+        "kind": "const",
+        "names": [
+          {
+            "type": "IdentifierPattern",
+            "name": "spread",
+            "line": {
+              "start": 77,
+              "end": 77
+            },
+            "column": {
+              "start": 7,
+              "end": 13
+            },
+            "typeAnnotation": {
+              "type": "TypeReference",
+              "base": "string",
+              "typeArguments": [],
+              "line": {
+                "start": 77,
+                "end": 77
+              },
+              "column": {
+                "start": 15,
+                "end": 21
+              }
+            }
+          }
+        ],
+        "init": [
+          {
+            "type": "CallExpression",
+            "callee": {
+              "type": "Identifier",
+              "name": "join",
+              "line": {
+                "start": 77,
+                "end": 77
+              },
+              "column": {
+                "start": 24,
+                "end": 28
+              }
+            },
+            "arguments": [
+              {
+                "type": "StringLiteral",
+                "value": "-",
+                "raw": "\"-\"",
+                "line": {
+                  "start": 77,
+                  "end": 77
+                },
+                "column": {
+                  "start": 29,
+                  "end": 32
+                }
+              },
+              {
+                "type": "SpreadElement",
+                "argument": {
+                  "type": "Identifier",
+                  "name": "names",
+                  "line": {
+                    "start": 77,
+                    "end": 77
+                  },
+                  "column": {
+                    "start": 37,
+                    "end": 42
+                  }
+                },
+                "line": {
+                  "start": 77,
+                  "end": 77
+                },
+                "column": {
+                  "start": 34,
+                  "end": 42
+                }
+              }
+            ],
+            "line": {
+              "start": 77,
+              "end": 77
+            },
+            "column": {
+              "start": 24,
+              "end": 43
+            }
+          }
+        ],
+        "line": {
+          "start": 77,
+          "end": 77
+        },
+        "column": {
+          "start": 1,
+          "end": 43
+        }
+      },
+      {
+        "type": "VariableDeclaration",
+        "kind": "const",
+        "names": [
+          {
+            "type": "IdentifierPattern",
+            "name": "around",
+            "line": {
+              "start": 78,
+              "end": 78
+            },
+            "column": {
+              "start": 7,
+              "end": 13
+            },
+            "typeAnnotation": {
+              "type": "TypeReference",
+              "base": "string",
+              "typeArguments": [],
+              "line": {
+                "start": 78,
+                "end": 78
+              },
+              "column": {
+                "start": 15,
+                "end": 21
+              }
+            }
+          }
+        ],
+        "init": [
+          {
+            "type": "CallExpression",
+            "callee": {
+              "type": "Identifier",
+              "name": "join",
+              "line": {
+                "start": 78,
+                "end": 78
+              },
+              "column": {
+                "start": 24,
+                "end": 28
+              }
+            },
+            "arguments": [
+              {
+                "type": "StringLiteral",
+                "value": "-",
+                "raw": "\"-\"",
+                "line": {
+                  "start": 78,
+                  "end": 78
+                },
+                "column": {
+                  "start": 29,
+                  "end": 32
+                }
+              },
+              {
+                "type": "SpreadElement",
+                "argument": {
+                  "type": "Identifier",
+                  "name": "names",
+                  "line": {
+                    "start": 78,
+                    "end": 78
+                  },
+                  "column": {
+                    "start": 37,
+                    "end": 42
+                  }
+                },
+                "line": {
+                  "start": 78,
+                  "end": 78
+                },
+                "column": {
+                  "start": 34,
+                  "end": 42
+                }
+              },
+              {
+                "type": "StringLiteral",
+                "value": "z",
+                "raw": "\"z\"",
+                "line": {
+                  "start": 78,
+                  "end": 78
+                },
+                "column": {
+                  "start": 44,
+                  "end": 47
+                }
+              }
+            ],
+            "line": {
+              "start": 78,
+              "end": 78
+            },
+            "column": {
+              "start": 24,
+              "end": 48
+            }
+          }
+        ],
+        "line": {
+          "start": 78,
+          "end": 78
+        },
+        "column": {
+          "start": 1,
+          "end": 48
+        }
+      },
+      {
+        "type": "VariableDeclaration",
+        "kind": "const",
+        "names": [
+          {
+            "type": "IdentifierPattern",
+            "name": "twice",
+            "line": {
+              "start": 79,
+              "end": 79
+            },
+            "column": {
+              "start": 7,
+              "end": 12
+            },
+            "typeAnnotation": {
+              "type": "TypeReference",
+              "base": "string",
+              "typeArguments": [],
+              "line": {
+                "start": 79,
+                "end": 79
+              },
+              "column": {
+                "start": 14,
+                "end": 20
+              }
+            }
+          }
+        ],
+        "init": [
+          {
+            "type": "CallExpression",
+            "callee": {
+              "type": "Identifier",
+              "name": "join",
+              "line": {
+                "start": 79,
+                "end": 79
+              },
+              "column": {
+                "start": 23,
+                "end": 27
+              }
+            },
+            "arguments": [
+              {
+                "type": "StringLiteral",
+                "value": "-",
+                "raw": "\"-\"",
+                "line": {
+                  "start": 79,
+                  "end": 79
+                },
+                "column": {
+                  "start": 28,
+                  "end": 31
+                }
+              },
+              {
+                "type": "SpreadElement",
+                "argument": {
+                  "type": "Identifier",
+                  "name": "names",
+                  "line": {
+                    "start": 79,
+                    "end": 79
+                  },
+                  "column": {
+                    "start": 36,
+                    "end": 41
+                  }
+                },
+                "line": {
+                  "start": 79,
+                  "end": 79
+                },
+                "column": {
+                  "start": 33,
+                  "end": 41
+                }
+              },
+              {
+                "type": "SpreadElement",
+                "argument": {
+                  "type": "Identifier",
+                  "name": "names",
+                  "line": {
+                    "start": 79,
+                    "end": 79
+                  },
+                  "column": {
+                    "start": 46,
+                    "end": 51
+                  }
+                },
+                "line": {
+                  "start": 79,
+                  "end": 79
+                },
+                "column": {
+                  "start": 43,
+                  "end": 51
+                }
+              }
+            ],
+            "line": {
+              "start": 79,
+              "end": 79
+            },
+            "column": {
+              "start": 23,
+              "end": 52
+            }
+          }
+        ],
+        "line": {
+          "start": 79,
+          "end": 79
+        },
+        "column": {
+          "start": 1,
+          "end": 52
+        }
+      },
+      {
+        "type": "FunctionDeclaration",
+        "name": {
+          "type": "Identifier",
+          "name": "forward",
+          "line": {
+            "start": 81,
+            "end": 81
+          },
+          "column": {
+            "start": 10,
+            "end": 17
+          }
+        },
+        "func": {
+          "type": "FunctionBody",
+          "generics": [],
+          "params": [],
+          "hasVarargs": true,
+          "varargTypeAnnotation": {
+            "type": "TypeReference",
+            "base": "string",
+            "typeArguments": [],
+            "line": {
+              "start": 81,
+              "end": 81
+            },
+            "column": {
+              "start": 23,
+              "end": 29
+            }
+          },
+          "returnType": {
+            "type": "TypeReference",
+            "base": "string",
+            "typeArguments": [],
+            "line": {
+              "start": 81,
+              "end": 81
+            },
+            "column": {
+              "start": 32,
+              "end": 38
+            }
+          },
+          "body": {
+            "type": "Block",
+            "statements": [
+              {
+                "type": "ReturnStatement",
+                "arguments": [
+                  {
+                    "type": "CallExpression",
+                    "callee": {
+                      "type": "Identifier",
+                      "name": "join",
+                      "line": {
+                        "start": 82,
+                        "end": 82
+                      },
+                      "column": {
+                        "start": 12,
+                        "end": 16
+                      }
+                    },
+                    "arguments": [
+                      {
+                        "type": "StringLiteral",
+                        "value": "-",
+                        "raw": "\"-\"",
+                        "line": {
+                          "start": 82,
+                          "end": 82
+                        },
+                        "column": {
+                          "start": 17,
+                          "end": 20
+                        }
+                      },
+                      {
+                        "type": "VarargExpression",
+                        "line": {
+                          "start": 82,
+                          "end": 82
+                        },
+                        "column": {
+                          "start": 22,
+                          "end": 25
+                        }
+                      }
+                    ],
+                    "line": {
+                      "start": 82,
+                      "end": 82
+                    },
+                    "column": {
+                      "start": 12,
+                      "end": 26
+                    }
+                  }
+                ],
+                "line": {
+                  "start": 82,
+                  "end": 82
+                },
+                "column": {
+                  "start": 5,
+                  "end": 26
+                }
+              }
+            ],
+            "line": {
+              "start": 82,
+              "end": 82
+            },
+            "column": {
+              "start": 5,
+              "end": 26
+            }
+          },
+          "line": {
+            "start": 81,
+            "end": 83
+          },
+          "column": {
+            "start": 17,
+            "end": 4
+          }
+        },
+        "line": {
+          "start": 81,
+          "end": 83
+        },
+        "column": {
+          "start": 1,
+          "end": 4
+        }
       }
     ],
     "line": {
       "start": 3,
-      "end": 71
+      "end": 83
     },
     "column": {
       "start": 1,
-      "end": 58
+      "end": 4
     }
   },
   "line": {
     "start": 3,
-    "end": 71
+    "end": 83
   },
   "column": {
     "start": 1,
-    "end": 58
+    "end": 4
   }
 }

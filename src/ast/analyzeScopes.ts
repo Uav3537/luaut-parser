@@ -898,6 +898,11 @@ class Analyzer {
             case "SuperExpression":
                 return
 
+            case "SpreadElement":
+                // In a call's arguments; an array literal walks its own.
+                this.visitExpression(expr.argument, scope)
+                return
+
             case "ClassExpression": {
                 // A named class expression can name itself inside its own body
                 // and nowhere else, as in JavaScript.
