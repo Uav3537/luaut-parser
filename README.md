@@ -48,11 +48,11 @@ be, so a tool never has to re-derive a type from text.
 use it for editors, where the text is usually mid-edit. An error costs as
 little of the tree as it can: a broken value becomes an `ErrorExpression`
 (typed `any`) in its place, a broken field or argument is skipped to the next
-`,`, a missing comma between fields on separate lines, or a missing `)`, `}`,
-`then`, `do` or `end`, is recorded and read past — a missing `end` is placed
-by indentation — and an unclosed string ends at its line. Skipping never lets
-an `end` or `}` inside a skipped function or object close the block around
-it. Valid code parses to exactly the same tree as `parse`.
+`,`, a missing comma between fields on separate lines, or a missing `)` or
+`}`, is recorded and read past — a missing `}` is placed by indentation — and
+an unclosed string ends at its line. Skipping never lets a `}` inside a
+skipped function or object close the block around it. Valid code parses to
+exactly the same tree as `parse`.
 
 Neither analysis mutates the AST; both return side tables.
 
@@ -119,7 +119,7 @@ must.
 
 **Blocks** — braces, and a condition in parentheses:
 
-```luaut
+```luau
 if (n < 0) {
     return "negative"
 } elseif (n == 0) {
@@ -155,7 +155,7 @@ value is expected, and `[]` an array.
 is a function type; `(a: number) => a` is a function. Which one a `=>` makes is
 decided by where it stands, since a type and a value never share a place.
 
-```luaut
+```luau
 type Reducer = (total: number, value: number) => number
 
 const double = (x: number) => x * 2
@@ -189,7 +189,7 @@ from a checkout of the commit before they were dropped.
 
 **Declarations** — `const` and `let` only; Lua's `local` is gone.
 
-**Functions** — `function name() ... end` declares `name` in the enclosing
+**Functions** — `function name() { ... }` declares `name` in the enclosing
 scope; like a TypeScript function declaration it cannot be reassigned.
 `const` and `let` do not apply to functions. `function T.name()` and
 `function T:name()` define a member.
@@ -197,7 +197,7 @@ scope; like a TypeScript function declaration it cannot be reassigned.
 **Hoisting** — a function declaration is visible to its whole block, above
 itself too, so `let r: ReturnType<typeof load>` may come before `function
 load()`. A closure reads the name its own value is bound to, as in JavaScript
-(`let m = { clear: function() m.items = {} end }`), and a later name in the
+(`let m = { clear: function() { m.items = {} } }`), and a later name in the
 same block; the compiler declares such a name before the statement that fills
 it. A module's top-level names are visible to code that runs later —
 function bodies and `typeof` — wherever that code is written, since a bundle
@@ -234,8 +234,8 @@ name it. Compiled code keeps no trace of it.
 written with `:`, the way JavaScript writes them:
 
 ```luau
-const long = names:filter(function(n) return #n > 3 end):map(string.upper)
-const first = names:find(function(n) return n:startsWith("A") end)
+const long = names:filter(n => #n > 3):map(string.upper)
+const first = names:find(n => n:startsWith("A"))
 print(names:join(", "), text:trim(), text:replaceAll(",", ";"))
 ```
 
@@ -304,7 +304,7 @@ nothing further along the chain runs, arguments included: `folder?:FindFirstChil
 is a `string | nil`. The `?` must touch the `.` or `:`; `c ? a : b` stays a
 ternary. Parentheses end a chain. A chain cannot be assigned to (`a?.b = 1` is
 an error). A chain that got through narrows what it tested: inside
-`if part?.Parent then`, and `if part?.Name == "Door" then`, `part` is not nil.
+`if (part?.Parent)`, and `if (part?.Name == "Door")`, `part` is not nil.
 
 **Classes** — types are structural, except for classes. A definitions file
 declares one with `declare class`, and it is nominal, as Roblox's classes are:
@@ -321,7 +321,7 @@ has (`{ Name: string }`). It is not a table, though, so `typeof(part)` picks
 the `"Instance"` overload, not `"table"`. Members are inherited, and a subclass
 may narrow one (`Parent: SomeFolder`).
 
-**`class ... end`** — a class written in code, rather than declared in a
+**`class ... { }`** — a class written in code, rather than declared in a
 definitions file. It is sugar over the Lua idiom, and the shape it stands for
 is exactly that one: the class is a single table holding the methods and the
 statics, and an instance is a table whose metatable points at it. An instance
@@ -329,45 +329,45 @@ therefore reaches *the class* — nothing is copied per instance, and there is
 no prototype chain of an instance's own.
 
 ```luau
-class Animal
+class Animal {
     name: string                -- set by the constructor
     legs = 4                    -- set on every instance, before the body runs
     static count = 0            -- on the class table, once
 
-    constructor(name: string)
+    constructor(name: string) {
         this.name = name
         Animal.count += 1
-    end
+    }
 
-    function speak(): string
+    function speak(): string {
         return `${this.name} makes a sound`
-    end
+    }
 
-    get label(): string         -- read as a property, run as a function
+    get label(): string {       -- read as a property, run as a function
         return `<${this.name}>`
-    end
+    }
 
-    set label(value: string)
+    set label(value: string) {
         this.name = value
-    end
+    }
 
-    static function made(): number
+    static function made(): number {
         return Animal.count
-    end
-end
+    }
+}
 
-class Dog extends Animal
+class Dog extends Animal {
     breed: string
 
-    constructor(name: string, breed: string)
+    constructor(name: string, breed: string) {
         super(name)             -- required: it is what fills in the base
         this.breed = breed
-    end
+    }
 
-    function speak(): string
+    function speak(): string {
         return `${super.speak()} (woof)`
-    end
-end
+    }
+}
 
 const rex = new Dog("Rex", "shiba")
 rex:speak()                     -- the receiver is `this`
@@ -376,7 +376,7 @@ Dog.made()                      -- a static, inherited from Animal
 ```
 
 The receiver is written `this`, and it is an ordinary first parameter: a
-method's type is `(this: Dog, ...) -> R`, so `rex:speak()` supplies it the way
+method's type is `(this: Dog, ...) => R`, so `rex:speak()` supplies it the way
 `function T:m()` supplies `self`. `new Dog(x)` *is* `Dog.new(x)` — the same
 function, callable by hand and passable as a value.
 
@@ -396,42 +396,42 @@ Animal.ParentClass == nil       -- and a root class extends nothing
 
 Both live on the class table, so an instance carries neither.
 
-**Generic classes** — `class Box<T> ... end`. The name is then a generic type,
+**Generic classes** — `class Box<T> { ... }`. The name is then a generic type,
 and `Box<number>` and `Box<string>` are both `Box` but neither is the other:
 
 ```luau
-class Box<T>
+class Box<T> {
     value: T
-    constructor(value: T)
+    constructor(value: T) {
         this.value = value
-    end
-    function get(): T
+    }
+    function get(): T {
         return this.value
-    end
-    function map<R>(f: (value: T) -> R): Box<R>
+    }
+    function map<R>(f: (value: T) => R): Box<R> {
         return new Box(f(this.value))
-    end
-end
+    }
+}
 
 const n = new Box(1)               -- Box<number>, read off the argument
 const s = new Box<string>("a")     -- or written out
 const held: number = n:get()
 
-class Ints extends Box<number>     -- extending one fixes its argument
-    constructor(n: number) super(n) end
-end
+class Ints extends Box<number> {   -- extending one fixes its argument
+    constructor(n: number) { super(n) }
+}
 ```
 
 A function takes the argument off what it is handed: `function unwrap<T>(b:
 Box<T>): T` given a `Box<boolean>` returns `boolean`.
 
-**A class as a value** — `const Counter = class ... end`, and `export default
-class ... end`. It may be named, and then the name is visible only inside its
+**A class as a value** — `const Counter = class { ... }`, and `export default
+class { ... }`. It may be named, and then the name is visible only inside its
 own body, as in JavaScript; an anonymous one is known by whatever holds it.
 Two of them are different types however alike they look. A class written as a
 value takes no type parameters — nothing could write the arguments.
 
-`export default class Name ... end` declares `Name` here as well as exporting
+`export default class Name { ... }` declares `Name` here as well as exporting
 it, as TypeScript's does, and importing it brings in the type too:
 
 ```luau
@@ -456,22 +456,22 @@ position on, as an array. It is last, and the call signature is the same one
 `...: T` describes — the difference is only what the body sees.
 
 ```luau
-function join(separator: string, ...parts: string[]): string
+function join(separator: string, ...parts: string[]): string {
     return table.concat(parts, separator)   -- `parts` is a string[] here
-end
+}
 
 join("-", "a", "b")       -- and a vararg call out here
 join("-", 1)              -- Argument of type '1' is not assignable to 'string'
 
-function firstOf<T>(...items: T[]): T | nil
+function firstOf<T>(...items: T[]): T | nil {
     return items[1]
-end
+}
 
 firstOf(1, 2)             -- number | nil: the arguments say what `T` is
 ```
 
 A type is written the same way: `type Reporter = (level: string, ...lines:
-string[]) -> ()` describes the same calls as `(level: string, ...string) ->
+string[]) => ()` describes the same calls as `(level: string, ...string) =>
 ()`. Without an annotation a rest parameter is `unknown[]`; annotated with
 something that is not an array, it is reported.
 
@@ -484,9 +484,9 @@ join("-", ...names)              -- every name
 join("-", ...names, "z")         -- and one more after them
 add3(...nums)                    -- however many `nums` turns out to hold
 
-function three(): (number, number, number)
+function three(): (number, number, number) {
     return ...nums
-end
+}
 
 const first, second = ...names   -- one each, as far as the names go
 ```
@@ -520,11 +520,11 @@ the brand says where the value came from. It works on any type (`number & {
 __brand }`), and survives being stored, indexed and narrowed.
 
 **Callbacks** — a function written where a function type is expected takes
-its parameter types from it: in `signal:Connect(function(player) ... end)`,
+its parameter types from it: in `signal:Connect(player => ... )`,
 `player` is typed from `Connect`. The same applies to an annotated `const`
-and to an assignment such as `remote.OnServerInvoke = function(player) ...`.
+and to an assignment such as `remote.OnServerInvoke = function(player) { ... }`.
 
-**Type packs** — `type Signal<T... = ...any> = { Connect: (self, cb: (T...) -> ()) -> () }`.
+**Type packs** — `type Signal<T... = ...any> = { Connect: (self, cb: (T...) => ()) => () }`.
 A pack parameter takes every type argument from its position on:
 `Signal<Player, string>`, `Signal<()>` for none.
 
@@ -560,7 +560,7 @@ already get.
 
 **Narrowing** follows TypeScript's model: references (`x`, `x.a.b`, `x["k"]`)
 rather than just variables, discriminated unions at any depth, `and`/`or`,
-early return, `break`/`continue`, `error()` (declared `-> never`), user type
+early return, `break`/`continue`, `error()` (declared `=> never`), user type
 guards (`v is T`), and assertion signatures (`asserts v`).
 
 Reading a member of, indexing or calling a value that may be nil is an error
@@ -601,8 +601,8 @@ as in TypeScript 4.9:
 type Shape = { kind: "circle" | "rect", size: number }
 const circle = { kind: "circle", size: 2 } satisfies Shape  -- { kind: "circle", size: number }
 const handlers = {
-    Click: function(x) return x + 1 end,                     -- x: number, from the contract
-} satisfies { [string]: (x: number) -> number }
+    Click: x => x + 1,                                       -- x: number, from the contract
+} satisfies { [string]: (x: number) => number }
 ```
 
 The contract types callbacks and empty arrays, and a literal stays a literal
