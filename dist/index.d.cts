@@ -181,7 +181,7 @@ interface ImportStatement extends BaseNode {
 /** `export const x = 1`, `export let y = 2`, `export function f() end` */
 interface ExportStatement extends BaseNode {
     type: "ExportStatement";
-    declaration: VariableDeclaration | FunctionDeclaration;
+    declaration: VariableDeclaration | FunctionDeclaration | ClassDeclaration;
 }
 /** `export default <expr>` — mirrors JS default export / dynamic import()'s
  *  `{ default: ... }` shape. Distinct from ExportStatement because the
@@ -210,7 +210,7 @@ interface ExportAllStatement extends BaseNode {
     type: "ExportAllStatement";
     source: StringLiteral;
 }
-type Statement = VariableDeclaration | FunctionDeclaration | FunctionDeclarationStatement | AssignmentStatement | CompoundAssignmentStatement | CallStatement | DoStatement | WhileStatement | RepeatStatement | IfStatement | NumericForStatement | GenericForStatement | ReturnStatement | BreakStatement | ContinueStatement | TypeAliasStatement | ExportTypeAliasStatement | ImportStatement | ExportStatement | ExportDefaultStatement | ExportNamedStatement | ExportAllStatement | DeclareStatement | DeclareClassStatement | ErrorStatement;
+type Statement = VariableDeclaration | FunctionDeclaration | FunctionDeclarationStatement | ClassDeclaration | AssignmentStatement | CompoundAssignmentStatement | CallStatement | DoStatement | WhileStatement | RepeatStatement | IfStatement | NumericForStatement | GenericForStatement | ReturnStatement | BreakStatement | ContinueStatement | TypeAliasStatement | ExportTypeAliasStatement | ImportStatement | ExportStatement | ExportDefaultStatement | ExportNamedStatement | ExportAllStatement | DeclareStatement | DeclareClassStatement | ErrorStatement;
 /** `declare game: DataModel` / `declare function require(m: string): unknown`
  *  — an ambient value/function declaration for a definitions file (`.d.luaut`).
  *  Contributes a global type; emits no runtime code. */
@@ -336,6 +336,74 @@ interface FunctionName extends BaseNode {
     path: Identifier[];
     method?: Identifier;
 }
+/** `class Name extends Base ... end` — luaut's one runtime class form.
+ *
+ *  It is sugar, and the shape it stands for is the ordinary Lua one: the
+ *  class is a single table holding the methods and the statics, and an
+ *  instance is a table whose metatable points at it. An instance therefore
+ *  references *the class*, not a copy and not a prototype chain of its own —
+ *  one class, one place its behaviour lives.
+ *
+ *  The declaration contributes both a type (the instance type, nominal, as
+ *  `declare class` does) and a value (the class table, with `new` and the
+ *  statics on it). */
+interface ClassDeclaration extends BaseNode {
+    type: "ClassDeclaration";
+    name: Identifier;
+    /** `extends Base` — another class declared in this file or imported. */
+    superclass?: Identifier;
+    members: ClassMember[];
+}
+type ClassMember = ClassField | ClassMethod | ClassAccessor | ClassConstructor;
+/** `x: number` / `x = 1` / `static count = 0`. An instance field is assigned
+ *  when the instance is built, before the constructor body runs; a `static`
+ *  one is assigned on the class table, once. */
+interface ClassField extends BaseNode {
+    type: "ClassField";
+    name: Identifier;
+    isStatic: boolean;
+    typeAnnotation?: TypeNode;
+    init?: Expression;
+}
+/** `function name(...) ... end` inside a class body — `this` is bound in it.
+ *  A `static` one is a plain function on the class table, with no `this`. */
+interface ClassMethod extends BaseNode {
+    type: "ClassMethod";
+    name: Identifier;
+    isStatic: boolean;
+    func: FunctionBody;
+    /** TS-style overload signatures preceding the implementation. */
+    signatures?: FunctionSignature[];
+}
+/** `get name(): T ... end` / `set name(v: T) ... end` — read and written as a
+ *  property, run as a function. */
+interface ClassAccessor extends BaseNode {
+    type: "ClassAccessor";
+    kind: "get" | "set";
+    name: Identifier;
+    isStatic: boolean;
+    func: FunctionBody;
+}
+/** `constructor(...) ... end` — runs on a fresh instance. A class that
+ *  extends another must call `super(...)` before touching `this`. */
+interface ClassConstructor extends BaseNode {
+    type: "ClassConstructor";
+    func: FunctionBody;
+}
+/** `new Name(args)` — builds an instance. Lowers to the class's own
+ *  `Name.new(args)`, which is also callable by hand. */
+interface NewExpression extends BaseNode {
+    type: "NewExpression";
+    callee: Expression;
+    arguments: Expression[];
+    typeArguments?: (TypeNode | TypePackNode)[];
+}
+/** `super` — only inside a class that extends another: `super(...)` in the
+ *  constructor runs the base's on this instance, and `super.method(...)` in a
+ *  method calls the base's version of it. */
+interface SuperExpression extends BaseNode {
+    type: "SuperExpression";
+}
 interface AssignmentStatement extends BaseNode {
     type: "AssignmentStatement";
     targets: (Expression | ObjectPattern | ArrayPattern)[];
@@ -349,7 +417,7 @@ interface CompoundAssignmentStatement extends BaseNode {
 }
 interface CallStatement extends BaseNode {
     type: "CallStatement";
-    expression: CallExpression | MethodCallExpression;
+    expression: CallExpression | MethodCallExpression | NewExpression;
 }
 interface DoStatement extends BaseNode {
     type: "DoStatement";
@@ -422,7 +490,7 @@ interface GenericTypeParameter extends BaseNode {
     constraint?: TypeNode;
     default?: TypeNode | TypePackNode;
 }
-type Expression = Identifier | NilLiteral | BooleanLiteral | NumberLiteral | StringLiteral | InterpolatedStringExpression | VarargExpression | FunctionExpression | TableExpression | ArrayExpression | BinaryExpression | UnaryExpression | MemberExpression | IndexExpression | CallExpression | MethodCallExpression | ParenthesizedExpression | TypeAssertionExpression | SatisfiesExpression | AsConstExpression | IfElseExpression | ErrorExpression;
+type Expression = Identifier | NilLiteral | BooleanLiteral | NumberLiteral | StringLiteral | InterpolatedStringExpression | VarargExpression | FunctionExpression | TableExpression | ArrayExpression | BinaryExpression | UnaryExpression | MemberExpression | IndexExpression | CallExpression | MethodCallExpression | NewExpression | SuperExpression | ParenthesizedExpression | TypeAssertionExpression | SatisfiesExpression | AsConstExpression | IfElseExpression | ErrorExpression;
 /** An expression that could not be parsed. Only produced in recovery mode
  *  (`parseWithRecovery`), where a broken initializer, condition, field value or
  *  argument keeps its place in the tree; its span covers the skipped tokens
@@ -574,6 +642,15 @@ interface CallExpression extends BaseNode {
     /** `f?.(...)` — see `MemberExpression.optional`. The call does not happen,
      *  and the arguments are not evaluated, when `callee` is nil. */
     optional?: boolean;
+    /** The `(` opened on a line after the callee ended:
+     *
+     *      const value = map[key]
+     *      ("text"):upper()
+     *
+     *  is one statement — a call of `map[key]` — because a line break does
+     *  not end a statement, in Lua or in JavaScript. Flagged here so the
+     *  analyzer can say so; Lua 5.1 calls it "ambiguous syntax". */
+    argumentsOnNewLine?: boolean;
 }
 interface MethodCallExpression extends BaseNode {
     type: "MethodCallExpression";
@@ -827,7 +904,10 @@ interface ParserOptions {
 }
 declare function parse(source: string): Program;
 declare function parseTokens(tokens: Token[]): Program;
-declare function parseExpressionFromSource(raw: string): Expression;
+/** `inClass` carries the enclosing class in. A template's `${...}` is parsed
+ *  on its own, so without it a `super` written inside one in a class method
+ *  would read as an ordinary name. */
+declare function parseExpressionFromSource(raw: string, inClass?: boolean): Expression;
 interface RecoverResult {
     program: Program;
     errors: ParseError[];
@@ -874,7 +954,7 @@ interface Binding {
     isConst?: boolean;
     /** Set when the binding comes from something other than `const` / `let`,
      *  which is also what an error about reassigning it names. */
-    declaredBy?: "import" | "namespace" | "function" | "type";
+    declaredBy?: "import" | "namespace" | "function" | "type" | "class";
 }
 interface ScopeDiagnostic {
     /** the offending node (redeclaration site, or assignment target) */
@@ -1178,6 +1258,7 @@ declare function optional(t: Type): Type;
  *  into arrays/tuples/objects/unions. */
 declare function widen(t: Type): Type;
 declare function setAliasExpander(fn: ((t: GenericRefType) => Type) | undefined): void;
+declare function setDeferredBound(fn: ((t: Type) => Type | undefined) | undefined): void;
 declare function isAssignable(rawA: Type, rawB: Type): boolean;
 declare function equalTypes(a: Type, b: Type): boolean;
 /** Keep the parts of `t` compatible with `filter` — TypeScript's
@@ -1223,7 +1304,7 @@ interface TypeDiagnostic {
     /** Usually an expression or statement; a type where the type is wrong
      *  (`declare class A extends NotAClass`), or a block where nothing in it
      *  is to blame (a function that never returns). Only its span is read. */
-    node: Expression | Statement | TypeNode | Block;
+    node: Expression | Statement | TypeNode | Block | ClassMember;
     message: string;
 }
 interface TypeAnalysis {
@@ -1407,14 +1488,14 @@ declare function resolveTypeLibraries(config: LuautConfig, host?: ProjectHost): 
  * and asks a library about everything else.
  *
  * These types are declarations only: nothing here runs, and the parser never
- * loads a lowering module. They live here so a library can be written in
- * TypeScript against the same contract the compiler implements, without
- * depending on the compiler.
+ * loads a lowering module. They live here so a library can be checked against
+ * the same contract the compiler implements, without depending on the
+ * compiler — in TypeScript, or by JSDoc in the JavaScript it ships:
  *
- *     // lowering.ts, in a type library
- *     import type { LoweringPlugin } from "luaut-parser"
- *
- *     const plugin: LoweringPlugin = {
+ *     // lowering.mjs, in a type library
+ *     // @ts-check
+ *     /** @type {import("luaut-parser").LoweringPlugin} *\/
+ *     const plugin = {
  *         runtime: { array: "local __NAME__ = {}\n..." },
  *         methodCall({ method, receiver, use }) {
  *             if (receiver?.kind === "array" && method === "filter") {
@@ -1507,4 +1588,4 @@ declare const luautparser: {
     readonly analyzeTypes: typeof analyzeTypes;
 };
 
-export { type AnalyzeTypesOptions, type AnyType, type ArrayExpression, type ArrayPattern, type ArrayPatternElement, type ArrayType, type ArrayTypeNode, type AsConstExpression, type AssignmentStatement, type BaseNode, type BaseToken, type BinaryExpression, BinaryOperators, type Binding, type BindingId, type BindingKind, type BindingTarget, type Block, type BooleanLiteral, type BreakStatement, CONFIG_FILE_NAMES, type CallExpression, type CallStatement, type ClassInfo, type CompoundAssignmentStatement, type ConditionalType, type ConditionalTypeNode, type ConfigLookup, type ConfigProblem, type ContinueStatement, type DeclareClassStatement, type DeclareStatement, type DifferenceType, type DifferenceTypeNode, type Directive, type DirectiveKind, type DirectiveOutcome, type Directives, type DoStatement, type EOFToken, type ErrorExpression, type ErrorStatement, type ExportAllStatement, type ExportDefaultStatement, type ExportNamedStatement, type ExportSpecifier, type ExportStatement, type ExportTypeAliasStatement, type ExportedType, type Expression, type FunctionBody, type FunctionDeclaration, type FunctionDeclarationStatement, type FunctionExpression, type FunctionName, type FunctionParam, type FunctionParameter, type FunctionSignature, type FunctionType, type FunctionTypeNode, type FunctionTypeParameter, type GenericForStatement, type GenericRefType, type GenericTypeParameter, type Identifier, type IdentifierPattern, type IdentifierToken, type IfClause, type IfElseExpression, type IfStatement, type ImportSpecifier, type ImportStatement, type IndexExpression, type IndexedAccessType, type IndexedAccessTypeNode, type InferType, type InferTypeNode, type InterpolatedStringExpression, type InterpolatedStringPart, type InterpolatedStringPart_Expression, type InterpolatedStringPart_String, type InterpolatedStringToken, type IntersectionType, type IntersectionTypeNode, type KeyofType, type KeyofTypeNode, type KeywordToken, Keywords, LexError, type LiteralToken, type LiteralType, type LoweringModule, type LoweringPlugin, type LuautConfig, type MappedType, type MappedTypeNode, type MemberExpression, type MethodCall, type MethodCallExpression, type MethodLowering, type ModuleExports, type NeverType, type NilLiteral, type Node, type NumberLiteral, type NumericForStatement, type ObjectPattern, type ObjectPatternProperty, type ObjectProperty, type ObjectType, type OperatorToken, Operators, PRELUDE_SOURCE, type ParenthesizedExpression, type ParenthesizedTypeNode, ParseError, type ParserOptions, type PrimitiveName, type PrimitiveType, type Program, type ProjectHost, type PunctuatorToken, Punctuators, type RecoverResult, type RepeatStatement, type ReturnStatement, type SatisfiesExpression, type ScopeAnalysis, type ScopeDiagnostic, type SourceComment, type SourceMapNode, type SourceMapOptions, type SourceMapTypes, type SpreadElement, type Statement, type StringLiteral, type TableExpression, type TableField, type TableTypeNode, type TableTypeProperty, type TemplateLiteralType, type TemplateLiteralTypeNode, type Token, type TokenizeOptions, type TupleType, type TupleTypeNode, type Type, type TypeAliasStatement, type TypeAnalysis, type TypeAssertionExpression, type TypeDiagnostic, type TypeLibraries, type TypeLiteralBoolean, type TypeLiteralNumber, type TypeLiteralString, type TypeNode, type TypePackNode, type TypeParamType, type TypePredicate, type TypePredicateNode, type TypeReference, type TypedIdentifier, type TypeofTypeNode, UNUSED_EXPECT_ERROR, type UnaryExpression, UnaryOperators, type UnionType, type UnionTypeNode, type UnknownType, type VarargExpression, type VariableDeclaration, type VariadicTypeNode, type WhileStatement, analyzeScopes, analyzeTypes, anyType, applyDirectives, arrayOf, booleanType, bufferType, containsTypeParam, luautparser as default, difference, directivesOf, equalTypes, falsyType, findConfig, fn, formatType, getBinding, intersection, isAssignable, isClassType, isGlobal, isPossiblyFalsy, isPossiblyTruthy, isUnassignedGlobal, literal, loadConfig, luautparser, matchInfer, moduleCandidates, moduleExports, narrowExclude, narrowFalsy, narrowTo, narrowTruthy, neverType, nilType, nodeHost, numberType, objectType, optional, overlaps, parse, parseExpressionFromSource, parseTokens, parseWithRecovery, primitive, readDirectives, resolveModulePath, resolveTypeLibraries, setAliasExpander, sourceMapTypes, stringType, stripJsonComments, substitute, templateMatches, threadType, tokenize, tuple, typeParam, unify, union, unknownType, widen };
+export { type AnalyzeTypesOptions, type AnyType, type ArrayExpression, type ArrayPattern, type ArrayPatternElement, type ArrayType, type ArrayTypeNode, type AsConstExpression, type AssignmentStatement, type BaseNode, type BaseToken, type BinaryExpression, BinaryOperators, type Binding, type BindingId, type BindingKind, type BindingTarget, type Block, type BooleanLiteral, type BreakStatement, CONFIG_FILE_NAMES, type CallExpression, type CallStatement, type ClassAccessor, type ClassConstructor, type ClassDeclaration, type ClassField, type ClassInfo, type ClassMember, type ClassMethod, type CompoundAssignmentStatement, type ConditionalType, type ConditionalTypeNode, type ConfigLookup, type ConfigProblem, type ContinueStatement, type DeclareClassStatement, type DeclareStatement, type DifferenceType, type DifferenceTypeNode, type Directive, type DirectiveKind, type DirectiveOutcome, type Directives, type DoStatement, type EOFToken, type ErrorExpression, type ErrorStatement, type ExportAllStatement, type ExportDefaultStatement, type ExportNamedStatement, type ExportSpecifier, type ExportStatement, type ExportTypeAliasStatement, type ExportedType, type Expression, type FunctionBody, type FunctionDeclaration, type FunctionDeclarationStatement, type FunctionExpression, type FunctionName, type FunctionParam, type FunctionParameter, type FunctionSignature, type FunctionType, type FunctionTypeNode, type FunctionTypeParameter, type GenericForStatement, type GenericRefType, type GenericTypeParameter, type Identifier, type IdentifierPattern, type IdentifierToken, type IfClause, type IfElseExpression, type IfStatement, type ImportSpecifier, type ImportStatement, type IndexExpression, type IndexedAccessType, type IndexedAccessTypeNode, type InferType, type InferTypeNode, type InterpolatedStringExpression, type InterpolatedStringPart, type InterpolatedStringPart_Expression, type InterpolatedStringPart_String, type InterpolatedStringToken, type IntersectionType, type IntersectionTypeNode, type KeyofType, type KeyofTypeNode, type KeywordToken, Keywords, LexError, type LiteralToken, type LiteralType, type LoweringModule, type LoweringPlugin, type LuautConfig, type MappedType, type MappedTypeNode, type MemberExpression, type MethodCall, type MethodCallExpression, type MethodLowering, type ModuleExports, type NeverType, type NewExpression, type NilLiteral, type Node, type NumberLiteral, type NumericForStatement, type ObjectPattern, type ObjectPatternProperty, type ObjectProperty, type ObjectType, type OperatorToken, Operators, PRELUDE_SOURCE, type ParenthesizedExpression, type ParenthesizedTypeNode, ParseError, type ParserOptions, type PrimitiveName, type PrimitiveType, type Program, type ProjectHost, type PunctuatorToken, Punctuators, type RecoverResult, type RepeatStatement, type ReturnStatement, type SatisfiesExpression, type ScopeAnalysis, type ScopeDiagnostic, type SourceComment, type SourceMapNode, type SourceMapOptions, type SourceMapTypes, type SpreadElement, type Statement, type StringLiteral, type SuperExpression, type TableExpression, type TableField, type TableTypeNode, type TableTypeProperty, type TemplateLiteralType, type TemplateLiteralTypeNode, type Token, type TokenizeOptions, type TupleType, type TupleTypeNode, type Type, type TypeAliasStatement, type TypeAnalysis, type TypeAssertionExpression, type TypeDiagnostic, type TypeLibraries, type TypeLiteralBoolean, type TypeLiteralNumber, type TypeLiteralString, type TypeNode, type TypePackNode, type TypeParamType, type TypePredicate, type TypePredicateNode, type TypeReference, type TypedIdentifier, type TypeofTypeNode, UNUSED_EXPECT_ERROR, type UnaryExpression, UnaryOperators, type UnionType, type UnionTypeNode, type UnknownType, type VarargExpression, type VariableDeclaration, type VariadicTypeNode, type WhileStatement, analyzeScopes, analyzeTypes, anyType, applyDirectives, arrayOf, booleanType, bufferType, containsTypeParam, luautparser as default, difference, directivesOf, equalTypes, falsyType, findConfig, fn, formatType, getBinding, intersection, isAssignable, isClassType, isGlobal, isPossiblyFalsy, isPossiblyTruthy, isUnassignedGlobal, literal, loadConfig, luautparser, matchInfer, moduleCandidates, moduleExports, narrowExclude, narrowFalsy, narrowTo, narrowTruthy, neverType, nilType, nodeHost, numberType, objectType, optional, overlaps, parse, parseExpressionFromSource, parseTokens, parseWithRecovery, primitive, readDirectives, resolveModulePath, resolveTypeLibraries, setAliasExpander, setDeferredBound, sourceMapTypes, stringType, stripJsonComments, substitute, templateMatches, threadType, tokenize, tuple, typeParam, unify, union, unknownType, widen };

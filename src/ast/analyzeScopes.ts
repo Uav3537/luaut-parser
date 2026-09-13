@@ -63,7 +63,7 @@ export interface Binding {
     isConst?: boolean
     /** Set when the binding comes from something other than `const` / `let`,
      *  which is also what an error about reassigning it names. */
-    declaredBy?: "import" | "namespace" | "function" | "type"
+    declaredBy?: "import" | "namespace" | "function" | "type" | "class"
 }
 
 export interface ScopeDiagnostic {
@@ -197,6 +197,14 @@ class Analyzer {
     private hoistFunctions(block: Block, scope: Scope): void {
         for (const statement of block.statements) {
             const declaration = statement.type === "ExportStatement" ? statement.declaration : statement
+            if (declaration.type === "ClassDeclaration") {
+                // A class is a value built where it is written, but its name is
+                // there from the top of the block, so two classes can name each
+                // other and a method above one can construct it.
+                this.declare(scope, declaration.name.name, "local", declaration.name, true, "class")
+                this.hoisted.set(declaration.name, scope === this.moduleScope ? -1 : this.functionDepth)
+                continue
+            }
             if (declaration.type !== "FunctionDeclaration") continue
             this.declare(scope, declaration.name.name, "local", declaration.name, true, "function")
             this.hoisted.set(declaration.name, scope === this.moduleScope ? -1 : this.functionDepth)
@@ -210,7 +218,7 @@ class Analyzer {
      *  hoisted, and this does not apply. */
     private checkUseBeforeDefine(identifier: Identifier, id: BindingId): void {
         const binding = this.bindings.get(id)!
-        if (binding.declaredBy !== "function" || this.typeQueryDepth > 0) return
+        if ((binding.declaredBy !== "function" && binding.declaredBy !== "class") || this.typeQueryDepth > 0) return
         const declaration = binding.declarationNode as Identifier | undefined
         const depth = declaration && this.hoisted.get(declaration)
         if (depth === undefined || depth !== this.functionDepth) return
@@ -504,6 +512,32 @@ class Analyzer {
                 if (stmt.implementationName) this.reference(scope, stmt.implementationName)
                 for (const signature of stmt.signatures ?? []) this.visitSignature(signature, scope)
                 this.visitFunctionBody(stmt.func, scope)
+                return
+            }
+
+            case "ClassDeclaration": {
+                if (!this.hoisted.has(stmt.name)) this.declare(scope, stmt.name.name, "local", stmt.name, true, "class")
+                if (stmt.superclass) this.reference(scope, stmt.superclass)
+                // Every member is written in the scope around the class, so a
+                // method body sees the same names the class declaration does —
+                // itself included. `this` is not one of them: the parser makes
+                // it a real first parameter, so it is declared with the rest.
+                for (const member of stmt.members) {
+                    switch (member.type) {
+                        case "ClassField":
+                            this.visitType(member.typeAnnotation, scope)
+                            if (member.init) this.visitExpression(member.init, scope)
+                            break
+                        case "ClassMethod":
+                            for (const signature of member.signatures ?? []) this.visitSignature(signature, scope)
+                            this.visitFunctionBody(member.func, scope, member.func.isMethod)
+                            break
+                        case "ClassAccessor":
+                        case "ClassConstructor":
+                            this.visitFunctionBody(member.func, scope, member.func.isMethod)
+                            break
+                    }
+                }
                 return
             }
 
@@ -835,6 +869,15 @@ class Analyzer {
             case "CallExpression":
                 this.visitExpression(expr.callee, scope)
                 for (const arg of expr.arguments) this.visitExpression(arg, scope)
+                return
+
+            case "NewExpression":
+                this.visitExpression(expr.callee, scope)
+                for (const argument of expr.arguments) this.visitExpression(argument, scope)
+                for (const argument of expr.typeArguments ?? []) this.visitType(argument, scope)
+                return
+
+            case "SuperExpression":
                 return
 
             case "MethodCallExpression":

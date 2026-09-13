@@ -251,6 +251,80 @@ has (`{ Name: string }`). It is not a table, though, so `typeof(part)` picks
 the `"Instance"` overload, not `"table"`. Members are inherited, and a subclass
 may narrow one (`Parent: SomeFolder`).
 
+**`class ... end`** — a class written in code, rather than declared in a
+definitions file. It is sugar over the Lua idiom, and the shape it stands for
+is exactly that one: the class is a single table holding the methods and the
+statics, and an instance is a table whose metatable points at it. An instance
+therefore reaches *the class* — nothing is copied per instance, and there is
+no prototype chain of an instance's own.
+
+```luau
+class Animal
+    name: string                -- set by the constructor
+    legs = 4                    -- set on every instance, before the body runs
+    static count = 0            -- on the class table, once
+
+    constructor(name: string)
+        this.name = name
+        Animal.count += 1
+    end
+
+    function speak(): string
+        return `${this.name} makes a sound`
+    end
+
+    get label(): string         -- read as a property, run as a function
+        return `<${this.name}>`
+    end
+
+    set label(value: string)
+        this.name = value
+    end
+
+    static function made(): number
+        return Animal.count
+    end
+end
+
+class Dog extends Animal
+    breed: string
+
+    constructor(name: string, breed: string)
+        super(name)             -- required: it is what fills in the base
+        this.breed = breed
+    end
+
+    function speak(): string
+        return `${super.speak()} (woof)`
+    end
+end
+
+const rex = new Dog("Rex", "shiba")
+rex:speak()                     -- the receiver is `this`
+rex.label = "Max"               -- the setter
+Dog.made()                      -- a static, inherited from Animal
+```
+
+The receiver is written `this`, and it is an ordinary first parameter: a
+method's type is `(this: Dog, ...) -> R`, so `rex:speak()` supplies it the way
+`function T:m()` supplies `self`. `new Dog(x)` *is* `Dog.new(x)` — the same
+function, callable by hand and passable as a value.
+
+A declaration names two things. As a **type**, `Dog` is the type of its
+instances, nominal the same way a `declare class` is: a table with the same
+members is not one, and only `Dog` and what extends it are assignable to it.
+As a **value**, `Dog` is the class table — its statics, and the `new` that
+builds an instance. `export class` exports both.
+
+Reported: a field with a type that nothing gives a value (`name: string` that
+the constructor never assigns), a derived constructor that does not call
+`super(...)`, `extends` naming something that is not a class, a chain that
+closes on itself, a member written twice, and a member named one of the words
+the compiler builds the class table out of (`new`, `__init`, `__index`,
+`__newindex`, `__getters`, `__setters`, `__dynamic`).
+
+A class takes no type parameters yet; a method may.
+
 **Callbacks** — a function written where a function type is expected takes
 its parameter types from it: in `signal:Connect(function(player) ... end)`,
 `player` is typed from `Connect`. The same applies to an annotated `const`

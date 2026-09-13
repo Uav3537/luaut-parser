@@ -1,0 +1,78 @@
+-- `class ... end`: one table per class, one table per instance, and the
+-- instance points at the class. Everything here is sugar over that.
+
+export class Animal
+    -- A field with a type is set by the constructor; one with a value is set
+    -- for every instance before the constructor body runs.
+    name: string
+    legs = 4
+    -- A static lives on the class table, and nowhere else.
+    static count = 0
+
+    constructor(name: string)
+        this.name = name
+        Animal.count += 1
+    end
+
+    function speak(): string
+        return `${this.name} makes a sound`
+    end
+
+    -- Read as a property, run as a function.
+    get label(): string
+        return `<${this.name}>`
+    end
+
+    set label(value: string)
+        this.name = value
+    end
+
+    static function made(): number
+        return Animal.count
+    end
+end
+
+export class Dog extends Animal
+    breed: string
+
+    constructor(name: string, breed: string)
+        super(name)
+        this.breed = breed
+    end
+
+    function speak(): string
+        return `${super.speak()} (woof, ${this.breed})`
+    end
+
+    function fetch(item: string): string
+        return `${this.name} fetched ${item}`
+    end
+end
+
+-- A class with no constructor takes whatever the one it extends takes.
+export class Puppy extends Dog
+    function speak(): string
+        return `${super.speak()}!`
+    end
+end
+
+const rex = new Dog("Rex", "shiba")
+const said: string = rex:speak()
+const shown: string = rex.label
+const legs: number = rex.legs
+const asAnimal: Animal = rex
+
+rex.label = "Max"
+
+const pip = new Puppy("Pip", "pug")
+const fetched: string = pip:fetch("ball")
+const total: number = Animal.count
+const made: number = Dog.made()
+
+-- The class table is a value like any other: it can be passed around, and
+-- `new` is the same call as `Dog.new`.
+function build(make: (name: string, breed: string) -> Dog): Dog
+    return make("Spot", "beagle")
+end
+
+const built: Dog = build(Dog.new)

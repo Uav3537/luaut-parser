@@ -53,7 +53,7 @@ export interface ImportStatement extends BaseNode {
 /** `export const x = 1`, `export let y = 2`, `export function f() end` */
 export interface ExportStatement extends BaseNode {
     type: "ExportStatement"
-    declaration: VariableDeclaration | FunctionDeclaration
+    declaration: VariableDeclaration | FunctionDeclaration | ClassDeclaration
 }
 
 /** `export default <expr>` — mirrors JS default export / dynamic import()'s
@@ -95,6 +95,7 @@ export type Statement =
     | VariableDeclaration
     | FunctionDeclaration
     | FunctionDeclarationStatement
+    | ClassDeclaration
     | AssignmentStatement
     | CompoundAssignmentStatement
     | CallStatement
@@ -266,6 +267,82 @@ export interface FunctionName extends BaseNode {
     method?: Identifier
 }
 
+/** `class Name extends Base ... end` — luaut's one runtime class form.
+ *
+ *  It is sugar, and the shape it stands for is the ordinary Lua one: the
+ *  class is a single table holding the methods and the statics, and an
+ *  instance is a table whose metatable points at it. An instance therefore
+ *  references *the class*, not a copy and not a prototype chain of its own —
+ *  one class, one place its behaviour lives.
+ *
+ *  The declaration contributes both a type (the instance type, nominal, as
+ *  `declare class` does) and a value (the class table, with `new` and the
+ *  statics on it). */
+export interface ClassDeclaration extends BaseNode {
+    type: "ClassDeclaration"
+    name: Identifier
+    /** `extends Base` — another class declared in this file or imported. */
+    superclass?: Identifier
+    members: ClassMember[]
+}
+
+export type ClassMember = ClassField | ClassMethod | ClassAccessor | ClassConstructor
+
+/** `x: number` / `x = 1` / `static count = 0`. An instance field is assigned
+ *  when the instance is built, before the constructor body runs; a `static`
+ *  one is assigned on the class table, once. */
+export interface ClassField extends BaseNode {
+    type: "ClassField"
+    name: Identifier
+    isStatic: boolean
+    typeAnnotation?: TypeNode
+    init?: Expression
+}
+
+/** `function name(...) ... end` inside a class body — `this` is bound in it.
+ *  A `static` one is a plain function on the class table, with no `this`. */
+export interface ClassMethod extends BaseNode {
+    type: "ClassMethod"
+    name: Identifier
+    isStatic: boolean
+    func: FunctionBody
+    /** TS-style overload signatures preceding the implementation. */
+    signatures?: FunctionSignature[]
+}
+
+/** `get name(): T ... end` / `set name(v: T) ... end` — read and written as a
+ *  property, run as a function. */
+export interface ClassAccessor extends BaseNode {
+    type: "ClassAccessor"
+    kind: "get" | "set"
+    name: Identifier
+    isStatic: boolean
+    func: FunctionBody
+}
+
+/** `constructor(...) ... end` — runs on a fresh instance. A class that
+ *  extends another must call `super(...)` before touching `this`. */
+export interface ClassConstructor extends BaseNode {
+    type: "ClassConstructor"
+    func: FunctionBody
+}
+
+/** `new Name(args)` — builds an instance. Lowers to the class's own
+ *  `Name.new(args)`, which is also callable by hand. */
+export interface NewExpression extends BaseNode {
+    type: "NewExpression"
+    callee: Expression
+    arguments: Expression[]
+    typeArguments?: (TypeNode | TypePackNode)[]
+}
+
+/** `super` — only inside a class that extends another: `super(...)` in the
+ *  constructor runs the base's on this instance, and `super.method(...)` in a
+ *  method calls the base's version of it. */
+export interface SuperExpression extends BaseNode {
+    type: "SuperExpression"
+}
+
 export interface AssignmentStatement extends BaseNode {
     type: "AssignmentStatement"
     targets: (Expression | ObjectPattern | ArrayPattern)[]
@@ -281,7 +358,7 @@ export interface CompoundAssignmentStatement extends BaseNode {
 
 export interface CallStatement extends BaseNode {
     type: "CallStatement"
-    expression: CallExpression | MethodCallExpression
+    expression: CallExpression | MethodCallExpression | NewExpression
 }
 
 export interface DoStatement extends BaseNode {
@@ -389,6 +466,8 @@ export type Expression =
     | IndexExpression
     | CallExpression
     | MethodCallExpression
+    | NewExpression
+    | SuperExpression
     | ParenthesizedExpression
     | TypeAssertionExpression
     | SatisfiesExpression

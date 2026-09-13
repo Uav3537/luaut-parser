@@ -19,6 +19,7 @@ import type {
     TableExpression, TableField, ArrayExpression,
     BinaryExpression, UnaryExpression, MemberExpression, IndexExpression,
     CallExpression, MethodCallExpression, ParenthesizedExpression,
+    ClassDeclaration, ClassMember, NewExpression, SuperExpression,
     TypeAssertionExpression, AsConstExpression, IfElseExpression, ErrorExpression,
     TypeReference, TypeLiteralString, TypeLiteralBoolean, TypeLiteralNumber, TableTypeNode,
     ArrayTypeNode, TupleTypeNode,
@@ -144,6 +145,9 @@ export class Parser {
     missingEnd = false
     /** The column of the first token on each line, for `indentation`. */
     private lineIndent?: Map<number, number>
+    /** Inside a class body, where `super` means the base class. Outside
+     *  one it is an ordinary name, so existing code using it still reads. */
+    private classDepth = 0
 
     constructor(tokens: Token[], options: ParserOptions = {}) {
         this.tokens = tokens
@@ -595,6 +599,13 @@ export class Parser {
             return this.parseTypeAliasStatement()
         }
 
+        // `class` is a soft keyword: it only starts a declaration when a name
+        // follows it, so `const class = 1` and `t.class` still read as names.
+        if (t.type === "Identifier" && (t as any).value === "class" &&
+            this.peek(1).type === "Identifier") {
+            return this.parseClassDeclaration()
+        }
+
         if (t.type === "Identifier" && (t as any).value === "declare") {
             const p1 = this.peek(1)
             // `class` is a soft keyword: `declare class: T` still declares a
@@ -811,6 +822,11 @@ export class Parser {
             return { type: "ExportStatement", declaration, ...spanFrom(start, this.previous()) }
         }
 
+        if (this.checkIdentifierValue("class") && this.peek(1).type === "Identifier") {
+            const declaration = this.parseClassDeclaration()
+            return { type: "ExportStatement", declaration, ...spanFrom(start, this.previous()) }
+        }
+
         if (this.checkKeyword("function")) {
             const declaration = this.parseFunctionStatement(true)
             if (declaration.type !== "FunctionDeclaration") this.error("An exported function needs a plain name: 'export function name()'")
@@ -844,7 +860,7 @@ export class Parser {
             return { type: "ExportAllStatement", source, ...spanFrom(start, this.previous()) }
         }
 
-        this.error("Expected 'const', 'let', 'function', 'type', 'default', '{' or '*' after 'export'")
+        this.error("Expected 'const', 'let', 'function', 'class', 'type', 'default', '{' or '*' after 'export'")
     }
 
     // `const x = ...` / `let x, y = ...`.
@@ -1059,6 +1075,160 @@ export class Parser {
         this.record(error)
     }
 
+    /** `class Name extends Base <members> end`.
+     *
+     *  The body is a block like every other in luaut, closed by `end` — not a
+     *  brace-delimited list. Members are written the way the same thing is
+     *  written outside a class: a field like a field (`x: number`), a method
+     *  like a function (`function m() ... end`). */
+    private parseClassDeclaration(): ClassDeclaration {
+        const start = this.current()
+        this.advance() // 'class'
+        const name = this.parseIdentifier()
+        if (this.checkOperator("<")) {
+            this.error("A class cannot take type parameters yet; write a generic method instead")
+        }
+        let superclass: Identifier | undefined
+        if (this.checkIdentifierValue("extends")) {
+            this.advance()
+            superclass = this.parseIdentifier()
+        }
+
+        const members: ClassMember[] = []
+        this.classDepth++
+        try {
+            while (!this.checkKeyword("end") && !this.isAtEnd()) {
+                // A stray `,` or `;` between members is allowed and means
+                // nothing, as a `;` between statements does.
+                if (this.matchPunctuator(",") || this.matchPunctuator(";")) continue
+                const member = this.parseClassMember(name)
+                if (member) members.push(member)
+            }
+        } finally {
+            this.classDepth--
+        }
+        this.expectEnd(start)
+        return { type: "ClassDeclaration", name, superclass, members, ...spanFrom(start, this.previous()) }
+    }
+
+    private parseClassMember(className: Identifier): ClassMember | undefined {
+        const start = this.current()
+        // `static` is a soft keyword — `static: number` is still a field.
+        const isStatic = this.checkIdentifierValue("static") && !this.punctuatorAt(1, ":") && !this.operatorAt(1, "=")
+        if (isStatic) this.advance()
+
+        if (this.checkKeyword("function")) {
+            this.advance()
+            const memberName = this.parseIdentifier()
+            // Overloads inside a class are written as they are outside one:
+            // bodyless heads for the same name, then the implementation.
+            const signatures: FunctionSignature[] = []
+            let written = memberName
+            while (true) {
+                const head = this.parseFunctionHead()
+                if (this.isClassOverloadContinuation(memberName.name, isStatic)) {
+                    if (!isStatic) this.bindThisParam(head.params, className)
+                    signatures.push({ ...this.headToSignature(head), name: written })
+                    if (isStatic) this.advance() // 'static'
+                    this.expectKeyword("function")
+                    written = this.parseIdentifier()
+                    continue
+                }
+                const func = this.headToBody(head, start)
+                if (!isStatic) this.bindThis(func, className)
+                return {
+                    type: "ClassMethod", name: memberName, isStatic, func,
+                    signatures: signatures.length ? signatures : undefined,
+                    ...spanFrom(start, this.previous()),
+                }
+            }
+        }
+
+        // `constructor(...)` — a soft keyword too.
+        if (!isStatic && this.checkIdentifierValue("constructor") && this.punctuatorAt(1, "(")) {
+            this.advance()
+            const head = this.parseFunctionHead()
+            if (head.returnType) this.problem("A constructor has no return type; it always builds the instance")
+            const func = this.headToBody(head, start)
+            this.bindThis(func, className)
+            return { type: "ClassConstructor", func, ...spanFrom(start, this.previous()) }
+        }
+
+        // `get name(): T ... end` / `set name(v: T) ... end`
+        if ((this.checkIdentifierValue("get") || this.checkIdentifierValue("set")) &&
+            this.peek(1).type === "Identifier" && this.punctuatorAt(2, "(")) {
+            const kind = (this.advance() as { value: string }).value as "get" | "set"
+            const memberName = this.parseIdentifier()
+            const head = this.parseFunctionHead()
+            const func = this.headToBody(head, start)
+            if (!isStatic) this.bindThis(func, className)
+            const written = func.params.length - (isStatic ? 0 : 1)
+            if (kind === "get" && written > 0) {
+                this.problem("A getter takes no parameters")
+            }
+            if (kind === "set" && written !== 1) {
+                this.problem("A setter takes exactly one parameter: the value being assigned")
+            }
+            return { type: "ClassAccessor", kind, name: memberName, isStatic, func, ...spanFrom(start, this.previous()) }
+        }
+
+        // `name: T`, `name = v`, `name: T = v`
+        if (this.checkType("Identifier")) {
+            const memberName = this.parseIdentifier()
+            let typeAnnotation: TypeNode | undefined
+            if (this.matchPunctuator(":")) {
+                typeAnnotation = this.typeOr(() => this.checkOperator("="))
+            }
+            let init: Expression | undefined
+            if (this.matchOperator("=")) init = this.expressionOr(() => false)
+            if (!typeAnnotation && !init) {
+                this.error("A class field needs a type ('name: T') or a value ('name = v')")
+            }
+            return { type: "ClassField", name: memberName, isStatic, typeAnnotation, init, ...spanFrom(start, this.previous()) }
+        }
+
+        if (this.recover) {
+            this.softError("Expected a class member: a field, 'function', 'constructor', 'get' or 'set'")
+            this.advance()
+            return undefined
+        }
+        this.error("Expected a class member: a field, 'function', 'constructor', 'get' or 'set'")
+    }
+
+    /** Give a class method its `this`: a real first parameter, the way
+     *  `function T:m()` gets a real `self`. Every later pass — scopes, types,
+     *  arity, lowering — then sees an ordinary parameter and needs to know
+     *  nothing about classes. */
+    private bindThis(func: FunctionBody, className: Identifier): void {
+        this.bindThisParam(func.params, className)
+        func.isMethod = true
+    }
+
+    private bindThisParam(params: FunctionParameter[], className: Identifier): void {
+        params.unshift({
+            type: "FunctionParameter",
+            name: "this",
+            typeAnnotation: { type: "TypeReference", base: className.name, typeArguments: [], ...spanFrom(className, className) },
+            ...spanFrom(className, className),
+        })
+    }
+
+    /** After a bodyless head inside a class body, does another declaration of
+     *  the same member follow? Then the head was an overload signature. */
+    private isClassOverloadContinuation(name: string, isStatic: boolean): boolean {
+        const offset = isStatic ? 1 : 0
+        if (isStatic && !(this.checkIdentifierValue("static"))) return false
+        const keyword = this.peek(offset)
+        if (!(keyword.type === "Keyword" && (keyword as { value?: unknown }).value === "function")) return false
+        const named = this.peek(offset + 1)
+        return named.type === "Identifier" && (named as { value?: unknown }).value === name
+    }
+
+    private operatorAt(ahead: number, value: string): boolean {
+        const token = this.peek(ahead)
+        return token.type === "Operator" && (token as { value?: unknown }).value === value
+    }
+
     private parseFunctionName(): FunctionName {
         const start = this.current()
         const base = this.parseIdentifier()
@@ -1166,7 +1336,8 @@ export class Parser {
             }
         }
 
-        if (first.type === "CallExpression" || first.type === "MethodCallExpression") {
+        if (first.type === "CallExpression" || first.type === "MethodCallExpression" ||
+            first.type === "NewExpression") {
             return { type: "CallStatement", expression: first, ...spanFrom(start, this.previous()) }
         }
 
@@ -1414,7 +1585,7 @@ export class Parser {
             } else {
                 let expression: Expression
                 try {
-                    expression = shiftSpans(parseExpressionFromSource(p.raw), p.line, p.column)
+                    expression = shiftSpans(parseExpressionFromSource(p.raw, this.classDepth > 0), p.line, p.column)
                 } catch (e) {
                     if (!this.recover || !(e instanceof ParseError || e instanceof LexError)) throw e
                     const at = token as unknown as Span
@@ -1454,7 +1625,12 @@ export class Parser {
         const start = this.current()
         let base: Expression
 
-        if (this.checkType("Identifier")) {
+        if (this.startsNew()) {
+            base = this.parseNewExpression()
+        } else if (this.classDepth > 0 && this.checkIdentifierValue("super") && this.startsSuperUse()) {
+            this.advance()
+            base = { type: "SuperExpression", ...spanFrom(start, start) }
+        } else if (this.checkType("Identifier")) {
             base = this.parseIdentifier()
         } else if (this.matchPunctuator("(")) {
             const inner = this.parseExpression()
@@ -1560,6 +1736,40 @@ export class Parser {
         }
 
         return base
+    }
+
+    /** `new` is a soft keyword: it starts a construction only when a name
+     *  follows it, so a function or field called `new` — `Instance.new(x)`,
+     *  and `Vec.new(1)` itself — is untouched. */
+    private startsNew(): boolean {
+        return this.checkIdentifierValue("new") && this.peek(1).type === "Identifier"
+    }
+
+    /** `super` on its own means the base class, and only `super(...)` and
+     *  `super.member` say anything; anything else is a name that happens to
+     *  be spelled that way. */
+    private startsSuperUse(): boolean {
+        return this.punctuatorAt(1, "(") || (this.punctuatorAt(1, ".") && this.peek(2).type === "Identifier")
+    }
+
+    /** `new Name(args)` / `new Module.Name(args)`. The callee is a name, or a
+     *  name reached through a module — never an arbitrary expression, so the
+     *  arguments are unambiguously the constructor's. */
+    private parseNewExpression(): NewExpression {
+        const start = this.current()
+        this.advance() // 'new'
+        let callee: Expression = this.parseIdentifier()
+        while (this.checkPunctuator(".") && this.peek(1).type === "Identifier") {
+            this.advance()
+            const property = this.parseIdentifier()
+            callee = { type: "MemberExpression", object: callee, property, ...spanFrom(start, property) }
+        }
+        const typeArguments = this.tryCallTypeArguments()
+        if (!this.checkPunctuator("(")) {
+            this.error("Expected '(' after the class being constructed: 'new Name(...)'")
+        }
+        const args = this.parseCallArguments()
+        return { type: "NewExpression", callee, arguments: args, typeArguments, ...spanFrom(start, this.previous()) }
     }
 
     /** Is the token `ahead` places on the punctuator `value`? */
@@ -2640,9 +2850,13 @@ export function parseTypeFromSource(raw: string): TypeNode {
     return (parser as unknown as { parseType(): TypeNode }).parseType()
 }
 
-export function parseExpressionFromSource(raw: string): Expression {
+/** `inClass` carries the enclosing class in. A template's `${...}` is parsed
+ *  on its own, so without it a `super` written inside one in a class method
+ *  would read as an ordinary name. */
+export function parseExpressionFromSource(raw: string, inClass = false): Expression {
     const tokens = tokenize(raw)
     const parser = new Parser(tokens)
+    if (inClass) (parser as unknown as { classDepth: number }).classDepth = 1
     const expr = (parser as any).parseExpression() as Expression
     return expr
 }

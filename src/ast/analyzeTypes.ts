@@ -35,6 +35,7 @@ import type {
     Identifier, FunctionBody, FunctionSignature, BindingTarget, GenericTypeParameter,
     ObjectPattern, ArrayPattern, ObjectPatternProperty, ReturnStatement,
     TableExpression, ArrayExpression, IfStatement, TypePredicateNode, DeclareClassStatement, DeclareStatement,
+    ClassDeclaration, ClassMember,
 } from "./nodes"
 import type { ScopeAnalysis, BindingId } from "./analyzeScopes"
 import { preludeProgram } from "./prelude"
@@ -45,6 +46,7 @@ import {
     primitive, literal, arrayOf, tuple, objectType, fn, union, intersection, optional,
     typeParam, substitute, unify, containsTypeParam, matchInfer, setAliasExpander, setDeferredBound, difference,
     widen, isAssignable, overlaps, narrowTo, narrowExclude, narrowTruthy, narrowFalsy,
+    isClassType,
     isPossiblyFalsy,
     formatType,
 } from "./typeModel"
@@ -57,7 +59,7 @@ export interface TypeDiagnostic {
     /** Usually an expression or statement; a type where the type is wrong
      *  (`declare class A extends NotAClass`), or a block where nothing in it
      *  is to blame (a function that never returns). Only its span is read. */
-    node: Expression | Statement | TypeNode | Block
+    node: Expression | Statement | TypeNode | Block | ClassMember
     message: string
 }
 
@@ -208,6 +210,13 @@ export function moduleExports(
         if (stmt.type === "ExportStatement") {
             const declaration = stmt.declaration
             if (declaration.type === "FunctionDeclaration") exportName(declaration.name, declaration.name.name)
+            else if (declaration.type === "ClassDeclaration") {
+                // The class table is the value; the class name is the type of
+                // its instances. A module importing it gets both.
+                exportName(declaration.name, declaration.name.name)
+                const instance = types.aliases.get(declaration.name.name)
+                if (instance) exportedTypes.set(declaration.name.name, { type: instance, params: [] })
+            }
             else for (const target of declaration.names) exportPattern(target)
         } else if (stmt.type === "ExportTypeAliasStatement") {
             const name = stmt.alias.name.name
@@ -382,12 +391,72 @@ function keepsLiterals(paramType: Type): boolean {
     return members.some(m => m.kind === "literal")
 }
 
+/** A class declaration's members, as types. Built once, filled in place:
+ *  the fields land first so a method body can already read `this.x`. */
+interface ClassShape {
+    instance: Map<string, ObjectProperty>
+    statics: Map<string, ObjectProperty>
+    ctor?: FunctionType
+    /** True while the two passes are still running. */
+    filling: boolean
+}
+
+/** The names a lowered class already uses: `new` builds an instance,
+ *  `__init` runs the constructor, and the rest are the metatable's. */
+const CLASS_RESERVED = new Set(["new", "__init", "__index", "__newindex", "__getters", "__setters", "__dynamic"])
+
+/** Does this constructor body call `super(...)`? A call anywhere in it
+ *  counts — inside an `if`, at the end, wherever the class needs it. */
+function callsSuper(block: Block): boolean {
+    let found = false
+    walkNodes(block, node => {
+        const record = node as { type?: string; callee?: { type?: string } }
+        if (record.type === "CallExpression" && record.callee?.type === "SuperExpression") found = true
+    })
+    return found
+}
+
+/** Every `this.name` a constructor assigns. */
+function assignedFields(block: Block): Set<string> {
+    const names = new Set<string>()
+    walkNodes(block, node => {
+        const record = node as { type?: string; targets?: unknown[]; target?: unknown }
+        const targets = record.type === "AssignmentStatement" ? record.targets
+            : record.type === "CompoundAssignmentStatement" ? [record.target]
+            : undefined
+        for (const target of targets ?? []) {
+            const member = target as { type?: string; object?: { type?: string; name?: string }; property?: { name?: string } }
+            if (member.type === "MemberExpression" && member.object?.type === "Identifier" &&
+                member.object.name === "this" && member.property?.name) {
+                names.add(member.property.name)
+            }
+        }
+    })
+    return names
+}
+
+/** Every node under `root`, spans excepted. */
+function walkNodes(root: unknown, visit: (node: object) => void): void {
+    if (!root || typeof root !== "object") return
+    if (Array.isArray(root)) {
+        for (const item of root) walkNodes(item, visit)
+        return
+    }
+    visit(root)
+    for (const [key, value] of Object.entries(root)) {
+        if (key !== "line" && key !== "column" && value && typeof value === "object") walkNodes(value, visit)
+    }
+}
+
 /** A named type: a `type` alias, or a `declare class` (whose `node` is its
  *  body). */
 interface AliasDef {
     params: GenericTypeParameter[]
     node: TypeNode
     class?: DeclareClassStatement
+    /** A `class ... end` written in the file: the name is its *instance*
+     *  type, nominal in the same way a `declare class` is. */
+    runtimeClass?: ClassDeclaration
 }
 
 /** The public alias map, where a name can be registered before its type
@@ -531,6 +600,8 @@ class TypeAnalyzer {
     private readonly aliasDefs = new Map<string, AliasDef>()
     /** See `resolveClass`. */
     private readonly classTypes = new WeakMap<DeclareClassStatement, ObjectType>()
+    /** See `instanceType` — one instance type per `class ... end`. */
+    private readonly instanceTypes = new WeakMap<ClassDeclaration, ObjectType>()
     private readonly classMembers = new WeakMap<ObjectType, () => { properties: Map<string, ObjectProperty>; indexer: ObjectType["indexer"] } | undefined>()
     /** Generic parameters currently in lexical scope (alias body / generic fn),
      *  with their `extends` constraints resolved. */
@@ -584,6 +655,7 @@ class TypeAnalyzer {
         this.registerAliasDefs(preludeProgram().body, true)
         for (const lib of this.options.libs ?? []) this.registerAliasDefs(lib.body, true)
         this.registerAliasDefs(this.program.body)
+        this.registerNestedClasses()
         for (const lib of this.options.libs ?? []) this.harvestDeclares(lib.body)
         // Imported type names must be known before any annotation resolves.
         this.registerImportedTypes()
@@ -712,11 +784,46 @@ class TypeAnalyzer {
             if (stmt.type === "DeclareClassStatement") {
                 this.aliasDefs.set(stmt.name.name, { params: [], node: stmt.body, class: stmt })
             }
+            // A class declares a type as well as a value: the name of the
+            // class is the type of its instances.
+            const declaration = stmt.type === "ExportStatement" ? stmt.declaration : stmt
+            if (declaration.type === "ClassDeclaration") {
+                this.aliasDefs.set(declaration.name.name, {
+                    params: [],
+                    node: {
+                        type: "TableTypeNode", properties: [],
+                        line: declaration.line, column: declaration.column,
+                    } as unknown as TypeNode,
+                    runtimeClass: declaration,
+                })
+            }
         }
+    }
+
+    /** A class written inside a function or a block names a type too — its
+     *  own instances', which its methods' `this` is annotated with. Type names
+     *  are one namespace here, so it is registered with the rest; only a
+     *  second class of the same name would notice. */
+    private registerNestedClasses(): void {
+        walkNodes(this.program.body, node => {
+            const record = node as { type?: string; name?: Identifier }
+            if (record.type !== "ClassDeclaration" || !record.name) return
+            if (this.aliasDefs.has(record.name.name)) return
+            const declaration = node as unknown as ClassDeclaration
+            this.aliasDefs.set(declaration.name.name, {
+                params: [],
+                node: {
+                    type: "TableTypeNode", properties: [],
+                    line: declaration.line, column: declaration.column,
+                } as unknown as TypeNode,
+                runtimeClass: declaration,
+            })
+        })
     }
 
     /** A non-generic definition's type. */
     private resolveDef(def: AliasDef): Type {
+        if (def.runtimeClass) return this.instanceType(def.runtimeClass)
         return def.class ? this.classType(def.class) : this.resolveType(def.node)
     }
 
@@ -786,6 +893,301 @@ class TypeAnalyzer {
         // members' annotations are recorded for hover like any other type.
         if (this.program.body.statements.includes(stmt)) ownMembers()
         return type
+    }
+
+    // ============================================================
+    // `class ... end` — the runtime kind
+    // ------------------------------------------------------------
+    // A declaration says two things at once. Its *name as a type* is the
+    // type of its instances, nominal the way `declare class` is: only the
+    // class and the classes extending it produce one. Its *name as a value*
+    // is the class table — the statics, plus the `new` that builds an
+    // instance, which is an ordinary function and can be called as one.
+    //
+    // Members are resolved into one shape, filled in two passes: the fields
+    // first, then the functions. That order is what lets a method body read
+    // `this.x` while the class it belongs to is still being worked out.
+    // ============================================================
+
+    private readonly classShapes = new WeakMap<ClassDeclaration, ClassShape>()
+    /** The class whose members are being read, so `super` knows its base. */
+    private currentClass?: ClassDeclaration
+
+    private withClass<T>(stmt: ClassDeclaration, fn: () => T): T {
+        const previous = this.currentClass
+        this.currentClass = stmt
+        try {
+            return fn()
+        } finally {
+            this.currentClass = previous
+        }
+    }
+
+    /** The class a declaration extends, when it is one written in this file.
+     *  An imported class is reached through its type and its value instead. */
+    private superDecl(stmt: ClassDeclaration): ClassDeclaration | undefined {
+        if (!stmt.superclass) return undefined
+        const base = this.aliasDefs.get(stmt.superclass.name)?.runtimeClass
+        return base && base !== stmt && !this.extendsThrough(base, stmt) ? base : undefined
+    }
+
+    /** Does `from` reach `target` by `extends`? Guards against a cycle
+     *  turning resolution into a loop. */
+    private extendsThrough(from: ClassDeclaration, target: ClassDeclaration): boolean {
+        const seen = new Set<ClassDeclaration>()
+        for (let cls: ClassDeclaration | undefined = from; cls && !seen.has(cls);) {
+            if (cls === target) return true
+            seen.add(cls)
+            cls = cls.superclass ? this.aliasDefs.get(cls.superclass.name)?.runtimeClass : undefined
+        }
+        return false
+    }
+
+    /** The instance type of what `stmt` extends — a class in this file, or
+     *  any class type a name in scope stands for (an imported one). */
+    private baseInstance(stmt: ClassDeclaration): ObjectType | undefined {
+        if (!stmt.superclass) return undefined
+        // A class written here: what it extends is settled by the declarations,
+        // and a chain that closes on itself inherits nothing. Asking the alias
+        // map instead would walk that same circle forever.
+        if (this.aliasDefs.get(stmt.superclass.name)?.runtimeClass) {
+            const local = this.superDecl(stmt)
+            return local ? this.instanceType(local) : undefined
+        }
+        // Only a class: extending a plain shape would give instances a type
+        // no table literal could ever be mistaken for, which is the one thing
+        // a structural alias is not.
+        const named = this.aliases.get(stmt.superclass.name) ?? this.importedTypes.get(stmt.superclass.name)?.type
+        return named && isClassType(named) ? named : undefined
+    }
+
+    /** One instance type per declaration, so every mention of the class is
+     *  the same object — the `this` of its own methods included. Members are
+     *  read lazily for the reason `declare class` reads them lazily: a class
+     *  can name itself, and two classes can name each other. */
+    private instanceType(stmt: ClassDeclaration): ObjectType {
+        const cached = this.instanceTypes.get(stmt)
+        if (cached) return cached
+        const name = stmt.name.name
+        const type = { kind: "object", name } as unknown as ObjectType
+        this.instanceTypes.set(stmt, type)
+        // The chain, nearest first: this class, then what its base already
+        // knows itself to extend.
+        const ancestors = (): string[] => [name, ...(this.baseInstance(stmt)?.class?.ancestors ?? [])]
+        Object.defineProperties(type, {
+            properties: {
+                enumerable: true,
+                get: () => {
+                    const shape = this.shapeOf(stmt)
+                    const base = this.baseInstance(stmt)?.properties
+                    if (!base?.size) return shape.instance
+                    return new Map([...base, ...shape.instance])
+                },
+            },
+            class: {
+                enumerable: true,
+                get: () => ({ name, superclass: stmt.superclass?.name, ancestors: ancestors() }),
+            },
+        })
+        return type
+    }
+
+    /** The class table: the statics, what it inherits from the class it
+     *  extends, and `new`. */
+    private classValueType(stmt: ClassDeclaration): ObjectType {
+        const shape = this.shapeOf(stmt)
+        const local = this.superDecl(stmt)
+        const inherited = local
+            ? this.classValueType(local).properties
+            : stmt.superclass
+                ? this.classStaticsByName(stmt.superclass.name)
+                : undefined
+        const entries = new Map<string, ObjectProperty>([...(inherited ?? []), ...shape.statics])
+        const ctor = this.constructorType(stmt)
+        entries.set("new", {
+            type: fn(ctor?.params.filter(p => p.name !== "this") ?? [], this.instanceType(stmt), ctor?.varargs),
+            optional: false,
+            readonly: true,
+        })
+        const type = objectType(entries)
+        // The class table is not an instance: say so where one is shown.
+        type.name = `typeof ${stmt.name.name}`
+        return type
+    }
+
+    /** The statics of a class named by a binding rather than by a declaration
+     *  in this file — an imported one. */
+    private classStaticsByName(name: string): Map<string, ObjectProperty> | undefined {
+        const id = this.scopes.globalsByName.get(name)
+        const declared = id !== undefined ? this.bindingType.get(id) : undefined
+        const value = declared ?? this.aliases.get(`typeof ${name}`)
+        if (!value || value.kind !== "object") return undefined
+        // `new` is this class's own; only the statics are inherited.
+        return new Map([...value.properties].filter(([key]) => key !== "new"))
+    }
+
+    /** A class's constructor signature — its own, or the one it inherits. */
+    private constructorType(stmt: ClassDeclaration, seen = new Set<ClassDeclaration>()): FunctionType | undefined {
+        if (seen.has(stmt)) return undefined
+        seen.add(stmt)
+        const own = this.shapeOf(stmt).ctor
+        if (own) return own
+        const local = this.superDecl(stmt)
+        return local ? this.constructorType(local, seen) : undefined
+    }
+
+    /** `super` as a value: the base class's instance members with the `this`
+     *  slot already filled, because `super.m(a)` passes this instance. */
+    private superType(stmt: ClassDeclaration): Type {
+        const base = this.baseInstance(stmt)
+        if (!base) return anyType
+        const entries: [string, ObjectProperty][] = []
+        for (const [name, property] of base.properties) {
+            const bound = this.overloadsOf(property.type)
+            entries.push([name, bound.length
+                ? { ...property, type: intersection(bound.map(f => (this.takesSelf(f) ? fn(f.params.slice(1), f.returns, f.varargs, f.typeParams) : f))) }
+                : property])
+        }
+        return objectType(entries)
+    }
+
+    private shapeOf(stmt: ClassDeclaration): ClassShape {
+        const cached = this.classShapes.get(stmt)
+        if (cached) return cached
+        const shape: ClassShape = { instance: new Map(), statics: new Map(), filling: true }
+        // Published before it is filled: a method reading `this.x` asks for
+        // this same map, and the fields are already in it by then.
+        this.classShapes.set(stmt, shape)
+        const wasEmitting = this.emitDiagnostics
+        this.emitDiagnostics = false
+        try {
+            this.withClass(stmt, () => this.fillShape(stmt, shape))
+        } finally {
+            this.emitDiagnostics = wasEmitting
+            shape.filling = false
+        }
+        return shape
+    }
+
+    private fillShape(stmt: ClassDeclaration, shape: ClassShape): void {
+        const put = (isStatic: boolean, name: string, property: ObjectProperty): void => {
+            (isStatic ? shape.statics : shape.instance).set(name, property)
+        }
+        // Fields first: a method's body can then read them.
+        for (const member of stmt.members) {
+            if (member.type !== "ClassField") continue
+            const type = member.typeAnnotation
+                ? this.resolveType(member.typeAnnotation)
+                : member.init
+                    ? widen(this.infer(member.init, new Map()))
+                    : anyType
+            put(member.isStatic, member.name.name, { type, optional: false })
+        }
+        for (const member of stmt.members) {
+            switch (member.type) {
+                case "ClassField":
+                    break
+                case "ClassMethod": {
+                    this.paramsFromSignatures(member.func, member.signatures)
+                    const type = member.signatures?.length
+                        ? intersection(member.signatures.map(sig => this.signatureToFnType(sig)))
+                        : this.inferFunctionBody(member.func, new Map())
+                    put(member.isStatic, member.name.name, { type, optional: false })
+                    break
+                }
+                case "ClassAccessor": {
+                    const signature = this.inferFunctionBody(member.func, new Map())
+                    if (signature.kind !== "function") break
+                    const target = member.isStatic ? shape.statics : shape.instance
+                    const existing = target.get(member.name.name)
+                    if (member.kind === "get") {
+                        // Readable; writable only if a setter is written too.
+                        put(member.isStatic, member.name.name, {
+                            type: signature.returns,
+                            optional: false,
+                            readonly: existing === undefined || existing.readonly !== false,
+                        })
+                    } else {
+                        put(member.isStatic, member.name.name, {
+                            type: existing?.type ?? signature.params[signature.params.length - 1]?.type ?? anyType,
+                            optional: false,
+                            readonly: false,
+                        })
+                    }
+                    break
+                }
+                case "ClassConstructor": {
+                    const signature = this.inferFunctionBody(member.func, new Map())
+                    if (signature.kind === "function") shape.ctor = signature
+                    break
+                }
+            }
+        }
+    }
+
+    /** What a class declaration gets wrong, reported where it is written. */
+    private checkClassDeclaration(stmt: ClassDeclaration): void {
+        if (!this.emitDiagnostics) return
+        const report = (node: TypeDiagnostic["node"], message: string): void => {
+            this.diagnostics.push({ node, message })
+        }
+
+        if (stmt.superclass) {
+            const local = this.aliasDefs.get(stmt.superclass.name)?.runtimeClass
+            if (local && this.extendsThrough(local, stmt)) {
+                report(stmt.superclass, `'${stmt.name.name}' cannot extend itself`)
+            } else if (!local && !this.baseInstance(stmt)) {
+                const known = this.aliases.has(stmt.superclass.name) || this.importedTypes.has(stmt.superclass.name)
+                report(stmt.superclass, known
+                    ? `'${stmt.superclass.name}' is not a class; a class can only extend another class`
+                    : `Cannot find class '${stmt.superclass.name}'`)
+            }
+        }
+
+        // The compiler builds the class table out of these, so a member
+        // cannot be called one of them.
+        for (const member of stmt.members) {
+            if (member.type === "ClassConstructor") continue
+            if (CLASS_RESERVED.has(member.name.name)) {
+                report(member.name, `'${member.name.name}' is what the compiler calls part of a class; `
+                    + "a member cannot be named that")
+            }
+        }
+
+        // A member written twice, `get`/`set` of one property excepted.
+        const seen = new Map<string, ClassMember["type"]>()
+        for (const member of stmt.members) {
+            if (member.type === "ClassConstructor") {
+                if (seen.has("constructor")) report(member, "A class has one constructor")
+                seen.set("constructor", member.type)
+                continue
+            }
+            const key = `${member.isStatic ? "static " : ""}${member.name.name}`
+            const before = seen.get(key)
+            const pair = member.type === "ClassAccessor" && before === "ClassAccessor"
+            if (before !== undefined && !pair) {
+                report(member.name, `'${member.name.name}' is declared twice in class '${stmt.name.name}'`)
+            }
+            seen.set(key, member.type)
+        }
+
+        const constructor = stmt.members.find((m): m is Extract<ClassMember, { type: "ClassConstructor" }> =>
+            m.type === "ClassConstructor")
+        if (stmt.superclass && this.baseInstance(stmt) && constructor && !callsSuper(constructor.func.body)) {
+            report(constructor, `'${stmt.name.name}' extends '${stmt.superclass.name}', so its constructor must call 'super(...)'`)
+        }
+
+        // A field that is only declared, and that nothing in the constructor
+        // assigns, is nil at run time however it is annotated.
+        const assigned = constructor ? assignedFields(constructor.func.body) : new Set<string>()
+        for (const member of stmt.members) {
+            if (member.type !== "ClassField" || member.isStatic || member.init) continue
+            if (assigned.has(member.name.name)) continue
+            const type = member.typeAnnotation ? this.resolveType(member.typeAnnotation) : anyType
+            if (isAssignable(nilType, type)) continue
+            report(member.name, `'${member.name.name}' has no value: give it one, assign it in the constructor, `
+                + `or let its type admit nil`)
+        }
     }
 
     /** `extends` must name a class, and the chain must end. */
@@ -1698,6 +2100,39 @@ class TypeAnalyzer {
                         this.correlateDestructuring(target, inferred, env)
                         this.correlateIndexed(target, source, env)
                         this.aliasReference(target, source)
+                    }
+                })
+                return
+            }
+
+            case "ClassDeclaration": {
+                this.checkClassDeclaration(stmt)
+                const id = this.bindingIdByName(stmt.name.name, stmt.name)
+                const value = this.classValueType(stmt)
+                if (id !== undefined) {
+                    this.bindingType.set(id, value)
+                    this.setBinding(env, id, value)
+                }
+                this.withClass(stmt, () => {
+                    for (const member of stmt.members) {
+                        if (member.type === "ClassField") {
+                            if (!member.init) continue
+                            const declared = member.typeAnnotation ? this.resolveType(member.typeAnnotation) : undefined
+                            if (declared) this.applyContext(member.init, declared)
+                            const actual = this.infer(member.init, env)
+                            if (declared && this.emitDiagnostics && !isAssignable(actual, declared)) {
+                                this.diagnostics.push({
+                                    node: member.init,
+                                    message: `Type '${formatType(actual)}' is not assignable to type '${formatType(declared)}'`,
+                                })
+                            }
+                            continue
+                        }
+                        this.checkParamOrder(member.func.params, member)
+                        for (const signature of (member as { signatures?: FunctionSignature[] }).signatures ?? []) {
+                            this.checkParamOrder(signature.params, member)
+                        }
+                        this.visitFunctionBody(member.func, env)
                     }
                 })
                 return
@@ -2650,7 +3085,7 @@ class TypeAnalyzer {
      *  and it applies to a default (`a = 1`) as much as to a `?`. */
     private checkParamOrder(
         params: readonly { name?: string; optional?: boolean; default?: unknown }[],
-        node: Expression | Statement,
+        node: Expression | Statement | ClassMember,
     ): void {
         if (!this.emitDiagnostics) return
         let seenOptional: string | undefined
@@ -3661,8 +4096,28 @@ class TypeAnalyzer {
             }
 
             case "CallExpression": {
+                // `super(...)` runs the base class's constructor on this
+                // instance: it takes the base's parameters and returns nothing.
+                if (expr.callee.type === "SuperExpression") return this.inferSuperCall(expr, env)
                 const { type: callee, shortCircuits } = this.chainObject(expr, expr.callee, env)
                 return this.chainResult(expr, this.inferCall(expr, callee, env), shortCircuits)
+            }
+
+            case "NewExpression":
+                return this.inferNew(expr, env)
+
+            case "SuperExpression": {
+                const stmt = this.currentClass
+                if (!stmt?.superclass) {
+                    if (this.emitDiagnostics) {
+                        this.diagnostics.push({
+                            node: expr,
+                            message: "'super' is only available inside a class that extends another",
+                        })
+                    }
+                    return anyType
+                }
+                return this.superType(stmt)
             }
 
             case "MethodCallExpression": {
@@ -3683,6 +4138,57 @@ class TypeAnalyzer {
                 return union(branches)
             }
         }
+    }
+
+    /** `new Name(args)` is `Name.new(args)` — the same function, and the
+     *  same check. Saying so here rather than rewriting the tree keeps the
+     *  error messages pointing at what was written. */
+    private inferNew(expr: Extract<Expression, { type: "NewExpression" }>, env: FlowEnv): Type {
+        const calleeType = this.infer(expr.callee, env)
+        const constructor = this.propertyType(calleeType, "new")
+        if (!this.overloadsOf(constructor).length && calleeType.kind !== "any") {
+            if (this.emitDiagnostics) {
+                const label = expressionLabel(expr.callee) ?? formatType(calleeType)
+                this.diagnostics.push({ node: expr.callee, message: `'${label}' is not a class; 'new' needs one` })
+            }
+            for (const argument of expr.arguments) this.infer(argument, env)
+            return anyType
+        }
+        return this.inferCall(expr as unknown as Extract<Expression, { type: "CallExpression" }>, constructor, env)
+    }
+
+    /** `super(...)` — the base constructor, run on the instance being built. */
+    private inferSuperCall(expr: Extract<Expression, { type: "CallExpression" }>, env: FlowEnv): Type {
+        const stmt = this.currentClass
+        const base = stmt ? this.superDecl(stmt) : undefined
+        const constructor = base ? this.constructorType(base)
+            : stmt?.superclass ? this.overloadsOf(this.propertyType(
+                this.classStaticsByNameType(stmt.superclass.name), "new"))[0]
+            : undefined
+        if (!stmt?.superclass) {
+            if (this.emitDiagnostics) {
+                this.diagnostics.push({
+                    node: expr,
+                    message: "'super(...)' is only available inside the constructor of a class that extends another",
+                })
+            }
+            for (const argument of expr.arguments) this.infer(argument, env)
+            return nilType
+        }
+        if (!constructor) {
+            for (const argument of expr.arguments) this.infer(argument, env)
+            return nilType
+        }
+        const callable = fn(constructor.params.filter(p => p.name !== "this"), nilType, constructor.varargs)
+        this.inferCall(expr, callable, env)
+        return nilType
+    }
+
+    /** The value side of a class named by a binding — an imported one. */
+    private classStaticsByNameType(name: string): Type {
+        const id = this.scopes.globalsByName.get(name)
+        const fromBinding = id !== undefined ? this.bindingType.get(id) : undefined
+        return fromBinding ?? anyType
     }
 
     private inferCall(expr: Extract<Expression, { type: "CallExpression" }>, callee: Type, env: FlowEnv): Type {
@@ -4521,7 +5027,8 @@ class TypeAnalyzer {
      *  out. Every place that has to line arguments up with parameters goes
      *  through here so the two sides cannot drift apart. */
     private takesSelf(f: FunctionType): boolean {
-        return f.params[0]?.name === "self"
+        const first = f.params[0]?.name
+        return first === "self" || first === "this"
     }
 
     /** A function type as a list of call signatures: a lone function is a
@@ -4588,6 +5095,8 @@ class TypeAnalyzer {
                 type = statement.signatures?.length
                     ? intersection(statement.signatures.map(sig => this.signatureToFnType(sig)))
                     : this.inferFunctionBody(statement.func, new Map())
+            } else if (statement.type === "ClassDeclaration") {
+                type = this.classValueType(statement)
             } else if (statement.type === "VariableDeclaration") {
                 const target = statement.names[index]
                 if (target.type === "IdentifierPattern" && target.typeAnnotation) {
@@ -4625,6 +5134,10 @@ class TypeAnalyzer {
                 return
             }
             const record = node as { type?: string; name?: Identifier }
+            if (record.type === "ClassDeclaration" && record.name) {
+                const id = this.bindingIdByName(record.name.name, record.name)
+                if (id !== undefined) out.set(id, { statement: node as Statement, index: 0 })
+            }
             if (record.type === "FunctionDeclaration" && record.name) {
                 const id = this.bindingIdByName(record.name.name, record.name)
                 if (id !== undefined) out.set(id, { statement: node as Statement, index: 0 })

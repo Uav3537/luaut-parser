@@ -1,0 +1,28 @@
+Animal: typeof Animal
+Dog: typeof Dog
+Puppy: typeof Puppy
+asAnimal: Animal
+breed: string
+build: (make: (name: string, breed: string) -> Dog) -> Dog
+built: Dog
+fetched: string
+item: string
+legs: number
+made: number
+make: (name: string, breed: string) -> Dog
+name: string
+name: string
+pip: Puppy
+rex: Dog
+said: string
+shown: string
+this: Animal
+this: Animal
+this: Animal
+this: Animal
+this: Dog
+this: Dog
+this: Dog
+this: Puppy
+total: number
+value: string

@@ -1539,6 +1539,272 @@ end`)
     ], ["Node", "Node | nil", "Node", "Node"])
 }
 
+// --- classes -----------------------------------------------------------
+{
+    const analyze = (code: string, modules: Record<string, string> = {}) => {
+        const program = parse(code)
+        const scopes = analyzeScopes(program)
+        const resolveModule = (specifier: string): ModuleExports | undefined => {
+            const source = modules[specifier]
+            if (source === undefined) return undefined
+            const p = parse(source)
+            const s = analyzeScopes(p)
+            return moduleExports(p, s, analyzeTypes(p, s))
+        }
+        const types = analyzeTypes(program, scopes, { resolveModule })
+        const bindings: Record<string, string> = {}
+        for (const [id, type] of types.bindingType) bindings[scopes.bindings.get(id)!.name] = formatType(type)
+        return { errors: [...scopes.diagnostics, ...types.diagnostics].map(d => d.message), bindings }
+    }
+
+    const ANIMALS = [
+        "class Animal",
+        "    name: string",
+        "    kind = \"animal\"",
+        "    static count = 0",
+        "    constructor(name: string)",
+        "        this.name = name",
+        "    end",
+        "    function speak(): string",
+        "        return this.name",
+        "    end",
+        "    get label(): string",
+        "        return this.name",
+        "    end",
+        "end",
+        "class Dog extends Animal",
+        "    breed: string",
+        "    constructor(name: string, breed: string)",
+        "        super(name)",
+        "        this.breed = breed",
+        "    end",
+        "    function speak(): string",
+        "        return super.speak() .. this.breed",
+        "    end",
+        "end",
+    ].join("\n")
+
+    // A class names a type and a value at once: the instances and the table.
+    const basic = analyze([
+        ANIMALS,
+        "const d = new Dog(\"Rex\", \"corgi\")",
+        "const said = d:speak()",
+        "const shown = d.label",
+        "const inherited = d.kind",
+        "const asBase: Animal = d",
+        "const total = Animal.count",
+        "const byHand = Dog.new(\"a\", \"b\")",
+    ].join("\n"))
+    check("class: an instance carries its own members and the ones it inherits",
+        [basic.errors, basic.bindings.d, basic.bindings.said, basic.bindings.shown,
+            basic.bindings.inherited, basic.bindings.asBase, basic.bindings.total, basic.bindings.byHand],
+        [[], "Dog", "string", "string", "string", "Animal", "number", "Dog"])
+
+    // Nominal, like `declare class`: the shape is not enough.
+    check("class: a table is not an instance, whatever its shape", analyze([
+        "class Point",
+        "    x: number",
+        "    constructor(x: number)",
+        "        this.x = x",
+        "    end",
+        "end",
+        "declare function take(p: Point): ()",
+        "take({ x: 1 })",
+    ].join("\n")).errors, ["Argument of type '{ x: number }' is not assignable to parameter of type 'Point'"])
+
+    check("class: the constructor says what `new` takes", analyze([
+        "class Vec",
+        "    x: number",
+        "    constructor(x: number)",
+        "        this.x = x",
+        "    end",
+        "end",
+        "const bad = new Vec(\"a\")",
+        "const missing = new Vec()",
+    ].join("\n")).errors, [
+        "Argument of type '\"a\"' is not assignable to parameter of type 'number'",
+        "Expected 1 argument, got 0",
+    ])
+
+    check("class: a field nothing gives a value is nil however it is annotated", analyze([
+        "class Broken",
+        "    name: string",
+        "    count: number",
+        "    maybe: string | nil",
+        "    constructor()",
+        "        this.count = 0",
+        "    end",
+        "end",
+    ].join("\n")).errors,
+        ["'name' has no value: give it one, assign it in the constructor, or let its type admit nil"])
+
+    check("class: a derived constructor has to call super", analyze([
+        "class A",
+        "    constructor() end",
+        "end",
+        "class B extends A",
+        "    constructor()",
+        "    end",
+        "end",
+    ].join("\n")).errors, ["'B' extends 'A', so its constructor must call 'super(...)'"])
+
+    check("class: super needs a base, and extends needs a class", analyze([
+        "type Thing = { a: number }",
+        "class Loose",
+        "    function f()",
+        "        return super.g()",
+        "    end",
+        "end",
+        "class Wrong extends Thing",
+        "end",
+        "class Gone extends Missing",
+        "end",
+    ].join("\n")).errors, [
+        "'super' is only available inside a class that extends another",
+        "'Thing' is not a class; a class can only extend another class",
+        "Cannot find class 'Missing'",
+    ])
+
+    check("class: a chain that closes inherits nothing", analyze([
+        "class A extends B",
+        "end",
+        "class B extends A",
+        "end",
+    ].join("\n")).errors, ["'A' cannot extend itself", "'B' cannot extend itself"])
+
+    check("class: a member is written once, and not under the compiler's own names", analyze([
+        "class A",
+        "    x = 1",
+        "    x = 2",
+        "    new = 3",
+        "    __init = 4",
+        "    get p(): number",
+        "        return 1",
+        "    end",
+        "    set p(v: number)",
+        "    end",
+        "end",
+    ].join("\n")).errors, [
+        "'new' is what the compiler calls part of a class; a member cannot be named that",
+        "'__init' is what the compiler calls part of a class; a member cannot be named that",
+        "'x' is declared twice in class 'A'",
+    ])
+
+    // A getter alone is read-only; a setter alongside it makes it writable.
+    const accessors = analyze([
+        "class A",
+        "    get readOnly(): number",
+        "        return 1",
+        "    end",
+        "    get both(): string",
+        "        return \"a\"",
+        "    end",
+        "    set both(value: string)",
+        "    end",
+        "end",
+        "declare function want(v: { readonly readOnly: number, both: string }): ()",
+        "want(new A())",
+    ].join("\n"))
+    check("class: a getter without a setter is read-only", accessors.errors, [])
+
+    // `new` above the declaration: the name is there from the top of the block.
+    const hoisted = analyze([
+        "const early = new Later(1)",
+        "class Later",
+        "    n: number",
+        "    constructor(n: number)",
+        "        this.n = n",
+        "    end",
+        "end",
+    ].join("\n"))
+    check("class: a class can be named above where it is written",
+        [hoisted.errors, hoisted.bindings.early], [[], "Later"])
+
+    // Across modules the class is both an export and a type.
+    const imported = analyze([
+        "import { Shape } from \"./shape\"",
+        "class Circle extends Shape",
+        "    radius: number",
+        "    constructor(radius: number)",
+        "        super(\"circle\")",
+        "        this.radius = radius",
+        "    end",
+        "    function area(): number",
+        "        return this.radius",
+        "    end",
+        "end",
+        "const c = new Circle(2)",
+        "const named = c.name",
+        "const measured = c:area()",
+        "const asShape: Shape = c",
+    ].join("\n"), {
+        "./shape": [
+            "export class Shape",
+            "    name: string",
+            "    constructor(name: string)",
+            "        this.name = name",
+            "    end",
+            "    function area(): number",
+            "        return 0",
+            "    end",
+            "end",
+        ].join("\n"),
+    })
+    check("class: an imported class can be extended, and is still a type",
+        [imported.errors, imported.bindings.c, imported.bindings.named,
+            imported.bindings.measured, imported.bindings.asShape],
+        [[], "Circle", "string", "number", "Shape"])
+
+    // Overloads inside a class read as they do outside one.
+    const overloaded = analyze([
+        "class Box",
+        "    function get(key: string): number",
+        "    function get(key: number): string",
+        "    function get(key: string | number): number | string",
+        "        return 1",
+        "    end",
+        "    static function of(n: number): Box",
+        "    static function of(n: string): Box",
+        "    static function of(n: number | string): Box",
+        "        return new Box()",
+        "    end",
+        "end",
+        "const b = new Box()",
+        "const byName = b:get(\"k\")",
+        "const byIndex = b:get(1)",
+        "const made = Box.of(1)",
+        "b:get(true)",
+    ].join("\n"))
+    check("class: a method can be overloaded, and the receiver is still implied",
+        [overloaded.errors, overloaded.bindings.byName, overloaded.bindings.byIndex, overloaded.bindings.made],
+        [["No overload matches this call"], "number", "string", "Box"])
+
+    // A class written inside a function names a type there too.
+    const nested = analyze([
+        "function make(n: number): number",
+        "    class Local",
+        "        n: number",
+        "        constructor(n: number)",
+        "            this.n = n",
+        "        end",
+        "        function twice(): number",
+        "            return this.n * 2",
+        "        end",
+        "    end",
+        "    const it = new Local(n)",
+        "    return it:twice()",
+        "end",
+    ].join("\n"))
+    check("class: a class inside a function is a type there too",
+        [nested.errors, nested.bindings.it], [[], "Local"])
+
+    // `new` needs a class.
+    check("class: 'new' says so when what follows is not one", analyze([
+        "const t = { new: 1 }",
+        "const bad = new t()",
+    ].join("\n")).errors, ["'t' is not a class; 'new' needs one"])
+}
+
 for (const failure of failures) console.log(`FAIL ${failure}`)
 console.log(`\nproject: ${passed} passed, ${failures.length} failed`)
 process.exit(failures.length ? 1 : 0)
