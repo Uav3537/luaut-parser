@@ -1,33 +1,33 @@
 -- Function parameters: destructuring + default values.
 
-function makeEnemy({ name, hp = 100, pos: { x = 0, y = 0 } })
+function makeEnemy({ name, hp = 100, pos: { x = 0, y = 0 } }) {
     return { name: name, hp: hp, x: x, y: y }
-end
+}
 
-function sum([a, b, c = 0]: number[]): number
+function sum([a, b, c = 0]: number[]): number {
     return a + b + c
-end
+}
 
-const applyN = function(n: number, [dx, dy]: number[])
+const applyN = function(n: number, [dx, dy]: number[]) {
     return n + dx + dy
-end
+}
 
-const greet = function(who: string, punct = "!")
+const greet = function(who: string, punct = "!") {
     return `hello, ${who}${punct}`
-end
+}
 
 -- Template strings interpolate with `${...}`, like JS/TS. A bare `{` is an
 -- ordinary character (Luau's `{expr}` form is not supported), a lone `$` is
 -- literal, and `\$` escapes a dollar that precedes a brace.
-const braces = function(x: number)
+const braces = function(x: number) {
     return `set {a, b} costs $5 -> ${x}, not \${x}`
-end
+}
 
 const T = {}
-function T:configure({ verbose = false, retries = 3 })
+function T:configure({ verbose = false, retries = 3 }) {
     self.verbose = verbose
     self.retries = retries
-end
+}
 
 print(makeEnemy({ name: "bat" }), sum([1, 2]), applyN(1, [2, 3]), greet("world"))
 
@@ -37,29 +37,29 @@ print(makeEnemy({ name: "bat" }), sum([1, 2]), applyN(1, [2, 3]), greet("world")
 
 -- `...` on its own is Lua's pack: `const a, b = ...` reads it, and `[...]`
 -- puts it in an array.
-function firstTwo(...: number): (number, number)
+function firstTwo(...: number): (number, number) {
     const a, b = ...
     return a, b
-end
+}
 
 -- `...rest: T[]` is JavaScript's rest parameter: everything from here on, as
 -- an array. The call signature is the same either way.
-function join(separator: string, ...parts: string[]): string
+function join(separator: string, ...parts: string[]): string {
     return table.concat(parts, separator)
-end
+}
 
-function total(...numbers: number[]): number
+function total(...numbers: number[]): number {
     let sum = 0
-    for _, n in numbers do
+    for (_, n in numbers) {
         sum += n
-    end
+    }
     return sum
-end
+}
 
 -- What the arguments are says what a generic one holds.
-function firstOf<T>(...items: T[]): T | nil
+function firstOf<T>(...items: T[]): T | nil {
     return items[1]
-end
+}
 
 const two: number = firstTwo(1, 2)
 const joined: string = join("-", "a", "b", "c")
@@ -78,18 +78,18 @@ const spread: string = join("-", ...names)
 const around: string = join("-", ...names, "z")
 const twice: string = join("-", ...names, ...names)
 
-function forward(...: string): string
+function forward(...: string): string {
     return join("-", ...)
-end
+}
 
 -- A list of values takes one too: a `return`'s, a declaration's, an
 -- assignment's. What is declared says how much room there is.
-function threeNames(): (string, string, string)
+function threeNames(): (string, string, string) {
     return ...names
-end
+}
 
 const firstName, secondName, thirdName = ...names
 
-function alsoForward(...: string): (string, string)
+function alsoForward(...: string): (string, string) {
     return ...
-end
+}

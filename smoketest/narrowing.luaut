@@ -4,21 +4,21 @@ type Shape =
     | { kind: "circle", radius: number }
     | { kind: "rect", w: number, h: number }
 
-function area(shape: Shape): number
-    if shape.kind == "circle" then
+function area(shape: Shape): number {
+    if (shape.kind == "circle") {
         return 3.14159 * shape.radius * shape.radius
-    else
+    } else {
         return shape.w * shape.h
-    end
-end
+    }
+}
 
-function firstWord(s?: string): string
+function firstWord(s?: string): string {
     -- truthiness narrows `string | nil -> string`
-    if not s then
+    if (not s) {
         return ""
-    end
+    }
     return s
-end
+}
 
 const config: { debug: boolean } | nil = nil
 const verbose = config and config.debug or false
@@ -27,29 +27,29 @@ print(area({ kind: "circle", radius: 2 }), firstWord(nil), verbose)
 
 -- `or` refines only the false branch, where every operand's outcome is known.
 -- The true branch must keep the un-narrowed type.
-function branches(a: string | number)
-    if a == 1 or a == "x" then
+function branches(a: string | number) {
+    if (a == 1 or a == "x") {
         -- not refinable: `string | number`
         const inOr = a
-    else
+    } else {
         const afterOr = a
-    end
-end
+    }
+}
 
 -- A binding assigned in only one branch keeps the other path's type after the
 -- `if` — here `flag` is `boolean` again, not the literal `true`.
-function mergePaths(cond: boolean)
+function mergePaths(cond: boolean) {
     let flag: boolean = false
-    if cond then
+    if (cond) {
         flag = true
-    end
+    }
     return flag
-end
+}
 
 -- A declared property wins over the catch-all indexer for a known key.
 type Bag = { [string]: number, label: string }
-function readBag(bag: Bag): string
+function readBag(bag: Bag): string {
     return bag["label"]
-end
+}
 
 print(branches(1), mergePaths(true), readBag({ label: "x" }))

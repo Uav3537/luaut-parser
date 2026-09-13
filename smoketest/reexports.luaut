@@ -11,9 +11,9 @@ type Size = { w: number, h: number }
 
 const unit: Size = { w: 1, h: 1 }
 
-function area(s: Size): number
+function area(s: Size): number {
     return s.w * s.h
-end
+}
 
 -- Names declared above, a type among them, and one exported twice.
 export { unit, area, Size }

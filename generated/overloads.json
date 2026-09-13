@@ -154,7 +154,7 @@
           },
           "column": {
             "start": 13,
-            "end": 4
+            "end": 2
           }
         },
         "signatures": [
@@ -318,7 +318,7 @@
         },
         "column": {
           "start": 1,
-          "end": 4
+          "end": 2
         }
       },
       {
@@ -397,7 +397,7 @@
           },
           "column": {
             "start": 17,
-            "end": 4
+            "end": 2
           }
         },
         "signatures": [
@@ -572,7 +572,7 @@
         },
         "column": {
           "start": 1,
-          "end": 4
+          "end": 2
         }
       },
       {

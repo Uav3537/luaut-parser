@@ -15,9 +15,9 @@ const matrix = [
     [0, 0, 1],
 ]
 
-function firstTwo(xs: number[]): number[]
+function firstTwo(xs: number[]): number[] {
     return [xs[1], xs[2]]
-end
+}
 
 print(#nums, #joined, #empty, matrix, mixed, firstTwo(nums))
 

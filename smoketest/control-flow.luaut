@@ -6,69 +6,69 @@
 -- if/else where every branch does.
 
 -- Early return, both directions ---------------------------------------------
-function orEmpty(v: string | nil): string
-    if v == nil then return "" end
+function orEmpty(v: string | nil): string {
+    if (v == nil) { return "" }
     const present: string = v
     return present
-end
+}
 
-function onlyNil(v: string | nil): string
-    if v ~= nil then return v end
+function onlyNil(v: string | nil): string {
+    if (v ~= nil) { return v }
     const absent: nil = v
     return ""
-end
+}
 
 -- A `do` block that returns still exits.
-function viaDoBlock(v: string | nil): string
-    if v == nil then
-        do return "" end
-    end
+function viaDoBlock(v: string | nil): string {
+    if (v == nil) {
+        do { return "" }
+    }
     const present: string = v
     return present
-end
+}
 
 -- Loops ----------------------------------------------------------------------
 -- `continue` skips the rest of the iteration, so the code below it is narrowed.
-function lengths(items: (string | nil)[]): number
+function lengths(items: (string | nil)[]): number {
     let total = 0
-    for _, item in items do
-        if item == nil then continue end
+    for (_, item in items) {
+        if (item == nil) { continue }
         const present: string = item
         total = total + #present
-    end
+    }
     return total
-end
+}
 
 -- `break` leaves the loop, so the code after it in the body is narrowed too.
-function firstNil(items: (string | nil)[]): number
+function firstNil(items: (string | nil)[]): number {
     let seen = 0
-    for _, item in items do
-        if item == nil then break end
+    for (_, item in items) {
+        if (item == nil) { break }
         const present: string = item
         seen = seen + #present
-    end
+    }
     return seen
-end
+}
 
 -- A `while` is left either because its condition failed or by a `break`, and
 -- the state after it is the join of those. `while true` has only the second.
-function settle(v: string | nil): string
-    while true do
-        if v ~= nil then break end
+function settle(v: string | nil): string {
+    while (true) {
+        if (v ~= nil) { break }
         v = "fallback"
-    end
+    }
     const settled: string = v
     return settled
-end
+}
 
 -- `repeat` runs its body at least once, so afterwards the `until` holds.
-function untilSet(v: string | nil): string
-    repeat
+function untilSet(v: string | nil): string {
+    repeat {
         v = "fallback"
-    until v ~= nil
+    } until ( v ~= nil)
     const settled: string = v
     return settled
-end
+}
 
 print(orEmpty(nil), onlyNil(nil), viaDoBlock(nil),
       lengths([]), firstNil([]), settle(nil), untilSet(nil))

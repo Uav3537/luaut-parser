@@ -2,15 +2,15 @@
 
 function len(x: string): number
 function len(x: unknown[]): number
-function len(x: string | unknown[]): number
+function len(x: string | unknown[]): number {
     return #x
-end
+}
 
 function reverse(x: string): string
 function reverse(x: number[]): number[]
-function reverse(x)
+function reverse(x) {
     return x
-end
+}
 
 -- overload resolution: `len("hi")` picks the `(string) -> number` signature
 const a = len("hi")

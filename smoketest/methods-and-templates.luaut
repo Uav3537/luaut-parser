@@ -18,15 +18,15 @@ type Counter = { n: number }
 
 const counter: Counter = { n: 0 }
 
-function counter:bump(by: number)
+function counter:bump(by: number) {
     -- `self` is the receiver, not `any`
     const here: Counter = self
     return here.n + by
-end
+}
 
-function counter:peek()
+function counter:peek() {
     return self.n
-end
+}
 
 -- The receiver fills `self`, so `bump` is called with one written argument.
 const bumped: number = counter:bump(1)
@@ -56,8 +56,8 @@ const lower: Uncapitalize<"Click"> = "click"
 -- Together with key remapping this gives derived object types.
 type Handlers<T> = { [K in keyof T as `on${Capitalize<K>}`]: (value: T[K]) -> () }
 const handlers: Handlers<{ click: number, hover: string }> = {
-    onClick: function(value: number) end,
-    onHover: function(value: string) end,
+    onClick: function(value: number) { },
+    onHover: function(value: string) { },
 }
 
 -- satisfies -----------------------------------------------------------------

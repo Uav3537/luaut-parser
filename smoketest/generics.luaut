@@ -11,17 +11,17 @@ const scores: Dict<number> = { alice: 10, bob: 20 }
 const r: Result<number> = { ok: true, value: 42 }
 
 -- generic function: T inferred from the argument
-function identity<T>(x: T): T
+function identity<T>(x: T): T {
     return x
-end
+}
 
-function first<T>(xs: T[]): T
+function first<T>(xs: T[]): T {
     return xs[1]
-end
+}
 
-function pair<A, B>(a: A, b: B): Pair<A, B>
+function pair<A, B>(a: A, b: B): Pair<A, B> {
     return { first: a, second: b }
-end
+}
 
 const n = identity(5)          -- number
 const s = identity("hello")    -- string

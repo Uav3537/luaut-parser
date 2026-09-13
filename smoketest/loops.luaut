@@ -6,23 +6,23 @@ const records = [
     { id: 2, label: "two" },
 ]
 
-for i, entry in ipairs(pairsList) do
+for (i, entry in ipairs(pairsList)) {
     print(i, entry)
-end
+}
 
 -- generalized iteration: each element is yielded directly
-for record in records do
+for (record in records) {
     print(record.id, record.label)
-end
+}
 
-for i = 1, 10 do
+for (i = 1, 10) {
     print(i)
-end
+}
 
-for i: number = 10, 1, -1 do
+for (i: number = 10, 1, -1) {
     print(i)
-end
+}
 
-for key, { deep } in pairs({ x: { deep: 1 } }) do
+for (key, { deep } in pairs({ x: { deep: 1 } })) {
     print(key, deep)
-end
+}

@@ -117,6 +117,46 @@ restating them.
 TypeScript syntax and semantics wherever they fit, Lua semantics where they
 must.
 
+**Blocks** — braces, and a condition in parentheses:
+
+```luaut
+if (n < 0) {
+    return "negative"
+} elseif (n == 0) {
+    return "zero"
+} else {
+    return "positive"
+}
+
+while (going) { step() }
+for (i = 1, 10) { total += i }
+for (name, value in pairs(t)) { print(name, value) }
+repeat { step() } until (done)
+do { ... }
+
+function greet(name: string): string {
+    return `hello ${name}`
+}
+
+class Dog extends Animal {
+    function speak(): string { return "woof" }
+}
+```
+
+The parentheses are not decoration: `f {}` is a call with a table argument, so
+without them `if ready { ... }` would be a call of `ready` followed by a
+block. With them, what follows the `)` says which form it is — which is also
+why a parenthesized condition in the older spelling still reads.
+
+`and`, `or` and `not` stay words; `{}` is still an object literal everywhere a
+value is expected, and `[]` an array.
+
+**The older spelling** — `if ... then ... end`, `while ... do ... end`,
+`function ... end` are still read, so a file part-way through being moved over
+keeps working. `npx tsx scripts/to-braces.ts <file|dir>` rewrites one into the
+other: it checks that what it wrote parses into the same tree, and leaves the
+file alone when it does not.
+
 **Declarations** — `const` and `let` only; Lua's `local` is gone.
 
 **Functions** — `function name() ... end` declares `name` in the enclosing

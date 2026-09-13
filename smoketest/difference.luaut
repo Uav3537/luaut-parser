@@ -11,42 +11,42 @@
 --   opaque    keep                                     unknown - 1
 
 -- The motivating case ---------------------------------------------------------
-function classify(a: unknown)
-    if a == 1 then
+function classify(a: unknown) {
+    if (a == 1) {
         const one: 1 = a
         return one
-    end
+    }
     -- everything except 1
     const notOne: unknown - 1 = a
 
     -- and the subtraction accumulates
-    if a == 2 then
+    if (a == 2) {
         const two = a
         return two
-    end
+    }
     const neither: unknown - (1 | 2) = a
     return 0
-end
+}
 
 -- Truthiness on an unknown is the same idea: the true branch is everything
 -- that is not falsy. (In Luau only `nil` and `false` are falsy.)
-function truthiness(b: unknown)
-    if b then
+function truthiness(b: unknown) {
+    if (b) {
         const kept: unknown - (nil | false) = b
         return kept
-    end
+    }
     const gone: nil | false = b
     return gone
-end
+}
 
 -- Narrowing continues through a subtraction --------------------------------
-function refine(v: unknown)
-    if v ~= nil then
+function refine(v: unknown) {
+    if (v ~= nil) {
         const present: unknown - nil = v
         return present
-    end
+    }
     return 0
-end
+}
 
 -- Simplification ------------------------------------------------------------
 -- A union subtracts member by member…

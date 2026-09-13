@@ -1653,6 +1653,118 @@ end`)
     })(), "A rest parameter is the last one: nothing can follow '...' (1:26)")
 }
 
+// --- braces -------------------------------------------------------------
+// luaut writes a block in braces. The `end` spellings are still read, so a
+// file part-way through being moved over keeps working; `scripts/to-braces.ts`
+// rewrites one into the other.
+{
+    const analyze = (code: string) => {
+        const program = parse(code)
+        const scopes = analyzeScopes(program)
+        const types = analyzeTypes(program, scopes, {})
+        const bindings: Record<string, string> = {}
+        for (const [id, type] of types.bindingType) bindings[scopes.bindings.get(id)!.name] = formatType(type)
+        return { errors: [...scopes.diagnostics, ...types.diagnostics].map(d => d.message), bindings }
+    }
+
+    const braced = analyze([
+        "declare function pairs(t: { [string]: number }): () -> (string, number)",
+        "function classify(n: number): string {",
+        "    if (n < 0) {",
+        `        return "negative"`,
+        "    } elseif (n == 0) {",
+        `        return "zero"`,
+        "    } else {",
+        `        return "positive"`,
+        "    }",
+        "}",
+        "function counted(): number {",
+        "    let total = 0",
+        "    for (i = 1, 3) {",
+        "        total += i",
+        "    }",
+        "    for (name, n in pairs({ a: 1 })) {",
+        "        total += n",
+        "    }",
+        "    while (total > 0) {",
+        "        total -= 1",
+        "    }",
+        "    repeat {",
+        "        total += 1",
+        "    } until (total == 2)",
+        "    do { total += 1 }",
+        "    return total",
+        "}",
+        "const said = classify(1)",
+        "const count = counted()",
+    ].join("\n"))
+    check("braces: every block form reads",
+        [braced.errors, braced.bindings.said, braced.bindings.count], [[], "string", "number"])
+
+    const classes = analyze([
+        "class Animal {",
+        "    name: string",
+        "    static count = 0",
+        "    constructor(name: string) {",
+        "        this.name = name",
+        "    }",
+        "    function speak(): string {",
+        "        return this.name",
+        "    }",
+        "    get label(): string {",
+        `        return "<" .. this.name .. ">"`,
+        "    }",
+        "}",
+        "class Box<T> {",
+        "    value: T",
+        "    constructor(value: T) {",
+        "        this.value = value",
+        "    }",
+        "    function get(): T {",
+        "        return this.value",
+        "    }",
+        "}",
+        "class Ints extends Box<number> {",
+        "    constructor(n: number) {",
+        "        super(n)",
+        "    }",
+        "}",
+        `const dog = new Animal("Rex")`,
+        "const said = dog:speak()",
+        "const held = new Ints(1):get()",
+    ].join("\n"))
+    check("braces: a class, a generic one, and one extending it",
+        [classes.errors, classes.bindings.dog, classes.bindings.said, classes.bindings.held],
+        [[], "Animal", "string", "number"])
+
+    // The parentheses are what tell a condition from a call: `f {}` is a call.
+    const sugar = analyze([
+        "declare function use(t: { a: number }): number",
+        "const used = use { a: 1 }",
+        "declare ready: boolean",
+        "let seen = 0",
+        "if (ready) { seen += 1 }",
+    ].join("\n"))
+    check("braces: a call with a table argument still reads as one",
+        [sugar.errors, sugar.bindings.used], [[], "number"])
+
+    // Both spellings, in one file.
+    const mixed = analyze([
+        "function old(n: number): string",
+        "    if n > 0 then",
+        `        return "yes"`,
+        "    end",
+        `    return "no"`,
+        "end",
+        "function new_(n: number): string {",
+        "    return old(n)",
+        "}",
+        "const answer = new_(1)",
+    ].join("\n"))
+    check("braces: the older spelling still reads, beside the newer one",
+        [mixed.errors, mixed.bindings.answer], [[], "string"])
+}
+
 // --- branded types -----------------------------------------------------
 // `string & { __brand }` is a string nothing else is: the intersection is
 // assignable to `string`, and `string` is not assignable to it. Nothing in

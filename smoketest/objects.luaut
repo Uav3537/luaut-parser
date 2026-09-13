@@ -15,9 +15,9 @@ const extended = { ...base, c: 3, b: 20 }
 const nested = {
     position: { x: 0, y: 0 },
     tags: ["enemy", "flying"],
-    onHit: function(dmg: number)
+    onHit: function(dmg: number) {
         return dmg * 2
-    end,
+    },
 }
 
 print(point, shorthand, stringKeys, computed, extended, nested.position.x)

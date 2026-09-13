@@ -20,9 +20,9 @@ let count = 1
 const alsoNumber: typeof count = 2
 
 -- Parameters can refer to earlier parameters.
-function clampTo(limit: number, value: typeof limit): number
+function clampTo(limit: number, value: typeof limit): number {
     return value
-end
+}
 
 -- Luau's parenthesised spelling still works.
 const paren: typeof(count) = 3

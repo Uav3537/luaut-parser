@@ -6,9 +6,9 @@
 -- `string.find` and `next` usable, so the checker follows it rather than
 -- treating a multi-return as a single tuple value.
 
-function two(): (number, string)
+function two(): (number, string) {
     return 1, "a"
-end
+}
 
 -- The last expression expands to fill the remaining names…
 const first: number, second: string = two()
@@ -27,22 +27,22 @@ const truncated: number = (two())
 
 -- A `while` exits when its condition fails, so what the condition ruled out
 -- holds afterwards — unless a `break` can skip that.
-function firstNonNil(v: string | nil)
-    while v == nil do
+function firstNonNil(v: string | nil) {
+    while (v == nil) {
         v = "fallback"
-    end
+    }
     const settled: string = v
     return settled
-end
+}
 
-function mightBreak(v: string | nil)
-    while v == nil do
+function mightBreak(v: string | nil) {
+    while (v == nil) {
         break
-    end
+    }
     -- the loop may have been left by `break`, so nothing is known
     const unsettled: string | nil = v
     return unsettled
-end
+}
 
 print(first, second, a, b, spare, justFirst, one, expanded, truncated,
       firstNonNil(nil), mightBreak(nil))

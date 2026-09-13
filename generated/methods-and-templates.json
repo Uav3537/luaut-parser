@@ -386,7 +386,7 @@
           },
           "column": {
             "start": 22,
-            "end": 4
+            "end": 2
           },
           "isMethod": true
         },
@@ -396,7 +396,7 @@
         },
         "column": {
           "start": 1,
-          "end": 4
+          "end": 2
         }
       },
       {
@@ -523,7 +523,7 @@
           },
           "column": {
             "start": 22,
-            "end": 4
+            "end": 2
           },
           "isMethod": true
         },
@@ -533,7 +533,7 @@
         },
         "column": {
           "start": 1,
-          "end": 4
+          "end": 2
         }
       },
       {
@@ -1833,8 +1833,8 @@
                         "end": 59
                       },
                       "column": {
-                        "start": 38,
-                        "end": 37
+                        "start": 40,
+                        "end": 39
                       }
                     },
                     "line": {
@@ -1911,8 +1911,8 @@
                         "end": 60
                       },
                       "column": {
-                        "start": 38,
-                        "end": 37
+                        "start": 40,
+                        "end": 39
                       }
                     },
                     "line": {

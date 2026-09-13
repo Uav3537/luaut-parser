@@ -1,7 +1,7 @@
 -- `class ... end`: one table per class, one table per instance, and the
 -- instance points at the class. Everything here is sugar over that.
 
-export class Animal
+export class Animal {
     -- A field with a type is set by the constructor; one with a value is set
     -- for every instance before the constructor body runs.
     name: string
@@ -9,52 +9,52 @@ export class Animal
     -- A static lives on the class table, and nowhere else.
     static count = 0
 
-    constructor(name: string)
+    constructor(name: string) {
         this.name = name
         Animal.count += 1
-    end
+    }
 
-    function speak(): string
+    function speak(): string {
         return `${this.name} makes a sound`
-    end
+    }
 
     -- Read as a property, run as a function.
-    get label(): string
+    get label(): string {
         return `<${this.name}>`
-    end
+    }
 
-    set label(value: string)
+    set label(value: string) {
         this.name = value
-    end
+    }
 
-    static function made(): number
+    static function made(): number {
         return Animal.count
-    end
-end
+    }
+}
 
-export class Dog extends Animal
+export class Dog extends Animal {
     breed: string
 
-    constructor(name: string, breed: string)
+    constructor(name: string, breed: string) {
         super(name)
         this.breed = breed
-    end
+    }
 
-    function speak(): string
+    function speak(): string {
         return `${super.speak()} (woof, ${this.breed})`
-    end
+    }
 
-    function fetch(item: string): string
+    function fetch(item: string): string {
         return `${this.name} fetched ${item}`
-    end
-end
+    }
+}
 
 -- A class with no constructor takes whatever the one it extends takes.
-export class Puppy extends Dog
-    function speak(): string
+export class Puppy extends Dog {
+    function speak(): string {
         return `${super.speak()}!`
-    end
-end
+    }
+}
 
 const rex = new Dog("Rex", "shiba")
 const said: string = rex:speak()
@@ -71,54 +71,54 @@ const made: number = Dog.made()
 
 -- The class table is a value like any other: it can be passed around, and
 -- `new` is the same call as `Dog.new`.
-function build(make: (name: string, breed: string) -> Dog): Dog
+function build(make: (name: string, breed: string) -> Dog): Dog {
     return make("Spot", "beagle")
-end
+}
 
 const built: Dog = build(Dog.new)
 
 -- A generic class. The instance type is generic too: `Box<number>` and
 -- `Box<string>` are both `Box`, and neither is the other.
-export class Box<T>
+export class Box<T> {
     value: T
 
-    constructor(value: T)
+    constructor(value: T) {
         this.value = value
-    end
+    }
 
-    function get(): T
+    function get(): T {
         return this.value
-    end
+    }
 
-    function map<R>(f: (value: T) -> R): Box<R>
+    function map<R>(f: (value: T) -> R): Box<R> {
         return new Box(f(this.value))
-    end
-end
+    }
+}
 
 const ofNumber: Box<number> = new Box(1)
-const ofString: Box<string> = ofNumber:map(function(n) return tostring(n) end)
+const ofString: Box<string> = ofNumber:map(function(n) { return tostring(n) })
 const held: number = ofNumber:get()
 
 -- Extending a generic class fixes its argument.
-export class Ints extends Box<number>
-    constructor(n: number)
+export class Ints extends Box<number> {
+    constructor(n: number) {
         super(n)
-    end
+    }
 
-    function double(): number
+    function double(): number {
         return this:get() * 2
-    end
-end
+    }
+}
 
 -- A class written where a value goes. It is known by the name it is bound to.
-const Counter = class
+const Counter = class {
     n = 0
 
-    function bump(): number
+    function bump(): number {
         this.n += 1
         return this.n
-    end
-end
+    }
+}
 
 const counter = new Counter()
 const bumped: number = counter:bump()
