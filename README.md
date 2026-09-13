@@ -426,6 +426,29 @@ not known, so nothing is said about the count — unless it is a tuple, which
 holds a known value at each position and is checked one by one. Spreading
 something that is not a list is reported.
 
+**Branded types** — nothing in the type model is about branding; an
+intersection already means it. `string & { __brand }` is assignable to
+`string`, and `string` is not assignable to it, which is the whole of it:
+
+```luau
+type UserId = string & { readonly __brand: "UserId" }
+type PostId = string & { readonly __brand: "PostId" }
+
+declare function findUser(id: UserId): string
+
+const id = "raw" as UserId      -- `as` is how one is made
+findUser(id)                    -- ok
+findUser("raw")                 -- '"raw"' is not assignable to 'UserId'
+findUser(postId)                -- 'PostId' is not assignable to 'UserId'
+
+#id                             -- still a string: 5
+id:upper()                      -- and its methods, giving a plain string
+```
+
+Anything that builds a new value builds an unbranded one — which is the point:
+the brand says where the value came from. It works on any type (`number & {
+__brand }`), and survives being stored, indexed and narrowed.
+
 **Callbacks** — a function written where a function type is expected takes
 its parameter types from it: in `signal:Connect(function(player) ... end)`,
 `player` is typed from `Connect`. The same applies to an annotated `const`

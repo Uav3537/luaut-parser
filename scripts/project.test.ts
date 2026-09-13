@@ -1653,6 +1653,76 @@ end`)
     })(), "A rest parameter is the last one: nothing can follow '...' (1:26)")
 }
 
+// --- branded types -----------------------------------------------------
+// `string & { __brand }` is a string nothing else is: the intersection is
+// assignable to `string`, and `string` is not assignable to it. Nothing in
+// the type model is about branding — this is what intersections already mean
+// — so these cases are here to keep it that way.
+{
+    const analyze = (code: string) => {
+        const program = parse(code)
+        const scopes = analyzeScopes(program)
+        const types = analyzeTypes(program, scopes, {})
+        const bindings: Record<string, string> = {}
+        for (const [id, type] of types.bindingType) bindings[scopes.bindings.get(id)!.name] = formatType(type)
+        return { errors: [...scopes.diagnostics, ...types.diagnostics].map(d => d.message), bindings }
+    }
+
+    const BRANDS = [
+        `type UserId = string & { readonly __brand: "UserId" }`,
+        `type PostId = string & { readonly __brand: "PostId" }`,
+        "declare function findUser(id: UserId): string",
+        "declare function take(s: string): ()",
+    ].join("\n")
+
+    check("branded: a raw value is not one, and neither is another brand", analyze([
+        BRANDS,
+        "declare post: PostId",
+        `findUser("raw")`,
+        "findUser(post)",
+    ].join("\n")).errors, [
+        `Argument of type '"raw"' is not assignable to parameter of type 'UserId'`,
+        "Argument of type 'PostId' is not assignable to parameter of type 'UserId'",
+    ])
+
+    const made = analyze([
+        BRANDS,
+        `const id = "raw" as UserId`,
+        "findUser(id)",
+        "take(id)",
+        "const length = #id",
+    ].join("\n"))
+    check("branded: `as` makes one, and it is still what it was branded from",
+        [made.errors, made.bindings.id, made.bindings.length],
+        [[], "UserId", "number"])
+
+    // Anything that builds a new value builds an unbranded one, which is the
+    // point: the brand says where the value came from.
+    check("branded: an operation on one gives back the plain type", analyze([
+        BRANDS,
+        "declare id: UserId",
+        `findUser(id .. "x")`,
+        `take(id .. "x")`,
+    ].join("\n")).errors,
+        ["Argument of type 'string' is not assignable to parameter of type 'UserId'"])
+
+    const carried = analyze([
+        BRANDS,
+        "declare id: UserId",
+        "declare ids: UserId[]",
+        "declare maybe: UserId | nil",
+        "const held = { id: id }",
+        "findUser(held.id)",
+        "findUser(ids[1])",
+        "if maybe then findUser(maybe) end",
+        `type Ticks = number & { readonly __brand: "Ticks" }`,
+        "declare ticks: Ticks",
+        "const counted: number = ticks + 1",
+    ].join("\n"))
+    check("branded: it survives being stored, indexed and narrowed, on any type",
+        [carried.errors, carried.bindings.counted], [[], "number"])
+}
+
 // --- spread arguments --------------------------------------------------
 {
     const analyze = (code: string) => {
