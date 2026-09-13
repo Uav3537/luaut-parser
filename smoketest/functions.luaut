@@ -81,3 +81,15 @@ const twice: string = join("-", ...names, ...names)
 function forward(...: string): string
     return join("-", ...)
 end
+
+-- A list of values takes one too: a `return`'s, a declaration's, an
+-- assignment's. What is declared says how much room there is.
+function threeNames(): (string, string, string)
+    return ...names
+end
+
+const firstName, secondName, thirdName = ...names
+
+function alsoForward(...: string): (string, string)
+    return ...
+end

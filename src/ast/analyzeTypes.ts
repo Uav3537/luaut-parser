@@ -2534,7 +2534,11 @@ class TypeAnalyzer {
                         stmt.arguments.forEach((a, i) => this.applyContext(a, declared.elements[i]))
                     }
                 }
-                const { types, sources } = this.valueList(stmt.arguments, env)
+                // The declared type also says how many values there is room
+                // for, which is what a pack or a spread at the end fills:
+                // `return ...` of a `(number, number)` is two of them.
+                const want = declared?.kind === "tuple" && declared.isPack ? declared.elements.length : 0
+                const { types, sources } = this.valueList(stmt.arguments, env, want)
                 this.checkReturn(stmt, declared, types, sources, env)
                 if (this.returnTypes) {
                     this.returnTypes.push(stmt.arguments.length === 0 ? nilType
@@ -2660,6 +2664,25 @@ class TypeAnalyzer {
         exprs.forEach((e, i) => {
             const t = this.infer(e, env)
             const last = i === exprs.length - 1
+            if (e.type === "SpreadElement") {
+                // A tuple holds a known value at each position; an array holds
+                // an unknown number of one kind, and at the end of the list it
+                // fills whatever room is left.
+                const held = this.typeOf.get(e.argument)
+                const expanded = held && this.expand(held)
+                if (expanded?.kind === "tuple") {
+                    for (const element of expanded.elements) {
+                        types.push(element)
+                        sources.push(e)
+                    }
+                    return
+                }
+                do {
+                    types.push(t)
+                    sources.push(e)
+                } while (last && types.length < want)
+                return
+            }
             if (last && e.type === "VarargExpression") {
                 // Every remaining name reads one more of the pack.
                 do {

@@ -1721,6 +1721,46 @@ end`)
     check("spread: a generic reads what it holds through one",
         [generic.errors, generic.bindings.picked], [[], "number | nil"])
 
+    // The same spread in a list of values: a `return`'s, a declaration's, an
+    // assignment's. The declared shape says how much room there is.
+    const returned = analyze([
+        "declare nums: number[]",
+        "function three(): (number, number, number)",
+        "    return ...nums",
+        "end",
+        "function mixed(): (string, number, number)",
+        `    return "a", ...nums`,
+        "end",
+        "function wrong(): (string, string)",
+        "    return ...nums",
+        "end",
+    ].join("\n"))
+    check("spread: a `return` spreads into the values it declares",
+        returned.errors, ["Type '(number, number)' is not assignable to '(string, string)'"])
+
+    const declared = analyze([
+        "declare pair: string[]",
+        "declare trio: [number, string, boolean]",
+        "const first, second = ...pair",
+        "let p, q = \"\", \"\"",
+        "p, q = ...pair",
+        "const one, two, three = ...trio",
+    ].join("\n"))
+    check("spread: a declaration and an assignment take as many as they hold",
+        [declared.errors, declared.bindings.first, declared.bindings.second,
+            declared.bindings.p, declared.bindings.one, declared.bindings.two, declared.bindings.three],
+        [[], "string", "string", "string", "number", "string", "boolean"])
+
+    // `return ...` of a pack fills what was declared, which it never used to.
+    const packed = analyze([
+        "function pass(...: number): (number, number)",
+        "    return ...",
+        "end",
+        "const passed = pass",
+    ].join("\n"))
+    check("spread: `return ...` fills the values the function declares",
+        [packed.errors, packed.bindings.passed], [[], "(...number) -> (number, number)"])
+
     // `...` on its own is untouched: it is still the pack being passed on.
     const pack = analyze([
         "declare function join(sep: string, ...parts: string[]): string",

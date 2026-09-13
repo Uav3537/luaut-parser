@@ -319,8 +319,14 @@ export class Parser {
         return this.attempt(() => this.parseExpression(), stop, (start, from) => this.errorExpression(start, from))
     }
 
+    /** A comma-separated list of values: a `return`'s, a declaration's, an
+     *  assignment's. `...xs` spreads an array into it, as in a call's
+     *  arguments; bare `...` is the vararg pack, as it always was. */
     private expressionListOr(stop: () => boolean): Expression[] {
-        const item = (): Expression => this.expressionOr(() => stop() || this.checkPunctuator(","))
+        const until = (): boolean => stop() || this.checkPunctuator(",")
+        const item = (): Expression => this.checkOperator("...") && this.startsSpread()
+            ? this.parseSpreadArgument(until)
+            : this.expressionOr(until)
         const list = [item()]
         while (this.matchPunctuator(",")) list.push(item())
         return list

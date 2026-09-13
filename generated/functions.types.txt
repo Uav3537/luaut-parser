@@ -2,6 +2,7 @@ T: {} & { configure: (self: {}, { retries?: number, verbose?: boolean }) -> nil 
 _: number
 a: number
 a: number
+alsoForward: (...string) -> (string, string)
 applyN: (n: number, number[]) -> number
 around: string
 b: number
@@ -10,6 +11,7 @@ braces: (x: number) -> string
 c: number
 dx: number
 dy: number
+firstName: string
 firstOf: <T>(...T) -> T | nil
 firstTwo: (...number) -> (number, number)
 forward: (...string) -> string
@@ -28,12 +30,15 @@ parts: string[]
 picked: number | nil
 punct: string
 retries: number
+secondName: string
 self: {}
 separator: string
 spread: string
 sum: (number[]) -> number
 sum: number
 summed: number
+thirdName: string
+threeNames: () -> (string, string, string)
 total: (...number) -> number
 twice: string
 two: number

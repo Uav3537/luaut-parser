@@ -405,19 +405,26 @@ string[]) -> ()` describes the same calls as `(level: string, ...string) ->
 ()`. Without an annotation a rest parameter is `unknown[]`; annotated with
 something that is not an array, it is reported.
 
-**Spread arguments** — `f(a, ...xs)` passes what the array holds, as
-JavaScript does. Bare `f(...)` is unchanged: that is the pack being passed on.
+**Spreads** — `...xs` puts what an array holds into any list of values, as
+JavaScript does: a call's arguments, a `return`, a declaration, an assignment.
+Bare `...` is unchanged, and is still the pack.
 
 ```luau
-join("-", ...names)        -- every name
-join("-", ...names, "z")   -- and one more after them
-add3(...nums)              -- however many `nums` turns out to hold
+join("-", ...names)              -- every name
+join("-", ...names, "z")         -- and one more after them
+add3(...nums)                    -- however many `nums` turns out to hold
+
+function three(): (number, number, number)
+    return ...nums
+end
+
+const first, second = ...names   -- one each, as far as the names go
 ```
 
-What the array holds is checked against the parameters it fills. How many it
-holds is not known, so nothing is said about the count — unless it is a tuple,
-which holds a known value at each position and is checked one by one.
-Spreading something that is not a list is reported.
+What the array holds is checked against what it fills. How many it holds is
+not known, so nothing is said about the count — unless it is a tuple, which
+holds a known value at each position and is checked one by one. Spreading
+something that is not a list is reported.
 
 **Callbacks** — a function written where a function type is expected takes
 its parameter types from it: in `signal:Connect(function(player) ... end)`,

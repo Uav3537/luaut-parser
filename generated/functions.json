@@ -4085,11 +4085,352 @@
           "start": 1,
           "end": 4
         }
+      },
+      {
+        "type": "FunctionDeclaration",
+        "name": {
+          "type": "Identifier",
+          "name": "threeNames",
+          "line": {
+            "start": 87,
+            "end": 87
+          },
+          "column": {
+            "start": 10,
+            "end": 20
+          }
+        },
+        "func": {
+          "type": "FunctionBody",
+          "generics": [],
+          "params": [],
+          "hasVarargs": false,
+          "returnType": {
+            "type": "TypePackNode",
+            "types": [
+              {
+                "type": "TypeReference",
+                "base": "string",
+                "typeArguments": [],
+                "line": {
+                  "start": 87,
+                  "end": 87
+                },
+                "column": {
+                  "start": 25,
+                  "end": 31
+                }
+              },
+              {
+                "type": "TypeReference",
+                "base": "string",
+                "typeArguments": [],
+                "line": {
+                  "start": 87,
+                  "end": 87
+                },
+                "column": {
+                  "start": 33,
+                  "end": 39
+                }
+              },
+              {
+                "type": "TypeReference",
+                "base": "string",
+                "typeArguments": [],
+                "line": {
+                  "start": 87,
+                  "end": 87
+                },
+                "column": {
+                  "start": 41,
+                  "end": 47
+                }
+              }
+            ],
+            "hasVarargs": false,
+            "line": {
+              "start": 87,
+              "end": 87
+            },
+            "column": {
+              "start": 24,
+              "end": 48
+            }
+          },
+          "body": {
+            "type": "Block",
+            "statements": [
+              {
+                "type": "ReturnStatement",
+                "arguments": [
+                  {
+                    "type": "SpreadElement",
+                    "argument": {
+                      "type": "Identifier",
+                      "name": "names",
+                      "line": {
+                        "start": 88,
+                        "end": 88
+                      },
+                      "column": {
+                        "start": 15,
+                        "end": 20
+                      }
+                    },
+                    "line": {
+                      "start": 88,
+                      "end": 88
+                    },
+                    "column": {
+                      "start": 12,
+                      "end": 20
+                    }
+                  }
+                ],
+                "line": {
+                  "start": 88,
+                  "end": 88
+                },
+                "column": {
+                  "start": 5,
+                  "end": 20
+                }
+              }
+            ],
+            "line": {
+              "start": 88,
+              "end": 88
+            },
+            "column": {
+              "start": 5,
+              "end": 20
+            }
+          },
+          "line": {
+            "start": 87,
+            "end": 89
+          },
+          "column": {
+            "start": 20,
+            "end": 4
+          }
+        },
+        "line": {
+          "start": 87,
+          "end": 89
+        },
+        "column": {
+          "start": 1,
+          "end": 4
+        }
+      },
+      {
+        "type": "VariableDeclaration",
+        "kind": "const",
+        "names": [
+          {
+            "type": "IdentifierPattern",
+            "name": "firstName",
+            "line": {
+              "start": 91,
+              "end": 91
+            },
+            "column": {
+              "start": 7,
+              "end": 16
+            }
+          },
+          {
+            "type": "IdentifierPattern",
+            "name": "secondName",
+            "line": {
+              "start": 91,
+              "end": 91
+            },
+            "column": {
+              "start": 18,
+              "end": 28
+            }
+          },
+          {
+            "type": "IdentifierPattern",
+            "name": "thirdName",
+            "line": {
+              "start": 91,
+              "end": 91
+            },
+            "column": {
+              "start": 30,
+              "end": 39
+            }
+          }
+        ],
+        "init": [
+          {
+            "type": "SpreadElement",
+            "argument": {
+              "type": "Identifier",
+              "name": "names",
+              "line": {
+                "start": 91,
+                "end": 91
+              },
+              "column": {
+                "start": 45,
+                "end": 50
+              }
+            },
+            "line": {
+              "start": 91,
+              "end": 91
+            },
+            "column": {
+              "start": 42,
+              "end": 50
+            }
+          }
+        ],
+        "line": {
+          "start": 91,
+          "end": 91
+        },
+        "column": {
+          "start": 1,
+          "end": 50
+        }
+      },
+      {
+        "type": "FunctionDeclaration",
+        "name": {
+          "type": "Identifier",
+          "name": "alsoForward",
+          "line": {
+            "start": 93,
+            "end": 93
+          },
+          "column": {
+            "start": 10,
+            "end": 21
+          }
+        },
+        "func": {
+          "type": "FunctionBody",
+          "generics": [],
+          "params": [],
+          "hasVarargs": true,
+          "varargTypeAnnotation": {
+            "type": "TypeReference",
+            "base": "string",
+            "typeArguments": [],
+            "line": {
+              "start": 93,
+              "end": 93
+            },
+            "column": {
+              "start": 27,
+              "end": 33
+            }
+          },
+          "returnType": {
+            "type": "TypePackNode",
+            "types": [
+              {
+                "type": "TypeReference",
+                "base": "string",
+                "typeArguments": [],
+                "line": {
+                  "start": 93,
+                  "end": 93
+                },
+                "column": {
+                  "start": 37,
+                  "end": 43
+                }
+              },
+              {
+                "type": "TypeReference",
+                "base": "string",
+                "typeArguments": [],
+                "line": {
+                  "start": 93,
+                  "end": 93
+                },
+                "column": {
+                  "start": 45,
+                  "end": 51
+                }
+              }
+            ],
+            "hasVarargs": false,
+            "line": {
+              "start": 93,
+              "end": 93
+            },
+            "column": {
+              "start": 36,
+              "end": 52
+            }
+          },
+          "body": {
+            "type": "Block",
+            "statements": [
+              {
+                "type": "ReturnStatement",
+                "arguments": [
+                  {
+                    "type": "VarargExpression",
+                    "line": {
+                      "start": 94,
+                      "end": 94
+                    },
+                    "column": {
+                      "start": 12,
+                      "end": 15
+                    }
+                  }
+                ],
+                "line": {
+                  "start": 94,
+                  "end": 94
+                },
+                "column": {
+                  "start": 5,
+                  "end": 15
+                }
+              }
+            ],
+            "line": {
+              "start": 94,
+              "end": 94
+            },
+            "column": {
+              "start": 5,
+              "end": 15
+            }
+          },
+          "line": {
+            "start": 93,
+            "end": 95
+          },
+          "column": {
+            "start": 21,
+            "end": 4
+          }
+        },
+        "line": {
+          "start": 93,
+          "end": 95
+        },
+        "column": {
+          "start": 1,
+          "end": 4
+        }
       }
     ],
     "line": {
       "start": 3,
-      "end": 83
+      "end": 95
     },
     "column": {
       "start": 1,
@@ -4098,7 +4439,7 @@
   },
   "line": {
     "start": 3,
-    "end": 83
+    "end": 95
   },
   "column": {
     "start": 1,

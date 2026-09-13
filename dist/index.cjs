@@ -938,8 +938,12 @@ var Parser = class {
   expressionOr(stop) {
     return this.attempt(() => this.parseExpression(), stop, (start, from) => this.errorExpression(start, from));
   }
+  /** A comma-separated list of values: a `return`'s, a declaration's, an
+   *  assignment's. `...xs` spreads an array into it, as in a call's
+   *  arguments; bare `...` is the vararg pack, as it always was. */
   expressionListOr(stop) {
-    const item = () => this.expressionOr(() => stop() || this.checkPunctuator(","));
+    const until = () => stop() || this.checkPunctuator(",");
+    const item = () => this.checkOperator("...") && this.startsSpread() ? this.parseSpreadArgument(until) : this.expressionOr(until);
     const list = [item()];
     while (this.matchPunctuator(",")) list.push(item());
     return list;
@@ -6843,7 +6847,8 @@ var TypeAnalyzer = class {
             stmt.arguments.forEach((a, i) => this.applyContext(a, declared.elements[i]));
           }
         }
-        const { types, sources } = this.valueList(stmt.arguments, env);
+        const want = declared?.kind === "tuple" && declared.isPack ? declared.elements.length : 0;
+        const { types, sources } = this.valueList(stmt.arguments, env, want);
         this.checkReturn(stmt, declared, types, sources, env);
         if (this.returnTypes) {
           this.returnTypes.push(stmt.arguments.length === 0 ? nilType : types.length === 1 ? types[0] : tuple([...types], true));
@@ -6940,6 +6945,22 @@ var TypeAnalyzer = class {
     exprs.forEach((e, i) => {
       const t = this.infer(e, env);
       const last = i === exprs.length - 1;
+      if (e.type === "SpreadElement") {
+        const held = this.typeOf.get(e.argument);
+        const expanded = held && this.expand(held);
+        if (expanded?.kind === "tuple") {
+          for (const element of expanded.elements) {
+            types.push(element);
+            sources.push(e);
+          }
+          return;
+        }
+        do {
+          types.push(t);
+          sources.push(e);
+        } while (last && types.length < want);
+        return;
+      }
       if (last && e.type === "VarargExpression") {
         do {
           types.push(t);
