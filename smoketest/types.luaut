@@ -14,7 +14,7 @@ type Entity = {
     stats: { hp: number, mp: number },
 }
 
-type Handler = (event: string, payload: unknown) -> boolean
+type Handler = (event: string, payload: unknown) => boolean
 type Result = { ok: true, value: number } | { ok: false, error: string }
 
 const origin: Vec2 = { x: 0, y: 0 }

@@ -2,8 +2,8 @@ anyOn: `on${string}`
 bumped: number
 by: number
 config: { host: string, port: number }
-counter: Counter & { bump: (self: Counter, by: number) -> number } & { peek: (self: Counter & { bump: (self: Counter, by: number) -> number }) -> number }
-handlers: { onClick: (value: number) -> (), onHover: (value: string) -> () }
+counter: Counter & { bump: (self: Counter, by: number) => number } & { peek: (self: Counter & { bump: (self: Counter, by: number) => number }) => number }
+handlers: { onClick: (value: number) => (), onHover: (value: string) => () }
 here: Counter
 host: string
 lower: "click"
@@ -13,7 +13,7 @@ peeked: number
 port: number
 quiet: "abc"
 self: Counter
-self: Counter & { bump: (self: Counter, by: number) -> number }
+self: Counter & { bump: (self: Counter, by: number) => number }
 shout: "CLICK" | "HOVER"
 upper: "Click"
 value: number

@@ -1,27 +1,27 @@
 _: number
 _: number
 absent: nil
-firstNil: (items: (string | nil)[]) -> number
+firstNil: (items: (string | nil)[]) => number
 item: string | nil
 item: string | nil
 items: (string | nil)[]
 items: (string | nil)[]
-lengths: (items: (string | nil)[]) -> number
-onlyNil: (v: string | nil) -> string
-orEmpty: (v: string | nil) -> string
+lengths: (items: (string | nil)[]) => number
+onlyNil: (v: string | nil) => string
+orEmpty: (v: string | nil) => string
 present: string
 present: string
 present: string
 present: string
 seen: number
-settle: (v: string | nil) -> string
+settle: (v: string | nil) => string
 settled: string
 settled: string
 total: number
-untilSet: (v: string | nil) -> string
+untilSet: (v: string | nil) => string
 v: string | nil
 v: string | nil
 v: string | nil
 v: string | nil
 v: string | nil
-viaDoBlock: (v: string | nil) -> string
+viaDoBlock: (v: string | nil) => string

@@ -1238,7 +1238,7 @@ function formatTypeUncached(t: Type): string {
                 : ""
             const ps = t.params.map(p => `${p.name ? p.name + ": " : ""}${formatType(p.type)}`)
             if (t.varargs) ps.push(`...${formatType(t.varargs)}`)
-            return `${gen}(${ps.join(", ")}) -> ${formatPredicate(t) ?? formatType(t.returns)}`
+            return `${gen}(${ps.join(", ")}) => ${formatPredicate(t) ?? formatType(t.returns)}`
         }
         case "typeParam": return t.name
         case "union": return t.types.map(formatAtom).join(" | ")

@@ -68,7 +68,7 @@ const picked: number | nil = firstOf(1, 2)
 const written: string | nil = firstOf("a")
 
 -- A type can be written with one too.
-type Reporter = (level: string, ...lines: string[]) -> ()
+type Reporter = (level: string, ...lines: string[]) => ()
 
 -- `f(...xs)` spreads an array into the arguments, as JavaScript does. Bare
 -- `f(...)` is unchanged: that is the pack being passed on.
@@ -93,3 +93,33 @@ const firstName, secondName, thirdName = ...names
 function alsoForward(...: string): (string, string) {
     return ...
 }
+
+-- ============================================================
+-- Arrows
+-- ============================================================
+-- One arrow for both, as TypeScript writes them: `(a: number) => string` is a
+-- function type, and `(a: number) => a` is a function.
+
+type Reducer = (total: number, value: number) => number
+
+const double = (x: number) => x * 2
+const add: Reducer = (a, b) => a + b
+const nothing = () => 0
+const shown = (n: number): string => tostring(n)
+
+-- One parameter needs no parentheses.
+declare function each(f: (n: number) => ()): ()
+each(n => print(n))
+
+-- A block body is a block, so an object is parenthesized to be returned.
+const wrap = (n: number) => ({ value: n })
+const logged = (n: number) => {
+    const doubled = n * 2
+    print(doubled)
+    return doubled
+}
+
+const doubledOnce: number = double(21)
+const addedUp: number = add(1, 2)
+const wrapped: { value: number } = wrap(1)
+const said: string = shown(1)

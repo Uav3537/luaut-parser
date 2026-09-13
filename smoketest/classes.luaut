@@ -71,7 +71,7 @@ const made: number = Dog.made()
 
 -- The class table is a value like any other: it can be passed around, and
 -- `new` is the same call as `Dog.new`.
-function build(make: (name: string, breed: string) -> Dog): Dog {
+function build(make: (name: string, breed: string) => Dog): Dog {
     return make("Spot", "beagle")
 }
 
@@ -90,7 +90,7 @@ export class Box<T> {
         return this.value
     }
 
-    function map<R>(f: (value: T) -> R): Box<R> {
+    function map<R>(f: (value: T) => R): Box<R> {
         return new Box(f(this.value))
     }
 }

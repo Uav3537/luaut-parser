@@ -169,6 +169,7 @@ var Punctuators = [
   ",",
   ".",
   "?",
+  "=>",
   "->",
   "&",
   "|",
@@ -2192,6 +2193,11 @@ var Parser = class {
     if (t.type === "Punctuator" && t.value === "[") {
       return this.parseArrayExpression();
     }
+    if (this.checkType("Identifier") && this.punctuatorAt(1, "=>")) return this.parseArrow();
+    if (this.checkPunctuator("(") || this.checkOperator("<")) {
+      const arrow = this.tryParse(() => this.parseArrow());
+      if (arrow) return arrow;
+    }
     if (t.type === "Identifier" || t.type === "Punctuator" && t.value === "(") {
       return this.parsePrefixExpression();
     }
@@ -2860,6 +2866,61 @@ var Parser = class {
     }
     return void 0;
   }
+  /** Run `parse`, and put the parser back where it was if it fails. Used
+   *  where two forms start alike and only their end tells them apart: `(a,
+   *  b) => a + b` and `(a + b)` both open with a `(`. */
+  tryParse(parse2) {
+    const cursor = this.cursor;
+    const errors = this.errors.length;
+    try {
+      return parse2();
+    } catch (error) {
+      if (!(error instanceof ParseError || error instanceof ParseRecover)) throw error;
+      this.cursor = cursor;
+      this.errors.length = errors;
+      return void 0;
+    }
+  }
+  /** `x => x * 2` — a function, written short. The body is an expression,
+   *  which is returned, or a block in braces, as in TypeScript. */
+  parseArrow() {
+    const start = this.current();
+    const head = this.checkType("Identifier") ? (() => {
+      const name = this.expectIdentifier();
+      return {
+        start,
+        generics: [],
+        params: [{ type: "FunctionParameter", name: name.value, ...spanFrom(name, name) }],
+        hasVarargs: false,
+        varargTypeAnnotation: void 0,
+        returnType: void 0,
+        predicate: void 0
+      };
+    })() : this.parseFunctionHead();
+    this.expectPunctuator("=>");
+    const body = this.checkPunctuator("{") ? this.parseBraceBlock() : this.returnOf(this.parseExpression(0));
+    const func = {
+      type: "FunctionBody",
+      generics: head.generics,
+      params: head.params,
+      hasVarargs: head.hasVarargs,
+      varargTypeAnnotation: head.varargTypeAnnotation,
+      returnType: head.returnType,
+      predicate: head.predicate,
+      body,
+      ...spanFrom(start, this.previous())
+    };
+    return { type: "FunctionExpression", func, ...spanFrom(start, this.previous()) };
+  }
+  /** A one-expression body: the value is what the function returns. */
+  returnOf(expression) {
+    const statement = {
+      type: "ReturnStatement",
+      arguments: [expression],
+      ...spanFrom(expression, expression)
+    };
+    return { type: "Block", statements: [statement], ...spanFrom(expression, expression) };
+  }
   parseFunctionBody(opener) {
     const head = this.parseFunctionHead();
     const body = this.parseStatementBody(opener);
@@ -3171,7 +3232,7 @@ var Parser = class {
       }
     }
     this.expectPunctuator(")");
-    if (this.matchPunctuator("->")) {
+    if (this.matchPunctuator("=>") || this.matchPunctuator("->")) {
       const predicate = this.tryParseTypePredicate();
       const returnType = predicate ? { type: "TypeReference", base: "boolean", typeArguments: [], ...spanFrom(start, this.previous()) } : this.parseTypeOrTypePackReference();
       return {
@@ -4896,7 +4957,7 @@ function formatTypeUncached(t) {
       }).join(", ")}>` : "";
       const ps = t.params.map((p) => `${p.name ? p.name + ": " : ""}${formatType(p.type)}`);
       if (t.varargs) ps.push(`...${formatType(t.varargs)}`);
-      return `${gen}(${ps.join(", ")}) -> ${formatPredicate(t) ?? formatType(t.returns)}`;
+      return `${gen}(${ps.join(", ")}) => ${formatPredicate(t) ?? formatType(t.returns)}`;
     }
     case "typeParam":
       return t.name;

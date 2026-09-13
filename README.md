@@ -151,11 +151,36 @@ why a parenthesized condition in the older spelling still reads.
 `and`, `or` and `not` stay words; `{}` is still an object literal everywhere a
 value is expected, and `[]` an array.
 
-**The older spelling** — `if ... then ... end`, `while ... do ... end`,
-`function ... end` are still read, so a file part-way through being moved over
-keeps working. `npx tsx scripts/to-braces.ts <file|dir>` rewrites one into the
-other: it checks that what it wrote parses into the same tree, and leaves the
-file alone when it does not.
+**Arrows** — one for both, as TypeScript writes them. `(a: number) => string`
+is a function type; `(a: number) => a` is a function. Which one a `=>` makes is
+decided by where it stands, since a type and a value never share a place.
+
+```luaut
+type Reducer = (total: number, value: number) => number
+
+const double = (x: number) => x * 2
+const add: Reducer = (a, b) => a + b        -- parameters typed by the contract
+const shown = (n: number): string => tostring(n)
+const identity = <T>(v: T) => v
+
+each(n => print(n))                          -- one parameter needs no parens
+
+const logged = (n: number) => {              -- a block body is a block,
+    print(n)                                 -- as in TypeScript,
+    return n
+}
+const wrap = (n: number) => ({ value: n })   -- so an object is parenthesized
+```
+
+An arrow is a function expression written short — there is no second kind of
+function — so `this` inside one is the `this` of the method around it, which
+is what a JavaScript arrow is for.
+
+**The older spellings** — `if ... then ... end`, `while ... do ... end`,
+`function ... end`, and `->` for a function type, are still read, so a file
+part-way through being moved over keeps working. `npx tsx
+scripts/to-braces.ts <file|dir>` rewrites them: it checks that what it wrote
+parses into the same tree, and leaves the file alone when it does not.
 
 **Declarations** — `const` and `let` only; Lua's `local` is gone.
 

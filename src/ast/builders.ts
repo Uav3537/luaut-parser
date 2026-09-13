@@ -1746,6 +1746,15 @@ export class Parser {
             return this.parseArrayExpression()
         }
 
+        // `x => x * 2`, `(a, b) => a + b`, `(a: number): string => a`.
+        // A lone name followed by `=>` can be nothing else; anything starting
+        // with `(` or `<` is tried as one and put back if it is not.
+        if (this.checkType("Identifier") && this.punctuatorAt(1, "=>")) return this.parseArrow()
+        if (this.checkPunctuator("(") || this.checkOperator("<")) {
+            const arrow = this.tryParse(() => this.parseArrow())
+            if (arrow) return arrow
+        }
+
         if (t.type === "Identifier" || (t.type === "Punctuator" && (t as any).value === "(")) {
             return this.parsePrefixExpression()
         }
@@ -2482,6 +2491,62 @@ export class Parser {
         return undefined
     }
 
+    /** Run `parse`, and put the parser back where it was if it fails. Used
+     *  where two forms start alike and only their end tells them apart: `(a,
+     *  b) => a + b` and `(a + b)` both open with a `(`. */
+    private tryParse<T>(parse: () => T): T | undefined {
+        const cursor = this.cursor
+        const errors = this.errors.length
+        try {
+            return parse()
+        } catch (error) {
+            if (!(error instanceof ParseError || error instanceof ParseRecover)) throw error
+            this.cursor = cursor
+            this.errors.length = errors
+            return undefined
+        }
+    }
+
+    /** `x => x * 2` — a function, written short. The body is an expression,
+     *  which is returned, or a block in braces, as in TypeScript. */
+    private parseArrow(): FunctionExpression {
+        const start = this.current()
+        const head = this.checkType("Identifier")
+            ? (() => {
+                const name = this.expectIdentifier()
+                return {
+                    start,
+                    generics: [] as GenericTypeParameter[],
+                    params: [{ type: "FunctionParameter", name: name.value as string, ...spanFrom(name, name) } as FunctionParameter],
+                    hasVarargs: false,
+                    varargTypeAnnotation: undefined as TypeNode | undefined,
+                    returnType: undefined as TypeNode | undefined,
+                    predicate: undefined as TypePredicateNode | undefined,
+                }
+            })()
+            : this.parseFunctionHead()
+        this.expectPunctuator("=>")
+        const body = this.checkPunctuator("{")
+            ? this.parseBraceBlock()
+            : this.returnOf(this.parseExpression(0))
+        const func: FunctionBody = {
+            type: "FunctionBody",
+            generics: head.generics, params: head.params, hasVarargs: head.hasVarargs,
+            varargTypeAnnotation: head.varargTypeAnnotation, returnType: head.returnType,
+            predicate: head.predicate, body,
+            ...spanFrom(start, this.previous()),
+        }
+        return { type: "FunctionExpression", func, ...spanFrom(start, this.previous()) }
+    }
+
+    /** A one-expression body: the value is what the function returns. */
+    private returnOf(expression: Expression): Block {
+        const statement: ReturnStatement = {
+            type: "ReturnStatement", arguments: [expression], ...spanFrom(expression, expression),
+        }
+        return { type: "Block", statements: [statement], ...spanFrom(expression, expression) }
+    }
+
     private parseFunctionBody(opener: Token): FunctionBody {
         const head = this.parseFunctionHead()
         const body = this.parseStatementBody(opener)
@@ -2826,7 +2891,7 @@ export class Parser {
 
         this.expectPunctuator(")")
 
-        if (this.matchPunctuator("->")) {
+        if (this.matchPunctuator("=>") || this.matchPunctuator("->")) {
             const predicate = this.tryParseTypePredicate()
             const returnType: TypeNode = predicate
                 ? { type: "TypeReference", base: "boolean", typeArguments: [], ...spanFrom(start, this.previous()) }

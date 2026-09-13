@@ -1,7 +1,7 @@
 a: number
 b: number[]
 c: string
-len: ((x: string) -> number) & ((x: unknown[]) -> number)
-reverse: ((x: string) -> string) & ((x: number[]) -> number[])
+len: ((x: string) => number) & ((x: unknown[]) => number)
+reverse: ((x: string) => string) & ((x: number[]) => number[])
 x: string | number[]
 x: string | unknown[]

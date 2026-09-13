@@ -6,11 +6,11 @@ keptKey: "hello"
 keptTable: { readonly k: 1 }
 keptText: "x"
 keptTuple: [1, 2]
-maybe: () -> nil | 2
-pair: () -> (1, "x") | (2, "y")
-pickLiteral: () -> 1 | "a"
-viaConst: () -> 1 | "a"
-viaLet: () -> 1 | string
+maybe: () => nil | 2
+pair: () => (1, "x") | (2, "y")
+pickLiteral: () => 1 | "a"
+viaConst: () => 1 | "a"
+viaLet: () => 1 | string
 widened: number
 widenedList: number[]
 widenedTable: { k: number }

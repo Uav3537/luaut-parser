@@ -1,50 +1,68 @@
-T: {} & { configure: (self: {}, { retries?: number, verbose?: boolean }) -> nil }
+T: {} & { configure: (self: {}, { retries?: number, verbose?: boolean }) => nil }
 _: number
 a: number
 a: number
-alsoForward: (...string) -> (string, string)
-applyN: (n: number, number[]) -> number
+a: number
+add: (total: number, value: number) => number
+addedUp: number
+alsoForward: (...string) => (string, string)
+applyN: (n: number, number[]) => number
 around: string
 b: number
 b: number
-braces: (x: number) -> string
+b: number
+braces: (x: number) => string
 c: number
+double: (x: number) => number
+doubled: number
+doubledOnce: number
 dx: number
 dy: number
 firstName: string
-firstOf: <T>(...T) -> T | nil
-firstTwo: (...number) -> (number, number)
-forward: (...string) -> string
-greet: (who: string, punct: string) -> string
+firstOf: <T>(...T) => T | nil
+firstTwo: (...number) => (number, number)
+forward: (...string) => string
+greet: (who: string, punct: string) => string
 hp: number
 items: T[]
-join: (separator: string, ...string) -> string
+join: (separator: string, ...string) => string
 joined: string
-makeEnemy: ({ hp?: number, name: any, pos: { x?: number, y?: number } }) -> { hp: number, name: any, x: number, y: number }
+logged: (n: number) => number
+makeEnemy: ({ hp?: number, name: any, pos: { x?: number, y?: number } }) => { hp: number, name: any, x: number, y: number }
+n: number
+n: number
+n: number
+n: number
 n: number
 n: number
 name: any
 names: string[]
+nothing: () => 0
 numbers: number[]
 parts: string[]
 picked: number | nil
 punct: string
 retries: number
+said: string
 secondName: string
 self: {}
 separator: string
+shown: (n: number) => string
 spread: string
-sum: (number[]) -> number
+sum: (number[]) => number
 sum: number
 summed: number
 thirdName: string
-threeNames: () -> (string, string, string)
-total: (...number) -> number
+threeNames: () => (string, string, string)
+total: (...number) => number
 twice: string
 two: number
 verbose: boolean
 who: string
+wrap: (n: number) => { value: number }
+wrapped: { value: number }
 written: string | nil
+x: number
 x: number
 x: number
 y: number

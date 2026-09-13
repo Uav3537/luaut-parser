@@ -7,19 +7,19 @@ Puppy: typeof Puppy
 animalsParent: nil
 asAnimal: Animal
 breed: string
-build: (make: (name: string, breed: string) -> Dog) -> Dog
+build: (make: (name: string, breed: string) => Dog) => Dog
 built: Dog
 bumped: number
 counter: Counter
 dogsParent: typeof Animal
-f: (value: T) -> R
+f: (value: T) => R
 fetched: string
 held: number
 item: string
 itsClass: typeof Counter
 legs: number
 made: number
-make: (name: string, breed: string) -> Dog
+make: (name: string, breed: string) => Dog
 n: number
 n: number
 name: string

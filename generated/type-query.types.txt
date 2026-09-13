@@ -1,5 +1,5 @@
 alsoNumber: number
-clampTo: (limit: number, value: number) -> number
+clampTo: (limit: number, value: number) => number
 copy: { muted: boolean, volume: number }
 count: number
 defaults: { muted: boolean, volume: number }

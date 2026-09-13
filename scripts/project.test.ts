@@ -257,7 +257,7 @@ const rel = (path: string | undefined): string | undefined =>
 
     // An indexer is a promise about every key it covers.
     check("indexers: every property must hold the indexer's type", analyze([
-        "declare find: () -> string | nil",
+        "declare find: () => string | nil",
         "const bad: { [string]: number } = { a: find(), b: 1 }",
         "const good: { [string]: number } = { a: 1, b: 2 }",
     ].join("\n")).errors, ["Type '{ a: string | nil, b: number }' is not assignable to '{ [string]: number }'"])
@@ -342,7 +342,7 @@ const rel = (path: string | undefined): string | undefined =>
         ].join("\n"))
         check("recovery: a broken field value and a missing comma keep the rest of the object",
             [r.errors, r.bindings.Config, r.bindings.after],
-            [["Unexpected token in expression", "Expected ','"], "{ a: number, b: any, c: string, d: number, run: () -> 1 }", "number"])
+            [["Unexpected token in expression", "Expected ','"], "{ a: number, b: any, c: string, d: number, run: () => 1 }", "number"])
     }
     {
         const r = recovered([
@@ -417,7 +417,7 @@ const rel = (path: string | undefined): string | undefined =>
         "type Shape = { kind: \"circle\" | \"rect\", size: number }",
         "const circle = { kind: \"circle\", size: 2 } satisfies Shape",
         "const config = { debug: false, level: 3, tags: [\"a\"] } satisfies { debug: boolean, level: 1 | 2 | 3, tags: string[] }",
-        "const handlers = { Click: function(x) return x + 1 end } satisfies { [string]: (x: number) -> number }",
+        "const handlers = { Click: function(x) return x + 1 end } satisfies { [string]: (x: number) => number }",
         "const empty = [] satisfies number[]",
         "const five = 5 satisfies number",
         "let widened = 5 satisfies number",
@@ -429,7 +429,7 @@ const rel = (path: string | undefined): string | undefined =>
     ].join("\n"))
     check("satisfies: the value keeps its own type, with the contract's literals",
         [satisfied.bindings.circle, satisfied.bindings.config, satisfied.bindings.handlers, satisfied.bindings.empty, satisfied.bindings.five, satisfied.bindings.widened],
-        [`{ kind: "circle", size: number }`, "{ debug: boolean, level: 3, tags: string[] }", "{ Click: (x: number) -> number }", "number[]", "5", "number"])
+        [`{ kind: "circle", size: number }`, "{ debug: boolean, level: 3, tags: string[] }", "{ Click: (x: number) => number }", "number[]", "5", "number"])
     check("satisfies: a value that does not fit, and properties the contract does not know", satisfied.errors, [
         `Type '{ kind: "tri", size: number }' does not satisfy the expected type 'Shape'`,
         "Object literal may only specify known properties, and 'colour' does not exist in type 'Shape'",
@@ -477,7 +477,7 @@ const rel = (path: string | undefined): string | undefined =>
     ].join("\n"))
     check("generics: an index the call decides is read when it does",
         [generics.errors, generics.bindings.char, generics.bindings.telek, generics.bindings.signature],
-        [[], "number", "string", `<K extends "Char" | "Telek">(name: K) -> RemoteMap[K]`])
+        [[], "number", "string", `<K extends "Char" | "Telek">(name: K) => RemoteMap[K]`])
 
     // `...` is what the function declared it takes.
     const varargs = analyze([
@@ -498,7 +498,7 @@ const rel = (path: string | undefined): string | undefined =>
     ].join("\n"))
     check("varargs: `...` has the declared type, per function",
         [varargs.bindings.first, varargs.bindings.f, varargs.bindings.s, varargs.bindings.anything],
-        ["number", "(...number) -> number", "string", "any"])
+        ["number", "(...number) => number", "string", "any"])
 
     // A closure written inside a value can read the name that value is bound
     // to — it runs later, as in JavaScript.
@@ -529,7 +529,7 @@ const rel = (path: string | undefined): string | undefined =>
         const bindings: Record<string, string> = {}
         for (const [id, type] of types.bindingType) bindings[scopes.bindings.get(id)!.name] = formatType(type)
         check("forward references: a closure reads the name being declared, and a later sibling",
-            [scopes.diagnostics.map(d => d.message), bindings.read], [[], "() -> 7"])
+            [scopes.diagnostics.map(d => d.message), bindings.read], [[], "() => 7"])
         // The initializer itself still reads what was there before it.
         const shadows = [...scopes.bindings.values()].filter(b => b.name === "shadow")
         check("forward references: but an initializer still shadows rather than reads itself",
@@ -560,7 +560,7 @@ const rel = (path: string | undefined): string | undefined =>
     ].join("\n"))
     check("returns: inferred from inside the branch that narrowed the value",
         [inferredReturns.errors, inferredReturns.bindings.narrowed, inferredReturns.bindings.branches, inferredReturns.bindings.nested],
-        [[], "() -> number", "() -> 5 | 0", `() -> () -> "inner"`])
+        [[], "() => number", "() => 5 | 0", `() => () => "inner"`])
 
     // What a function returns is checked against what it declared.
     const returns = analyze([
@@ -657,8 +657,8 @@ const rel = (path: string | undefined): string | undefined =>
 
     // `f?.()` — call it only when it is there.
     const optionalCall = analyze([
-        "declare f: ((n: number) -> string) | nil",
-        `declare t: { m: (() -> number) | nil }`,
+        "declare f: ((n: number) => string) | nil",
+        `declare t: { m: (() => number) | nil }`,
         "const said = f?.(1)",
         "const got = t.m?.()",
         "f?.(2)",
@@ -670,8 +670,8 @@ const rel = (path: string | undefined): string | undefined =>
     // `for x in it`: an iterator function says what the loop holds.
     {
         const lib = parse([
-            "declare function gmatch(s: string, pattern: string): () -> ...string",
-            "declare function rows(): () -> (string, number)",
+            "declare function gmatch(s: string, pattern: string): () => ...string",
+            "declare function rows(): () => (string, number)",
         ].join("\n"))
         const program = parse([
             `for part in gmatch("a/b", "[^/]+") do`,
@@ -761,7 +761,7 @@ const a: A = { p: 1 }`).errors.length,
     // A string is not a table: the only members it has are its methods.
     {
         const methods = parse(
-            "type StringMethods = { upper: (self: string) -> string }",
+            "type StringMethods = { upper: (self: string) => string }",
         )
         const program = parse([
             `declare skill: "a" | "b"`,
@@ -782,7 +782,7 @@ const a: A = { p: 1 }`).errors.length,
             bindings.method,
             types.diagnostics.map(d => d.message),
         ], [
-            "(self: string) -> string",
+            "(self: string) => string",
             [
                 `'"Sans" | "Asgore"' does not name a member of a string`,
                 "'Sans' does not exist on a string",
@@ -803,8 +803,8 @@ const a: A = { p: 1 }`).errors.length,
             analyze(trap).errors[0]?.startsWith("This calls the value the line above ends with"),
             // The fix, and the shapes that are not it.
             analyze(trap.replace(`("A")`, `;("A")`)).errors,
-            analyze("declare f: (a: number, b: number) -> ()\nf(\n    1,\n    2,\n)").errors,
-            analyze("declare f: () -> ()\nf()\nf()").errors,
+            analyze("declare f: (a: number, b: number) => ()\nf(\n    1,\n    2,\n)").errors,
+            analyze("declare f: () => ()\nf()\nf()").errors,
         ], [1, true, [], [], []])
     }
 
@@ -958,11 +958,11 @@ const a: A = { p: 1 }`).errors.length,
     {
         const library = parse([
             "type ArrayMethods<T> = {",
-            "    filter: (self: T[], test: (value: T, index: number) -> boolean) -> T[],",
-            "    map: <U>(self: T[], transform: (value: T) -> U) -> U[],",
-            "    pop: (self: T[]) -> T | nil,",
+            "    filter: (self: T[], test: (value: T, index: number) => boolean) => T[],",
+            "    map: <U>(self: T[], transform: (value: T) => U) => U[],",
+            "    pop: (self: T[]) => T | nil,",
             "}",
-            "type StringMethods = { upper: (self: string) -> string, trim: (self: string) -> string }",
+            "type StringMethods = { upper: (self: string) => string, trim: (self: string) => string }",
         ].join("\n"))
         const program = parse([
             `const names = ["a", "bb"]`,
@@ -991,17 +991,17 @@ const a: A = { p: 1 }`).errors.length,
 
     // Libraries layer over one another; the file itself replaces.
     {
-        const first = parse("type Set = { one: (self: string) -> string }")
-        const second = parse("type Set = { two: (self: string) -> string }")
+        const first = parse("type Set = { one: (self: string) => string }")
+        const second = parse("type Set = { two: (self: string) => string }")
         const layered = parse("declare value: Set\nconst a = value.one\nconst b = value.two")
         const layeredScopes = analyzeScopes(layered)
         const layeredTypes = analyzeTypes(layered, layeredScopes, { libs: [first, second] })
         const names: Record<string, string> = {}
         for (const [id, type] of layeredTypes.bindingType) names[layeredScopes.bindings.get(id)!.name] = formatType(type)
         check("layered aliases: a library adds to what an earlier one declared",
-            [names.a, names.b], ["(self: string) -> string", "(self: string) -> string"])
+            [names.a, names.b], ["(self: string) => string", "(self: string) => string"])
 
-        const own = parse("type Set = { three: (self: string) -> string }\ndeclare value: Set\nconst c = value.one")
+        const own = parse("type Set = { three: (self: string) => string }\ndeclare value: Set\nconst c = value.one")
         const ownScopes = analyzeScopes(own)
         const ownTypes = analyzeTypes(own, ownScopes, { libs: [first, second] })
         const mine: Record<string, string> = {}
@@ -1045,12 +1045,12 @@ const a: A = { p: 1 }`).errors.length,
     // rather than replacing it.
     {
         const lua = parse([
-            "declare table: { insert: (t: unknown[], v: unknown) -> () }",
+            "declare table: { insert: (t: unknown[], v: unknown) => () }",
             `declare function type(value: number): "number"`,
             "declare function type<T>(value: T): string",
         ].join("\n"))
         const luau = parse([
-            "declare table: { create: (n: number) -> unknown[] }",
+            "declare table: { create: (n: number) => unknown[] }",
             `declare function type(value: buffer): "buffer"`,
         ].join("\n"))
         const program = parse([
@@ -1066,7 +1066,7 @@ const a: A = { p: 1 }`).errors.length,
         for (const [id, type] of types.bindingType) bindings[scopes.bindings.get(id)!.name] = formatType(type)
         check("layered definitions: a table declared twice keeps both files' members",
             bindings.theTable,
-            "{ create: (n: number) -> unknown[], insert: (t: unknown[], v: unknown) -> () }")
+            "{ create: (n: number) => unknown[], insert: (t: unknown[], v: unknown) => () }")
         check("layered definitions: and the later file's overload narrows",
             [bindings.narrowed, types.diagnostics.map(d => d.message)], ["buffer", []])
     }
@@ -1077,13 +1077,13 @@ const a: A = { p: 1 }`).errors.length,
         analyze(`${names}const PerClass = {
     GTFrisk: function() end,
     XTFriskk: function() end,
-} as const satisfies { [Names]: () -> () }`).errors,
-        ["Object literal may only specify known properties, and 'XTFriskk' does not exist in type '{ [\"GTFrisk\" | \"XTFrisk\"]: () -> () }'"])
+} as const satisfies { [Names]: () => () }`).errors,
+        ["Object literal may only specify known properties, and 'XTFriskk' does not exist in type '{ [\"GTFrisk\" | \"XTFrisk\"]: () => () }'"])
     check("finite indexer: the keys in the set are fine, and `[string]` takes anything", [
         analyze(`${names}const PerClass = {
     GTFrisk: function() end,
     XTFrisk: function() end,
-} as const satisfies { [Names]: () -> () }`).errors,
+} as const satisfies { [Names]: () => () }`).errors,
         analyze(`const m = { whatever: 1 } satisfies { [string]: number }`).errors,
     ], [[], []])
 
@@ -1178,8 +1178,8 @@ end`)
         "declare class Folder extends Instance {}",
         "declare function find<T = Instance>(name: string): T | nil",
         "declare inst: {",
-        "    Find: <T = Instance>(self: unknown, name: string) -> T | nil,",
-        "    Wait: (<T = Instance>(self: unknown, name: string) -> T) & (<T = Instance>(self: unknown, name: string, timeout: number) -> T | nil),",
+        "    Find: <T = Instance>(self: unknown, name: string) => T | nil,",
+        "    Wait: (<T = Instance>(self: unknown, name: string) => T) & (<T = Instance>(self: unknown, name: string, timeout: number) => T | nil),",
         "}",
         `const typed = find<Folder>("x")`,
         `const bare = find("x")`,
@@ -1279,7 +1279,7 @@ end`)
         parseError("function f(\n    a: number,\n    b: string,\n)\nend"),
         parseError("print(\n    1,\n    2,\n)"),
         parseError("function f<\n    A,\n    B,\n>(a: A) end"),
-        parseError("type F = (\n    a: number,\n) -> ()"),
+        parseError("type F = (\n    a: number,\n) => ()"),
         parseError("type P = Partial<number,>"),
     ], [undefined, undefined, undefined, undefined, undefined])
 
@@ -1450,9 +1450,9 @@ end`)
 
     // Reading through a value that may be nil is an error, as in TypeScript.
     const nilAccess = analyze([
-        "type Node = { Name: string, find: (self: Node, name: string) -> Node | nil, Parent: Node | nil, box?: { n: number } }",
+        "type Node = { Name: string, find: (self: Node, name: string) => Node | nil, Parent: Node | nil, box?: { n: number } }",
         "declare root: Node",
-        "declare call: (() -> number) | nil",
+        "declare call: (() => number) | nil",
         "declare function error(message: string): never",
         "const bad = root:find(\"a\"):find(\"b\")",
         "const parentName = root.Parent.Name",
@@ -1500,9 +1500,9 @@ end`)
         "An optional chain cannot be assigned to",
     ])
     const optional = analyze([
-        "type Node = { Parent: Node | nil, Name: string, find: (self: Node, name: string) -> Node | nil }",
+        "type Node = { Parent: Node | nil, Name: string, find: (self: Node, name: string) => Node | nil }",
         "declare node: Node | nil",
-        "declare run: { go: () -> number } | nil",
+        "declare run: { go: () => number } | nil",
         "const name = node?.Name",
         "const deep = node?.Parent?.Name",
         "const found = node?:find(\"a\")",
@@ -1518,7 +1518,7 @@ end`)
         optional.bindings.name, optional.bindings.deep, optional.bindings.found, optional.bindings.called, optional.bindings.paren,
     ], ["string | nil", "string | nil", "Node | nil", "number | nil", "Node | nil"])
     const guarded = analyze([
-        "declare class Instance { IsA: <K extends keyof ClassMap>(self: Instance, className: K) -> self is ClassMap[K] }",
+        "declare class Instance { IsA: <K extends keyof ClassMap>(self: Instance, className: K) => self is ClassMap[K] }",
         "declare class Folder extends Instance {}",
         "type ClassMap = { Folder: Folder, Instance: Instance }",
         "declare function error(message: string): never",
@@ -1577,7 +1577,7 @@ end`)
         "    const held = parts",
         "    return table.concat(parts, sep)",
         "end",
-        "declare table: { concat: (t: string[], sep: string) -> string }",
+        "declare table: { concat: (t: string[], sep: string) => string }",
         "const signature = join",
         `join("-", "a", "b")`,
         `join("-", 1)`,
@@ -1588,7 +1588,7 @@ end`)
         [[
             "Argument of type '1' is not assignable to parameter of type 'string'",
             "Expected at least 1 arguments, got 0",
-        ], "string[]", "(sep: string, ...string) -> string"])
+        ], "string[]", "(sep: string, ...string) => string"])
 
     // `...` on its own is still Lua's pack, and every name reads one of it.
     const pack = analyze([
@@ -1613,11 +1613,11 @@ end`)
         "const asRest = withRest",
     ].join("\n"))
     check("rest: both spellings are the same signature",
-        [both.bindings.asPack, both.bindings.asRest], ["(...string) -> ()", "(...string) -> ()"])
+        [both.bindings.asPack, both.bindings.asRest], ["(...string) => ()", "(...string) => ()"])
 
     // And in a type.
     const written = analyze([
-        "declare log: (level: string, ...lines: string[]) -> ()",
+        "declare log: (level: string, ...lines: string[]) => ()",
         `log("info", "a", "b")`,
         `log("info", 1)`,
     ].join("\n"))
@@ -1668,7 +1668,7 @@ end`)
     }
 
     const braced = analyze([
-        "declare function pairs(t: { [string]: number }): () -> (string, number)",
+        "declare function pairs(t: { [string]: number }): () => (string, number)",
         "function classify(n: number): string {",
         "    if (n < 0) {",
         `        return "negative"`,
@@ -1763,6 +1763,93 @@ end`)
     ].join("\n"))
     check("braces: the older spelling still reads, beside the newer one",
         [mixed.errors, mixed.bindings.answer], [[], "string"])
+}
+
+// --- arrows ---------------------------------------------------------------
+// One arrow for both, as TypeScript writes them: `(a: number) => string` is a
+// function type, and `(a: number) => a` is a function. Which one a `=>` makes
+// is decided by where it stands, since a type and a value never share a place.
+{
+    const analyze = (code: string) => {
+        const program = parse(code)
+        const scopes = analyzeScopes(program)
+        const types = analyzeTypes(program, scopes, {})
+        const bindings: Record<string, string> = {}
+        for (const [id, type] of types.bindingType) bindings[scopes.bindings.get(id)!.name] = formatType(type)
+        return { errors: [...scopes.diagnostics, ...types.diagnostics].map(d => d.message), bindings }
+    }
+
+    const written = analyze([
+        "declare applied: (f: (n: number) => string, n: number) => string",
+        "type Handler = (event: string) => ()",
+        "declare handled: Handler",
+        "declare older: (n: number) -> string",
+        "const apply = applied",
+        "const handle = handled",
+        "const old = older",
+    ].join("\n"))
+    check("arrows: a function type is written `=>`, and `->` still reads",
+        [written.errors, written.bindings.apply, written.bindings.handle, written.bindings.old],
+        [[], "(f: (n: number) => string, n: number) => string",
+            "(event: string) => ()", "(n: number) => string"])
+
+    const values = analyze([
+        "declare function tostring(v: unknown): string",
+        "const double = (x: number) => x * 2",
+        "const add = (a: number, b: number) => a + b",
+        "const none = () => 0",
+        "const said = (a: number): string => tostring(a)",
+        "const curried = (a: number) => (b: number) => a + b",
+        "const applied = curried(1)(2)",
+        "const doubled = double(21)",
+    ].join("\n"))
+    check("arrows: a function, written short",
+        [values.errors, values.bindings.double, values.bindings.said,
+            values.bindings.curried, values.bindings.applied, values.bindings.doubled],
+        [[], "(x: number) => number", "(a: number) => string",
+            "(a: number) => (b: number) => number", "number", "number"])
+
+    // A block body is a block, as in TypeScript — so an object has to be
+    // parenthesized to be returned.
+    const bodies = analyze([
+        "declare function print(v: unknown): ()",
+        "const logged = (n: number) => {",
+        "    const doubled = n * 2",
+        "    print(doubled)",
+        "    return doubled",
+        "}",
+        "const wrapped = (n: number) => ({ value: n })",
+        "const ran = logged(1)",
+        "const held = wrapped(1)",
+    ].join("\n"))
+    check("arrows: a block body is a block, and an object is parenthesized",
+        [bodies.errors, bodies.bindings.ran, bodies.bindings.held],
+        [[], "number", "{ value: number }"])
+
+    // One parameter needs no parentheses, and a generic one is written as it
+    // is on a function.
+    const short = analyze([
+        "declare function each(f: (n: number) => ()): ()",
+        "each(n => print(n))",
+        "declare function print(v: unknown): ()",
+        "const identity = <T>(v: T) => v",
+        "const one = identity(1)",
+    ].join("\n"))
+    check("arrows: one parameter bare, and a generic one",
+        [short.errors, short.bindings.identity, short.bindings.one],
+        [[], "<T>(v: T) => T", "number"])
+
+    // What starts the same way still reads the way it did.
+    const unchanged = analyze([
+        "declare function f(n: number): number",
+        "const sum = (1 + 2) * 3",
+        "const called = (f)(1)",
+        "declare t: { m: (self: unknown) => number }",
+        "const method = (t):m()",
+    ].join("\n"))
+    check("arrows: a parenthesized expression is still one",
+        [unchanged.errors, unchanged.bindings.sum, unchanged.bindings.called, unchanged.bindings.method],
+        [[], "number", "number", "number"])
 }
 
 // --- branded types -----------------------------------------------------
@@ -1941,7 +2028,7 @@ end`)
         "const passed = pass",
     ].join("\n"))
     check("spread: `return ...` fills the values the function declares",
-        [packed.errors, packed.bindings.passed], [[], "(...number) -> (number, number)"])
+        [packed.errors, packed.bindings.passed], [[], "(...number) => (number, number)"])
 
     // `...` on its own is untouched: it is still the pack being passed on.
     const pack = analyze([
@@ -1952,7 +2039,7 @@ end`)
         "const passed = pass",
     ].join("\n"))
     check("spread: bare `...` still passes the pack on",
-        [pack.errors, pack.bindings.passed], [[], "(...string) -> string"])
+        [pack.errors, pack.bindings.passed], [[], "(...string) => string"])
 }
 
 // --- classes -----------------------------------------------------------

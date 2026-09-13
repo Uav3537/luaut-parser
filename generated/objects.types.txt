@@ -3,7 +3,7 @@ computed: { dynamic: boolean, [string]: boolean }
 dmg: number
 extended: { a: number, b: number, c: number }
 key: "dynamic"
-nested: { onHit: (dmg: number) -> number, position: { x: number, y: number }, tags: string[] }
+nested: { onHit: (dmg: number) => number, position: { x: number, y: number }, tags: string[] }
 point: { x: number, y: number }
 shorthand: { x: number, y: number }
 stringKeys: { "data-id": number, order: string }

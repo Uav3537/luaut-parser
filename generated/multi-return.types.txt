@@ -2,15 +2,15 @@ a: number
 b: string
 expanded: number
 first: number
-firstNonNil: (v: string | nil) -> string
+firstNonNil: (v: string | nil) => string
 justFirst: number
-mightBreak: (v: string | nil) -> string | nil
+mightBreak: (v: string | nil) => string | nil
 one: 1
 second: string
 settled: string
 spare: unknown
 truncated: number
-two: () -> (number, string)
+two: () => (number, string)
 unsettled: string | nil
 v: string | nil
 v: string | nil

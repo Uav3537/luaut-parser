@@ -41,7 +41,7 @@ interface OperatorToken extends BaseToken {
     type: "Operator";
     value: typeof Operators[number];
 }
-declare const Punctuators: readonly ["::", "(", ")", "{", "}", "[", "]", ";", ":", ",", ".", "?", "->", "&", "|", "@"];
+declare const Punctuators: readonly ["::", "(", ")", "{", "}", "[", "]", ";", ":", ",", ".", "?", "=>", "->", "&", "|", "@"];
 interface PunctuatorToken extends BaseToken {
     type: "Punctuator";
     value: typeof Punctuators[number];

@@ -12,28 +12,28 @@
 declare cond: number
 
 -- Two literal returns stay two literals.
-const pickLiteral: () -> 1 | "a" = function() {
+const pickLiteral: () => 1 | "a" = function() {
     if (cond == 1) { return 1 }
     return "a"
 }
 
 -- `let a = "a"` widens the *binding* to `string`, and that is what the return
 -- type picks up. Nothing widened the return type itself.
-const viaLet: () -> 1 | string = function() {
+const viaLet: () => 1 | string = function() {
     if (cond == 1) { return 1 }
     let a = "a"
     return a
 }
 
 -- `const a = "a"` keeps the literal, so the return type keeps it too.
-const viaConst: () -> 1 | "a" = function() {
+const viaConst: () => 1 | "a" = function() {
     if (cond == 1) { return 1 }
     const a = "a"
     return a
 }
 
 -- A bare `return` contributes `nil`.
-const maybe: () -> nil | 2 = function() {
+const maybe: () => nil | 2 = function() {
     if (cond == 1) { return }
     return 2
 }
@@ -41,7 +41,7 @@ const maybe: () -> nil | 2 = function() {
 -- Several values form a *type pack*, written and printed `(A, B)`. A pack is
 -- not a tuple: it spreads across names in an expression list, where a tuple
 -- is one value.
-const pair: () -> (1, "x") | (2, "y") = function() {
+const pair: () => (1, "x") | (2, "y") = function() {
     if (cond == 1) { return 1, "x" }
     return 2, "y"
 }
@@ -71,7 +71,7 @@ declare function keyed<const K extends string>(k: K): K
 const keptKey: "hello" = keyed("hello")
 
 -- And so do methods, where the receiver fills `self`.
-type Box = { of: <const T>(self: Box, v: T) -> { value: T } }
+type Box = { of: <const T>(self: Box, v: T) => { value: T } }
 declare box: Box
 const boxed: { value: ["a", "b"] } = box:of(["a", "b"])
 

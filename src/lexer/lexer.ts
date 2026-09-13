@@ -53,7 +53,7 @@ export const Punctuators = [
     "::",
     "(", ")", "{", "}", "[", "]",
     ";", ":", ",", ".",
-    "?", "->", "&", "|", "@",
+    "?", "=>", "->", "&", "|", "@",
 ] as const
 
 export interface PunctuatorToken extends BaseToken {

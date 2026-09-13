@@ -1,8 +1,8 @@
 a: number
 b: number
-clamp: (x: number, lo: number, hi: number) -> number
+clamp: (x: number, lo: number, hi: number) => number
 hi: number
-lerp: (a: number, b: number, t: number) -> number
+lerp: (a: number, b: number, t: number) => number
 lo: number
 t: number
 x: number

@@ -1,12 +1,12 @@
 a: A
 b: B
-first: <T>(xs: T[]) -> T
+first: <T>(xs: T[]) => T
 head: number
-identity: <T>(x: T) -> T
+identity: <T>(x: T) => T
 intBox: { value: number }
 n: number
 p: { first: string, second: boolean }
-pair: <A, B>(a: A, b: B) -> { first: A, second: B }
+pair: <A, B>(a: A, b: B) => { first: A, second: B }
 r: { ok: true, value: number } | { error: string, ok: false }
 s: string
 scores: { [string]: number }

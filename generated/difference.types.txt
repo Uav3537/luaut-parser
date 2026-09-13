@@ -1,6 +1,6 @@
 a: unknown
 b: unknown
-classify: (a: unknown) -> 1 | 2 | 0
+classify: (a: unknown) => 1 | 2 | 0
 fromUnion: "a" | "c"
 gone: nil | false
 kept: unknown - (nil | false)
@@ -8,9 +8,9 @@ neither: unknown - (1 | 2)
 notOne: unknown - 1
 one: 1
 present: unknown - nil
-refine: (v: unknown) -> (unknown - nil) | 0
+refine: (v: unknown) => (unknown - nil) | 0
 stillOpaque: unknown - 1
 stillString: string
-truthiness: (b: unknown) -> (unknown - (nil | false)) | nil | false
+truthiness: (b: unknown) => (unknown - (nil | false)) | nil | false
 two: 2
 v: unknown

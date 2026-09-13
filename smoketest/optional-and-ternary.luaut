@@ -36,7 +36,7 @@ const c1 = connect("a", nil)
 const c2 = connect("a", 5, 80)
 
 -- Optionality also crosses into function *types*.
-const later: (host: string, port?: number) -> number | nil =
+const later: (host: string, port?: number) => number | nil =
     function(host: string, port?: number) {
         return port
     }
@@ -59,7 +59,7 @@ function orElse(v: string | nil) {
 
 -- A ternary's `:` never swallows a method call: `o : other` below is the
 -- ternary separator, while `o:m()` is a real method call.
-type Counter = { m: (self: Counter) -> number }
+type Counter = { m: (self: Counter) => number }
 function choose(flag: boolean, o: Counter, other: Counter) {
     const t4: Counter = flag ? o : other
     const t5: number = flag ? o:m() : 0

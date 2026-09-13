@@ -8,6 +8,7 @@
  *     do ... end               ->   do { ... }
  *     function f() ... end     ->   function f() { ... }
  *     class C ... end          ->   class C { ... }
+ *     (a: number) -> string    ->   (a: number) => string
  *
  * Two passes, because each knows something the other does not. The *tokens*
  * say where `then`, `do` and `end` are written, which the tree does not
@@ -177,6 +178,13 @@ export function toBraces(source: string): string {
     const edits: Edit[] = [...opens]
         .filter(at => !braced(at))
         .map(at => ({ start: at, end: at, text: " {" }))
+    // A function type is written `=>`, as TypeScript writes it. `->` is only
+    // ever that arrow, so the token alone decides it.
+    for (const token of tokens) {
+        if (token.type === "Punctuator" && String((token as { value?: unknown }).value) === "->") {
+            edits.push({ start: offsets.start(token), end: offsets.end(token), text: "=>" })
+        }
+    }
     /** `if` blocks close each clause; everything else closes once. */
     const stack: ("if" | "block" | "repeat")[] = []
 
