@@ -2187,6 +2187,13 @@ class TypeAnalyzer {
         this.expectedTypeOf.set(e, expected)
         if (e.type === "ArrayExpression") return this.applyArrayContext(e, expected)
         if (e.type === "TableExpression") return this.applyTableContext(e, expected)
+        // `Config.Paths or []` is the Lua way to write a default: what the
+        // surroundings want of the whole is wanted of either side.
+        if (e.type === "BinaryExpression" && (e.operator === "or" || e.operator === "and")) {
+            if (e.operator === "or") this.applyContext(e.left, expected)
+            this.applyContext(e.right, expected)
+            return
+        }
         if (e.type !== "FunctionExpression") return
         const members = expected.kind === "union" ? expected.types : [expected]
         const signatures = members.flatMap(m => this.overloadsOf(this.expand(m)))
@@ -2216,7 +2223,9 @@ class TypeAnalyzer {
         const target = this.expectedMembers(expected).find(m => m.kind === "array" || m.kind === "tuple")
         if (!target) return
         if (!e.elements.length) {
-            if (!containsTypeParam(target)) this.contextualArrays.set(e, target)
+            // `const missing: T[] = []` inside a generic function: the
+            // annotation is what it is, type parameter and all.
+            this.contextualArrays.set(e, target)
             return
         }
         e.elements.forEach((element, i) => {

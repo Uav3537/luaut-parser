@@ -667,6 +667,34 @@ const rel = (path: string | undefined): string | undefined =>
         [optionalCall.bindings.said, optionalCall.bindings.got, optionalCall.errors],
         ["string | nil", "number | nil", []])
 
+    // `x or []` is how Lua writes a default: the context reaches both sides.
+    check("contextual typing: through `or`, and into a generic annotation", [
+        analyze([
+            `declare paths: string[] | nil`,
+            `const used: string[] = paths or []`,
+        ].join("\n")).errors,
+        analyze([
+            `function collect<T>(items: T[]): T[]`,
+            "    const kept: T[] = []",
+            "    return kept",
+            "end",
+        ].join("\n")).errors,
+    ], [[], []])
+
+    // An optional property takes nil: in Lua a field that is nil is a field
+    // that is not there.
+    check("optional properties: nil is as good as absent", [
+        analyze(`type A = { p?: string }
+declare v: string | nil
+const a: A = { p: v }`).errors,
+        analyze(`type A = { p?: string }
+const a: A = { p: nil }`).errors,
+        analyze(`type A = { p?: string }
+const a: A = {}`).errors,
+        analyze(`type A = { p?: string }
+const a: A = { p: 1 }`).errors.length,
+    ], [[], [], [], 1])
+
     // A property whose name is not an identifier, written as the object
     // literal writes it.
     {

@@ -718,7 +718,9 @@ function isAssignableInner(a: Type, b: Type): boolean {
                 if (a.indexer && isAssignable(a.indexer.value, bp.type)) continue
                 return false
             }
-            if (!isAssignable(ap.type, bp.type)) return false
+            // An optional property may be written as nil: in Lua a field that
+            // is nil is a field that is not there.
+            if (!isAssignable(ap.type, bp.optional ? optional(bp.type) : bp.type)) return false
         }
         if (b.indexer) {
             // `{ [string]: V }` promises that every key it covers holds a `V`:
