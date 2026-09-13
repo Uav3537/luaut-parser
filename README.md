@@ -144,9 +144,9 @@ class Dog extends Animal {
 ```
 
 The parentheses are not decoration: `f {}` is a call with a table argument, so
-without them `if ready { ... }` would be a call of `ready` followed by a
-block. With them, what follows the `)` says which form it is — which is also
-why a parenthesized condition in the older spelling still reads.
+without them `if ready { ... }` would be a call of `ready` followed by a block.
+
+There is no `end` in luaut, and `then` is not a word it knows.
 
 `and`, `or` and `not` stay words; `{}` is still an object literal everywhere a
 value is expected, and `[]` an array.
@@ -176,11 +176,16 @@ An arrow is a function expression written short — there is no second kind of
 function — so `this` inside one is the `this` of the method around it, which
 is what a JavaScript arrow is for.
 
-**The older spellings** — `if ... then ... end`, `while ... do ... end`,
-`function ... end`, and `->` for a function type, are still read, so a file
-part-way through being moved over keeps working. `npx tsx
-scripts/to-braces.ts <file|dir>` rewrites them: it checks that what it wrote
-parses into the same tree, and leaves the file alone when it does not.
+**Moving a file over** — `end`, `then`, `do` as a block opener, and `->` for a
+function type are Lua's spellings, and luaut no longer reads any of them.
+`npx tsx scripts/to-braces.ts <file|dir>` rewrites a file written in them,
+and `scripts/to-braces-sources.ts <file>` does the same for luaut written
+inside a TypeScript file, which is where a test suite keeps most of it. Each
+rewrite is parsed and compared with the tree the original made before it is
+written; a file it cannot say the same thing about is left alone.
+
+Both scripts need a parser that still reads the old spellings, so run them
+from a checkout of the commit before they were dropped.
 
 **Declarations** — `const` and `let` only; Lua's `local` is gone.
 

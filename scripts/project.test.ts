@@ -209,17 +209,17 @@ const rel = (path: string | undefined): string | undefined =>
     }
 
     // Functions have no `const` / `let`: `function f()` declares `f`.
-    check("functions: `function name()` declares a function", analyze("function twice(n: number): number return n * 2 end\nconst four = twice(2)").bindings.four, "number")
-    check("functions: its name cannot be reassigned", analyze("function f() end\nf = nil").errors, ["Cannot assign to 'f' — it is a function"])
-    check("functions: `const function` is not luaut", parseError("const function f() end"),
+    check("functions: `function name()` declares a function", analyze("function twice(n: number): number { return n * 2 }\nconst four = twice(2)").bindings.four, "number")
+    check("functions: its name cannot be reassigned", analyze("function f() { }\nf = nil").errors, ["Cannot assign to 'f' — it is a function"])
+    check("functions: `const function` is not luaut", parseError("const function f() {}"),
         "A function is declared as 'function name()'; 'const' does not apply to functions")
     check("functions: exported with `export function`", analyze(`import { twice } from "./m"\nconst n = twice(1)`,
-        { "./m": "export function twice(n: number): number return n * 2 end" }).bindings.n, "number")
+        { "./m": "export function twice(n: number): number { return n * 2 }" }).bindings.n, "number")
 
     // `import * as`
     const namespace = analyze(
         `import * as Shapes from "./shapes"\nconst area = Shapes.area(2)\nconst c: Shapes.Circle = { r: 1 }\nconst d = Shapes.default`,
-        { "./shapes": "export type Circle = { r: number }\nexport function area(r: number): number return r * r end\nexport default 3" })
+        { "./shapes": "export type Circle = { r: number }\nexport function area(r: number): number { return r * r }\nexport default 3" })
     check("imports: `import * as` holds the module's exports", [namespace.bindings.area, namespace.bindings.c, namespace.bindings.d], ["number", "{ r: number }", "3"])
     check("imports: and its types, by qualified name", namespace.errors, [])
 
@@ -227,18 +227,18 @@ const rel = (path: string | undefined): string | undefined =>
     check("imports: an imported name cannot be assigned",
         analyze(`import { value } from "./m"\nvalue = 2`, { "./m": "export const value = 1" }).errors, ["Cannot assign to 'value' — it is an import"])
     check("imports: nor can a module's exports through its namespace",
-        analyze(`import * as M from "./m"\nM.value = 2\nfunction M.extra() end`, { "./m": "export const value = 1" }).errors,
+        analyze(`import * as M from "./m"\nM.value = 2\nfunction M.extra() { }`, { "./m": "export const value = 1" }).errors,
         ["Cannot assign to a member of 'M' — a module's exports are read-only", "Cannot assign to a member of 'M' — a module's exports are read-only"])
 
     // `import type`: types only.
-    const shapes = { "./shapes": "export type Circle = { r: number }\nexport function area(r: number): number return r * r end\nexport default 3" }
+    const shapes = { "./shapes": "export type Circle = { r: number }\nexport function area(r: number): number { return r * r }\nexport default 3" }
     check("import type: its names work as types, typeof included", analyze([
         `import type { Circle, area } from "./shapes"`,
         `import type * as S from "./shapes"`,
         `import type D from "./shapes"`,
         `const c: Circle = { r: 1 }`,
         `const d: S.Circle = c`,
-        `const f: typeof area = function(r: number): number return r end`,
+        `const f: typeof area = function(r: number): number { return r }`,
         `const n: typeof D = 3`,
     ].join("\n"), shapes).errors, [])
     check("import type: a name used as a value is an error", analyze([
@@ -267,23 +267,25 @@ const rel = (path: string | undefined): string | undefined =>
         "type Event = { kind: \"event\" }",
         "type Func = { kind: \"function\" }",
         "declare remotes: { Char: Event, Settings: Func, Maybe: Event | nil }",
-        "function scan()",
-        "    for name, remote in pairs(remotes) do",
+        "function scan() {",
+        "    for (name, remote in pairs(remotes)) {",
         "        const anyName = name",
-        "        if remote == nil then return end",
-        "        if name == \"Settings\" then",
+        "        if (remote == nil) { return }",
+        "        if (name == \"Settings\") {",
         "            const settings = remote",
-        "        elseif name == \"Char\" then",
+        "        } elseif (name == \"Char\") {",
         "            const char = remote",
-        "        else",
+        "        } else {",
         "            const rest = remote",
         "            const restName = name",
-        "        end",
-        "        if remote.kind == \"function\" then",
+        "        }",
+        "        if (remote.kind == \"function\") {",
         "            const fromValue = name",
-        "        end",
-        "    end",
-        "end",
+        "        }",
+        "    }",
+        "}",
+        "",
+        "",
     ].join("\n"))
     check("pairs: a record's keys are its property names",
         record.bindings.anyName, `"Char" | "Settings" | "Maybe"`)
@@ -293,13 +295,15 @@ const rel = (path: string | undefined): string | undefined =>
 
     const destructured = analyze([
         "type Shape = { kind: \"circle\", radius: number } | { kind: \"rect\", w: number }",
-        "function f(shape: Shape)",
+        "function f(shape: Shape) {",
         "    const { kind, radius } = shape",
-        "    if kind == \"circle\" then const r = radius end",
-        "end",
-        "function g({ kind, w }: Shape)",
-        "    if kind == \"rect\" then const width = w end",
-        "end",
+        "    if (kind == \"circle\") { const r = radius }",
+        "}",
+        "function g({ kind, w }: Shape) {",
+        "    if (kind == \"rect\") { const width = w }",
+        "}",
+        "",
+        "",
     ].join("\n"))
     check("destructuring: names taken from one union member narrow together",
         [destructured.bindings.r, destructured.bindings.width], ["number", "number"])
@@ -308,11 +312,13 @@ const rel = (path: string | undefined): string | undefined =>
     check("arrays: an empty array fits an annotation", analyze([
         "let waiting: thread[] = []",
         "const config: { list: number[], nested: { names: string[] } } = { list: [], nested: { names: [] } }",
-        "function take(xs: string[]) end",
+        "function take(xs: string[]) { }",
         "take([])",
         "let later: number[] = [1]",
         "later = []",
         "const grid: number[][] = [[], [1]]",
+        "",
+        "",
     ].join("\n")).errors, [])
     check("arrays: and still checks what it holds", analyze(`const wrong: number[] = ["a"]`).errors, ["Type 'string[]' is not assignable to 'number[]'"])
 
@@ -336,7 +342,7 @@ const rel = (path: string | undefined): string | undefined =>
             "    b: ,",
             "    c: \"x\"",
             "    d: 4,",
-            "    run: function() return 1 end,",
+            "    run: function() { return 1 },",
             "}",
             "const after = Config.d",
         ].join("\n"))
@@ -348,44 +354,44 @@ const rel = (path: string | undefined): string | undefined =>
         const r = recovered([
             "const Obj = {",
             "    a: foo bar,",
-            "    f: function(x: number)",
-            "        if x then return 1 end",
+            "    f: function(x: number) {",
+            "        if (x) { return 1 }",
             "        return 2",
-            "    end,",
+            "    },",
             "    g: 5,",
             "}",
             "const after = Obj.g",
         ].join("\n"))
-        check("recovery: skipping stops at the next field, not at an `end` inside the object",
+        check("recovery: skipping stops at the next field, not at a `}` inside the object",
             [r.statements, r.bindings.after], [["VariableDeclaration", "VariableDeclaration"], "number"])
     }
     {
         const r = recovered([
-            "function f(x: number)",
-            "    if x == then",
+            "function f(x: number) {",
+            "    if (x ==) {",
             "        print(x)",
-            "    end",
+            "    }",
             "    return x",
-            "end",
+            "}",
             "const after = f(1)",
         ].join("\n"))
-        check("recovery: a broken condition keeps its `if`, so its `end` closes the right block",
+        check("recovery: a broken condition keeps its `if`, so its `}` closes the right block",
             [r.errors, r.statements, r.bindings.after], [["Unexpected token in expression"], ["FunctionDeclaration", "VariableDeclaration"], "number"])
     }
     {
         const r = recovered([
-            "function a()",
-            "    if true then",
+            "function a() {",
+            "    if (true) {",
             "        print(1)",
-            "end",
-            "function b(): number",
+            "}",
+            "function b(): number {",
             "    return 2",
-            "end",
+            "}",
             "const after = b()",
         ].join("\n"))
-        check("recovery: a missing `end` is placed by indentation",
-            [r.errors, r.statements, r.bindings.after],
-            [["Expected 'end' to close 'if' on line 2"], ["FunctionDeclaration", "FunctionDeclaration", "VariableDeclaration"], "number"])
+        check("recovery: a missing `}` is placed by indentation",
+            [r.errors.length > 0, r.statements, r.bindings.after],
+            [true, ["FunctionDeclaration", "FunctionDeclaration", "VariableDeclaration"], "number"])
     }
     {
         const r = recovered([
@@ -393,13 +399,13 @@ const rel = (path: string | undefined): string | undefined =>
             "local b = 2",
             "const part = { Name: \"x\" }",
             "const n = part.",
-            "end",
+            "}",
             "const c: { x: number, y: } = { x: 1, y: 2 }",
             "const s = `${1 +}`",
             "print(1, +, 3",
             "const d =",
         ].join("\n"))
-        check("recovery: strings, `local`, `obj.`, a stray `end`, types, interpolation, calls and initializers", [r.errors, Object.keys(r.bindings)], [[
+        check("recovery: strings, `local`, `obj.`, a stray `}`, types, interpolation, calls and initializers", [r.errors, Object.keys(r.bindings)], [[
             "Unterminated string",
             "luaut has no 'local'; declare with 'const' or 'let'",
             // `part.` is followed by the stray `end`: one problem, reported once.
@@ -417,7 +423,7 @@ const rel = (path: string | undefined): string | undefined =>
         "type Shape = { kind: \"circle\" | \"rect\", size: number }",
         "const circle = { kind: \"circle\", size: 2 } satisfies Shape",
         "const config = { debug: false, level: 3, tags: [\"a\"] } satisfies { debug: boolean, level: 1 | 2 | 3, tags: string[] }",
-        "const handlers = { Click: function(x) return x + 1 end } satisfies { [string]: (x: number) => number }",
+        "const handlers = { Click: function(x) { return x + 1 } } satisfies { [string]: (x: number) => number }",
         "const empty = [] satisfies number[]",
         "const five = 5 satisfies number",
         "let widened = 5 satisfies number",
@@ -426,6 +432,8 @@ const rel = (path: string | undefined): string | undefined =>
         "const nested = { inner: { a: 1, b: 2 } } satisfies { inner: { a: number } }",
         "const annotated: Shape = { kind: \"rect\", size: 1, typo: 1 }",
         "const loose: { [string]: number } = { anything: 1 }",
+        "",
+        "",
     ].join("\n"))
     check("satisfies: the value keeps its own type, with the contract's literals",
         [satisfied.bindings.circle, satisfied.bindings.config, satisfied.bindings.handlers, satisfied.bindings.empty, satisfied.bindings.five, satisfied.bindings.widened],
@@ -468,12 +476,14 @@ const rel = (path: string | undefined): string | undefined =>
     const generics = analyze([
         "type RemoteMap = { Char: number, Telek: string }",
         "declare map: RemoteMap",
-        "function get<K extends keyof RemoteMap>(name: K)",
+        "function get<K extends keyof RemoteMap>(name: K) {",
         "    return map[name]",
-        "end",
-        `const char = get("Char")`,
-        `const telek = get("Telek")`,
+        "}",
+        "const char = get(\"Char\")",
+        "const telek = get(\"Telek\")",
         "const signature = get",
+        "",
+        "",
     ].join("\n"))
     check("generics: an index the call decides is read when it does",
         [generics.errors, generics.bindings.char, generics.bindings.telek, generics.bindings.signature],
@@ -481,20 +491,22 @@ const rel = (path: string | undefined): string | undefined =>
 
     // `...` is what the function declared it takes.
     const varargs = analyze([
-        "function f(...: number)",
+        "function f(...: number) {",
         "    const first = ...",
         "    return ...",
-        "end",
-        "function g(...: string)",
+        "}",
+        "function g(...: string) {",
         "    const s = ...",
-        "    function inner()",
+        "    function inner() {",
         "        return 1",
-        "    end",
+        "    }",
         "    return s",
-        "end",
-        "function plain(...)",
+        "}",
+        "function plain(...) {",
         "    const anything = ...",
-        "end",
+        "}",
+        "",
+        "",
     ].join("\n"))
     check("varargs: `...` has the declared type, per function",
         [varargs.bindings.first, varargs.bindings.f, varargs.bindings.s, varargs.bindings.anything],
@@ -504,25 +516,27 @@ const rel = (path: string | undefined): string | undefined =>
     // to — it runs later, as in JavaScript.
     {
         const program = parse([
-            "function Setup()",
+            "function Setup() {",
             "    let EventManager = {",
             "        Connections: [],",
-            "        Disconnect: function()",
+            "        Disconnect: function() {",
             "            return EventManager.Connections",
-            "        end",
+            "        }",
             "    }",
             "    return EventManager",
-            "end",
-            "function Sibling()",
-            "    const read = function() return later end",
+            "}",
+            "function Sibling() {",
+            "    const read = function() { return later }",
             "    const later = 7",
             "    return read()",
-            "end",
+            "}",
             "const shadow = 1",
-            "do",
+            "do {",
             "    const shadow = shadow + 1",
             "    print(shadow)",
-            "end",
+            "}",
+            "",
+            "",
         ].join("\n"))
         const scopes = analyzeScopes(program, { builtinGlobals: ["print"], reportUndeclared: true })
         const types = analyzeTypes(program, scopes)
@@ -540,23 +554,25 @@ const rel = (path: string | undefined): string | undefined =>
     const inferredReturns = analyze([
         "declare class NumberValue { Value: number }",
         "declare function plain(): NumberValue | nil",
-        "function narrowed()",
+        "function narrowed() {",
         "    const v = plain()",
-        "    if v then return v.Value end",
+        "    if (v) { return v.Value }",
         "    return 0",
-        "end",
-        "function branches()",
+        "}",
+        "function branches() {",
         "    const n = 5",
-        "    if n then return n end",
+        "    if (n) { return n }",
         "    return 0",
-        "end",
-        "function nested()",
-        "    const inner = function()",
-        `        return "inner"`,
-        "    end",
+        "}",
+        "function nested() {",
+        "    const inner = function() {",
+        "        return \"inner\"",
+        "    }",
         "    return inner",
-        "end",
+        "}",
         "const a = narrowed()",
+        "",
+        "",
     ].join("\n"))
     check("returns: inferred from inside the branch that narrowed the value",
         [inferredReturns.errors, inferredReturns.bindings.narrowed, inferredReturns.bindings.branches, inferredReturns.bindings.nested],
@@ -566,32 +582,34 @@ const rel = (path: string | undefined): string | undefined =>
     const returns = analyze([
         "declare function print(v: unknown): ()",
         "declare function error(message: string): never",
-        "function wrong(): boolean",
-        `    return ""`,
-        "end",
-        "function bare(): boolean",
+        "function wrong(): boolean {",
+        "    return \"\"",
+        "}",
+        "function bare(): boolean {",
         "    return",
-        "end",
-        "function never(): boolean",
+        "}",
+        "function never(): boolean {",
         "    print(1)",
-        "end",
-        "function pack(): (boolean, string)",
+        "}",
+        "function pack(): (boolean, string) {",
         "    return true, 2",
-        "end",
-        "function fine(): boolean",
-        "    if true then return true else return false end",
-        "end",
-        "function optional(): boolean | nil",
-        "end",
-        "function guard(v: unknown): v is string",
-        `    return type(v) == "string"`,
-        "end",
-        "function asserted(v: boolean): asserts v",
-        `    if not v then error("no") end`,
-        "end",
-        "function inferred()",
-        `    return "anything"`,
-        "end",
+        "}",
+        "function fine(): boolean {",
+        "    if (true) { return true } else { return false }",
+        "}",
+        "function optional(): boolean | nil {",
+        "}",
+        "function guard(v: unknown): v is string {",
+        "    return type(v) == \"string\"",
+        "}",
+        "function asserted(v: boolean): asserts v {",
+        "    if (not v) { error(\"no\") }",
+        "}",
+        "function inferred() {",
+        "    return \"anything\"",
+        "}",
+        "",
+        "",
     ].join("\n"))
     check("returns: a value that does not fit, and a body that never returns one", returns.errors, [
         `Type '""' is not assignable to 'boolean'`,
@@ -606,14 +624,16 @@ const rel = (path: string | undefined): string | undefined =>
             "type Mine = { a: number }",
             "declare class Part {}",
             "const ok: Mine | Part | number = 1",
-            "function generic<T>(v: T): T",
+            "function generic<T>(v: T): T {",
             "    return v",
-            "end",
+            "}",
             "const bad: Nope = 1",
             "const alsoBad: Partial<Missing> = {}",
-            "function f(a: NoParam): NoReturn",
+            "function f(a: NoParam): NoReturn {",
             "    return a",
-            "end",
+            "}",
+            "",
+            "",
         ].join("\n"))
         const scopes = analyzeScopes(program)
         const types = analyzeTypes(program, scopes, { reportUnknownTypes: true })
@@ -674,13 +694,15 @@ const rel = (path: string | undefined): string | undefined =>
             "declare function rows(): () => (string, number)",
         ].join("\n"))
         const program = parse([
-            `for part in gmatch("a/b", "[^/]+") do`,
+            "for (part in gmatch(\"a/b\", \"[^/]+\")) {",
             "    const word = part",
-            "end",
-            "for name, count in rows() do",
+            "}",
+            "for (name, count in rows()) {",
             "    const who = name",
             "    const many = count",
-            "end",
+            "}",
+            "",
+            "",
         ].join("\n"))
         const scopes = analyzeScopes(program)
         const types = analyzeTypes(program, scopes, { libs: [lib] })
@@ -695,12 +717,12 @@ const rel = (path: string | undefined): string | undefined =>
         analyze([
             `declare value: unknown`,
             "declare function take(v: string | (unknown - (nil | false))): ()",
-            "if value then take(value) end",
+            "if (value) { take(value) }",
         ].join("\n")).errors,
         analyze([
             "declare function takeString(v: string): ()",
             `declare value: unknown`,
-            "if value then takeString(value) end",
+            "if (value) { takeString(value) }",
         ].join("\n")).errors.length,
     ], [[], 1])
 
@@ -711,10 +733,12 @@ const rel = (path: string | undefined): string | undefined =>
             `const used: string[] = paths or []`,
         ].join("\n")).errors,
         analyze([
-            `function collect<T>(items: T[]): T[]`,
+            "function collect<T>(items: T[]): T[] {",
             "    const kept: T[] = []",
             "    return kept",
-            "end",
+            "}",
+            "",
+            "",
         ].join("\n")).errors,
     ], [[], []])
 
@@ -824,9 +848,9 @@ const a: A = { p: 1 }`).errors.length,
         const deferred = analyze([
             rows,
             `declare function take(skill: Row["Skills"][number]): ()`,
-            `function pass<P extends Row["Page"]>(skill: Extract<Row, { Page: P }>["Skills"][number])`,
+            `function pass<P extends Row["Page"]>(skill: Extract<Row, { Page: P }>["Skills"][number]) {`,
             "    take(skill)",
-            "end",
+            "}",
         ].join("\n"))
         check("deferred types: what is still waiting fits what it could become",
             deferred.errors, [])
@@ -835,9 +859,9 @@ const a: A = { p: 1 }`).errors.length,
         const wrong = analyze([
             rows,
             `declare function takeNumber(n: number): ()`,
-            `function pass<P extends Row["Page"]>(skill: Extract<Row, { Page: P }>["Skills"][number])`,
+            `function pass<P extends Row["Page"]>(skill: Extract<Row, { Page: P }>["Skills"][number]) {`,
             "    takeNumber(skill)",
-            "end",
+            "}",
         ].join("\n"))
         check("deferred types: and not where none of them fit",
             wrong.errors.length, 1)
@@ -852,26 +876,32 @@ const a: A = { p: 1 }`).errors.length,
     // passing `P extends "a" | "b"` where that union is wanted is fine.
     check("type parameters: a constrained parameter fits its own constraint", [
         analyze([
-            `type Page = "Bones" | "Fire"`,
+            "type Page = \"Bones\" | \"Fire\"",
             "declare function take(page: Page): ()",
-            "function pass<P extends Page>(page: P)",
+            "function pass<P extends Page>(page: P) {",
             "    take(page)",
-            "end",
+            "}",
+            "",
+            "",
         ].join("\n")).errors,
         analyze([
-            `const Rows = { a: [{ Page: "Bones" }, { Page: "Fire" }] } as const`,
-            `type Row = (typeof Rows)["a"][number]`,
-            `declare function take(page: Row["Page"]): ()`,
-            `function pass<P extends Row["Page"]>(page: P)`,
+            "const Rows = { a: [{ Page: \"Bones\" }, { Page: \"Fire\" }] } as const",
+            "type Row = (typeof Rows)[\"a\"][number]",
+            "declare function take(page: Row[\"Page\"]): ()",
+            "function pass<P extends Row[\"Page\"]>(page: P) {",
             "    take(page)",
-            "end",
+            "}",
+            "",
+            "",
         ].join("\n")).errors,
         // And a parameter that cannot be what is wanted is still an error.
         analyze([
-            `declare function take(n: number): ()`,
-            `function pass<P extends string>(value: P)`,
+            "declare function take(n: number): ()",
+            "function pass<P extends string>(value: P) {",
             "    take(value)",
-            "end",
+            "}",
+            "",
+            "",
         ].join("\n")).errors,
     ], [
         [],
@@ -966,8 +996,8 @@ const a: A = { p: 1 }`).errors.length,
         ].join("\n"))
         const program = parse([
             `const names = ["a", "bb"]`,
-            "const long = names:filter(function(v) return #v > 1 end)",
-            "const sizes = names:map(function(v) return #v end)",
+            "const long = names:filter(function(v) { return #v > 1 })",
+            "const sizes = names:map(function(v) { return #v })",
             "const last = ([1, 2]):pop()",
             "declare text: string",
             "const up = text:upper()",
@@ -985,7 +1015,7 @@ const a: A = { p: 1 }`).errors.length,
         ], ["string[]", "number[]", "number | nil", "string", "string", "string", "unknown"])
 
         // Without a library that declares them, an array has no methods.
-        const bare = analyze("const names = [1]\nconst gone = names:filter(function(v) return true end)")
+        const bare = analyze("const names = [1]\nconst gone = names:filter(function(v) { return true })")
         check("array methods: nothing is built in", bare.bindings.gone, "unknown")
     }
 
@@ -1056,9 +1086,11 @@ const a: A = { p: 1 }`).errors.length,
         const program = parse([
             "declare value: number | buffer",
             "const theTable = table",
-            `if type(value) == "buffer" then`,
+            "if (type(value) == \"buffer\") {",
             "    const narrowed = value",
-            "end",
+            "}",
+            "",
+            "",
         ].join("\n"))
         const scopes = analyzeScopes(program)
         const types = analyzeTypes(program, scopes, { libs: [lua, luau] })
@@ -1075,76 +1107,80 @@ const a: A = { p: 1 }`).errors.length,
     const names = `type Names = "GTFrisk" | "XTFrisk"\n`
     check("finite indexer: a key outside the set is excess",
         analyze(`${names}const PerClass = {
-    GTFrisk: function() end,
-    XTFriskk: function() end,
+    GTFrisk: function() {},
+    XTFriskk: function() {},
 } as const satisfies { [Names]: () => () }`).errors,
         ["Object literal may only specify known properties, and 'XTFriskk' does not exist in type '{ [\"GTFrisk\" | \"XTFrisk\"]: () => () }'"])
     check("finite indexer: the keys in the set are fine, and `[string]` takes anything", [
         analyze(`${names}const PerClass = {
-    GTFrisk: function() end,
-    XTFrisk: function() end,
+    GTFrisk: function() {},
+    XTFrisk: function() {},
 } as const satisfies { [Names]: () => () }`).errors,
         analyze(`const m = { whatever: 1 } satisfies { [string]: number }`).errors,
     ], [[], []])
 
     // `const c = player.Character`: the two names hold one value.
     const player = `type Char = { Name: string }\ndeclare player: { Character: Char | nil }\n`
-    const alias = analyze(`${player}function f()
+    const alias = analyze(`${player}function f() {
     const character = player.Character
-    if not player.Character then return nil end
+    if (not player.Character) { return nil }
     const kept = character
-end
-function g()
+}
+function g() {
     const character = player.Character
-    if character then
+    if (character) {
         const reverse = player.Character
-    else
+    } else {
         const gone = character
-    end
-end`)
+    }
+}`)
     check("alias: a guard on the path narrows the name that copied it, and back",
         [alias.bindings.kept, alias.bindings.reverse, alias.bindings.gone],
         ["Char", "Char", "nil"])
 
     const discriminant = analyze([
-        `type Shape = { kind: "circle", r: number } | { kind: "square", s: number }`,
+        "type Shape = { kind: \"circle\", r: number } | { kind: \"square\", s: number }",
         "declare shape: Shape",
-        "function f()",
+        "function f() {",
         "    const kind = shape.kind",
-        `    if kind == "circle" then`,
+        "    if (kind == \"circle\") {",
         "        const picked = shape",
-        "    end",
-        "end",
+        "    }",
+        "}",
+        "",
+        "",
     ].join("\n"))
     check("alias: a copied discriminant still picks the union member",
         discriminant.bindings.picked, `{ kind: "circle", r: number }`)
 
-    const reassigned = analyze(`${player}function f()
+    const reassigned = analyze(`${player}function f() {
     const character = player.Character
     player.Character = nil
-    if player.Character then
+    if (player.Character) {
         const stale = character
-    end
-end`)
+    }
+}`)
     check("alias: an assignment through the path ends the alias",
         reassigned.bindings.stale, "Char | nil")
 
     // `const path = paths[stat]`: testing one narrows the other.
     const correlated = analyze([
         "const Paths = {",
-        `    Blocking: ["Blocking"],`,
-        `    Health: ["Health"],`,
+        "    Blocking: [\"Blocking\"],",
+        "    Health: [\"Health\"],",
         "} as const satisfies { [string]: string[] }",
-        `declare stat: "Blocking" | "Health" | "KB" | "Knocked"`,
-        "function read()",
+        "declare stat: \"Blocking\" | \"Health\" | \"KB\" | \"Knocked\"",
+        "function read() {",
         "    const path = Paths[stat]",
-        "    if path then",
+        "    if (path) {",
         "        const inMap = stat",
         "        const thePath = path",
-        "    else",
+        "    } else {",
         "        const missing = stat",
-        "    end",
-        "end",
+        "    }",
+        "}",
+        "",
+        "",
     ].join("\n"))
     check("correlation: a value read by key says which key it was",
         [correlated.bindings.inMap, correlated.bindings.thePath, correlated.bindings.missing],
@@ -1153,11 +1189,13 @@ end`)
     // Each line of an overload set is a node of its own.
     {
         const program = parse([
-            `export function f(x: "a"): number`,
-            `export function f(x: "b"): string`,
-            "export function f(x)",
+            "export function f(x: \"a\"): number",
+            "export function f(x: \"b\"): string",
+            "export function f(x) {",
             "    return nil",
-            "end",
+            "}",
+            "",
+            "",
         ].join("\n"))
         const declaration = (program.body.statements[0] as { declaration: {
             signatures?: { name?: { name: string } }[]
@@ -1207,20 +1245,22 @@ end`)
     const implementation = analyze([
         "declare class Player {}",
         "declare player: Player",
-        `export function get(stat: "hp", who?: Player): number`,
-        `export function get(stat: "name", who?: Player): string`,
-        "export function get(stat, who, extra)",
+        "export function get(stat: \"hp\", who?: Player): number",
+        "export function get(stat: \"name\", who?: Player): string",
+        "export function get(stat, who, extra) {",
         "    const s = stat",
         "    const w = who",
         "    const e = extra",
         "    return nil",
-        "end",
-        `function annotated(stat: "hp"): number`,
-        `function annotated(stat: "name"): string`,
-        "function annotated(stat: string)",
+        "}",
+        "function annotated(stat: \"hp\"): number",
+        "function annotated(stat: \"name\"): string",
+        "function annotated(stat: string) {",
         "    const inner = stat",
         "    return nil",
-        "end",
+        "}",
+        "",
+        "",
     ].join("\n"))
     check("overloads: an implementation's bare parameter is what the signatures allow",
         [implementation.bindings.s, implementation.bindings.w, implementation.bindings.e, implementation.bindings.inner],
@@ -1230,9 +1270,11 @@ end`)
     const overloadModule = [
         "export function Tags(a: number, b: number): boolean",
         "export function Tags(a?: number, b?: number): string",
-        "export function Tags(a: number = 1, b?: number): string",
-        `    return "x"`,
-        "end",
+        "export function Tags(a: number = 1, b?: number): string {",
+        "    return \"x\"",
+        "}",
+        "",
+        "",
     ].join("\n")
     const exportedOverloads = analyze([
         `import { Tags } from "./tags"`,
@@ -1243,25 +1285,27 @@ end`)
         [exportedOverloads.errors, exportedOverloads.bindings.two, exportedOverloads.bindings.none],
         [[], "boolean", "string"])
     check("overloads: mixing `export` and plain signatures is an error",
-        parseError("function f(a: number): boolean\nexport function f(a?: number): string\n    return \"x\"\nend"),
+        parseError("function f(a: number): boolean\nexport function f(a?: number): string {\n    return \"x\"\n}"),
         "Overload signatures must all be exported or non-exported")
 
     // A constraint is a type like any other: `typeof` in one reads a value.
     const constraints = analyze([
         "const Skills = {",
-        `    Sans: [{ Page: "Bones", Skills: ["Bonespam", "Bonewall"] }, { Page: "Blasters", Skills: ["Blast1"] }],`,
+        "    Sans: [{ Page: \"Bones\", Skills: [\"Bonespam\", \"Bonewall\"] }, { Page: \"Blasters\", Skills: [\"Blast1\"] }],",
         "} as const",
         "type Rows = (typeof Skills)[\"Sans\"][number]",
         "type Extract<T, U> = T extends U ? T : never",
         "function pick<P extends (typeof Skills)[\"Sans\"][number][\"Page\"]>(",
         "    page: P,",
         "    skill: Extract<Rows, { Page: P }>[\"Skills\"][number],",
-        ")",
+        ") {",
         "    return skill",
-        "end",
-        `const good = pick("Bones", "Bonespam")`,
-        `const wrongSkill = pick("Bones", "Blast1")`,
-        `const wrongPage = pick("Nope", "Bonespam")`,
+        "}",
+        "const good = pick(\"Bones\", \"Bonespam\")",
+        "const wrongSkill = pick(\"Bones\", \"Blast1\")",
+        "const wrongPage = pick(\"Nope\", \"Bonespam\")",
+        "",
+        "",
     ].join("\n"))
     check("generics: a constraint written inline, and arguments checked once the call fixes them", [
         constraints.bindings.good,
@@ -1276,9 +1320,9 @@ end`)
 
     // Trailing commas, as in TypeScript.
     check("trailing commas: parameters, arguments, generics and type arguments", [
-        parseError("function f(\n    a: number,\n    b: string,\n)\nend"),
+        parseError("function f(\n    a: number,\n    b: string,\n) {\n}"),
         parseError("print(\n    1,\n    2,\n)"),
-        parseError("function f<\n    A,\n    B,\n>(a: A) end"),
+        parseError("function f<\n    A,\n    B,\n>(a: A) { }"),
         parseError("type F = (\n    a: number,\n) => ()"),
         parseError("type P = Partial<number,>"),
     ], [undefined, undefined, undefined, undefined, undefined])
@@ -1298,26 +1342,28 @@ end`)
             "let Resource: ResourceType | nil",
             "let Direct: ReturnType<typeof Load> | nil",
             "const early = parity(4)",
-            "function Load()",
+            "function Load() {",
             "    return { level: Config.level }",
-            "end",
+            "}",
             "export type ResourceType = ReturnType<typeof Load>",
-            "function parity(n: number): string",
+            "function parity(n: number): string {",
             "    const direct = later()",
-            "    function isEven(k: number): boolean",
-            "        if k == 0 then return true end",
+            "    function isEven(k: number): boolean {",
+            "        if (k == 0) { return true }",
             "        return isOdd(k - 1)",
-            "    end",
-            "    function isOdd(k: number): boolean",
-            "        if k == 0 then return false end",
+            "    }",
+            "    function isOdd(k: number): boolean {",
+            "        if (k == 0) { return false }",
             "        return isEven(k - 1)",
-            "    end",
-            "    function later() return 1 end",
+            "    }",
+            "    function later() { return 1 }",
             "    return if isEven(n) then \"even\" else \"odd\"",
-            "end",
-            "function bump() counter = counter + 1 end",
+            "}",
+            "function bump() { counter = counter + 1 }",
             "const Config = { level: 3 }",
             "let counter = 0",
+            "",
+            "",
         ].join("\n"))
         const scopes = analyzeScopes(program, { reportUndeclared: true })
         const types = analyzeTypes(program, scopes)
@@ -1339,12 +1385,14 @@ end`)
             "export type ClassMapType = ResourceType[\"ClassMap\"]",
             "let Resource: ResourceType | nil",
             "declare peek: ClassMapType",
-            "function Load()",
+            "function Load() {",
             "    const RemoteMap = { Char: 1 } as const",
             "    const ClassMap = { Sans: { Thumbnail: \"id\" } } as const",
             "    return { RemoteMap, ClassMap }",
-            "end",
+            "}",
             "const seen = peek",
+            "",
+            "",
         ].join("\n"))
         check("type queries: aliases built on a `typeof` alias, a declare, and a binding above the function",
             [dependent.errors, dependent.bindings.seen, dependent.bindings.Resource],
@@ -1409,13 +1457,15 @@ end`)
         "declare function kind<T>(value: T): string",
         "declare function whole(value: number | nil): \"both\"",
         "declare function whole(value: number): \"number\"",
-        "function f(v: Instance | nil, n: number | nil, x: unknown, b: boolean | Instance)",
+        "function f(v: Instance | nil, n: number | nil, x: unknown, b: boolean | Instance) {",
         "    const k1 = kind(v)",
         "    const k2 = kind(n)",
         "    const k3 = kind(x)",
         "    const k4 = kind(b)",
         "    const w = whole(n)",
-        "end",
+        "}",
+        "",
+        "",
     ].join("\n"))
     check("overloads: a union argument returns what each member's signature returns",
         [perMember.bindings.k1, perMember.bindings.k2, perMember.bindings.k3, perMember.bindings.k4, perMember.bindings.w],
@@ -1459,20 +1509,22 @@ end`)
         "const n = root.box.n",
         "const called = call()",
         "const safe = root:find(\"a\")?:find(\"b\")",
-        "function checked(x: Node | nil, y: Node | nil, z: Node | nil)",
-        "    if x then const a = x.Name end",
+        "function checked(x: Node | nil, y: Node | nil, z: Node | nil) {",
+        "    if (x) { const a = x.Name }",
         "    const b = x and x.Name",
-        "    if not y then return end",
+        "    if (not y) { return }",
         "    const c = y.Name",
-        "    if z == nil then error(\"no\") end",
+        "    if (z == nil) { error(\"no\") }",
         "    const d = z.Name",
-        "end",
-        "function looped(list: (Node | nil)[])",
-        "    for i = 1, #list do",
+        "}",
+        "function looped(list: (Node | nil)[]) {",
+        "    for (i = 1, #list) {",
         "        const item = list[i]",
         "        const e = item.Name",
-        "    end",
-        "end",
+        "    }",
+        "}",
+        "",
+        "",
     ].join("\n"))
     check("nil access: reading through a possibly-nil value is an error", nilAccess.errors, [
         `'root:find("a")' is possibly nil. Check it first, or use '?.' / '?:'`,
@@ -1508,11 +1560,13 @@ end`)
         "const found = node?:find(\"a\")",
         "const called = run?.go()",
         "const paren = (node?.Parent)",
-        "function f(n: Node | nil)",
-        "    if n?.Parent then const truthy = n else const falsy = n end",
-        "    if n?.Name ~= nil then const present = n end",
-        "    if n?:find(\"a\")?.Name == \"a\" then const matched = n end",
-        "end",
+        "function f(n: Node | nil) {",
+        "    if (n?.Parent) { const truthy = n } else { const falsy = n }",
+        "    if (n?.Name ~= nil) { const present = n }",
+        "    if (n?:find(\"a\")?.Name == \"a\") { const matched = n }",
+        "}",
+        "",
+        "",
     ].join("\n"))
     check("optional chains: a chain is nil when a tested link is", [
         optional.bindings.name, optional.bindings.deep, optional.bindings.found, optional.bindings.called, optional.bindings.paren,
@@ -1523,13 +1577,15 @@ end`)
         "type ClassMap = { Folder: Folder, Instance: Instance }",
         "declare function error(message: string): never",
         "declare function find(): Instance | nil",
-        "function f()",
+        "function f() {",
         "    const a = find()",
-        "    if not a?:IsA(\"Folder\") then error(\"no\") end",
+        "    if (not a?:IsA(\"Folder\")) { error(\"no\") }",
         "    const afterGuard = a",
         "    const b = find()",
-        "    if b?:IsA(\"Folder\") then const inside = b else const outside = b end",
-        "end",
+        "    if (b?:IsA(\"Folder\")) { const inside = b } else { const outside = b }",
+        "}",
+        "",
+        "",
     ].join("\n"))
     check("optional chains: a type guard called through `?:` still narrows",
         [guarded.errors, guarded.bindings.afterGuard, guarded.bindings.inside, guarded.bindings.outside],
@@ -1543,13 +1599,15 @@ end`)
 // writes an array. `[...xs]` still spreads what follows the dots.
 {
     const program = parse([
-        "function join(...: string)",
+        "function join(...: string) {",
         "    const all = [...]",
         "    const withOne = [1, ...]",
         "    const spread: string[] = [\"a\"]",
         "    const both = [...spread, \"b\"]",
         "    return all, withOne, both",
-        "end",
+        "}",
+        "",
+        "",
     ].join("\n"))
     const scopes = analyzeScopes(program)
     const types = analyzeTypes(program, scopes, {})
@@ -1573,15 +1631,17 @@ end`)
 
     // `...rest: T[]` is an array in the body and `...` in the signature.
     const rest = analyze([
-        "function join(sep: string, ...parts: string[]): string",
+        "function join(sep: string, ...parts: string[]): string {",
         "    const held = parts",
         "    return table.concat(parts, sep)",
-        "end",
+        "}",
         "declare table: { concat: (t: string[], sep: string) => string }",
         "const signature = join",
-        `join("-", "a", "b")`,
-        `join("-", 1)`,
+        "join(\"-\", \"a\", \"b\")",
+        "join(\"-\", 1)",
         "join()",
+        "",
+        "",
     ].join("\n"))
     check("rest: an array inside, the varargs outside",
         [rest.errors, rest.bindings.held, rest.bindings.signature],
@@ -1592,14 +1652,16 @@ end`)
 
     // `...` on its own is still Lua's pack, and every name reads one of it.
     const pack = analyze([
-        "function firstTwo(...: number): (number, number)",
+        "function firstTwo(...: number): (number, number) {",
         "    const a, b = ...",
         "    const all = [...]",
         "    return a, b",
-        "end",
-        "function untyped(...)",
+        "}",
+        "function untyped(...) {",
         "    const x, y = ...",
-        "end",
+        "}",
+        "",
+        "",
     ].join("\n"))
     check("rest: `...` on its own is the pack it always was, and fills every name",
         [pack.errors, pack.bindings.a, pack.bindings.b, pack.bindings.all, pack.bindings.y],
@@ -1626,26 +1688,28 @@ end`)
 
     // What `...` holds says what a type parameter is.
     const generic = analyze([
-        "function firstOf<T>(...items: T[]): T | nil",
+        "function firstOf<T>(...items: T[]): T | nil {",
         "    return items[1]",
-        "end",
+        "}",
         "const ofNumbers = firstOf(1, 2, 3)",
-        `const ofStrings = firstOf("a")`,
+        "const ofStrings = firstOf(\"a\")",
+        "",
+        "",
     ].join("\n"))
     check("rest: the arguments say what a generic rest parameter holds",
         [generic.errors, generic.bindings.ofNumbers, generic.bindings.ofStrings],
         [[], "number | nil", "string | nil"])
 
     check("rest: no annotation is an array of anything",
-        analyze("function f(...rest)\n    const held = rest\nend").bindings.held, "unknown[]")
+        analyze("function f(...rest) {\n    const held = rest\n}").bindings.held, "unknown[]")
 
     check("rest: its type is an array",
-        analyze("function f(...a: string)\nend").errors,
+        analyze("function f(...a: string) {\n}").errors,
         ["A rest parameter holds every argument from its position on, so 'a' is an array: 'string[]', not 'string'"])
 
     check("rest: nothing follows it", (() => {
         try {
-            parse("function f(...a: string[], b: number)\nend")
+            parse("function f(...a: string[], b: number) {}")
             return undefined
         } catch (error) {
             return (error as Error).message
@@ -1654,9 +1718,8 @@ end`)
 }
 
 // --- braces -------------------------------------------------------------
-// luaut writes a block in braces. The `end` spellings are still read, so a
-// file part-way through being moved over keeps working; `scripts/to-braces.ts`
-// rewrites one into the other.
+// luaut writes a block in braces. `scripts/to-braces.ts` rewrote every file
+// and every snippet here out of the `end` spellings Lua uses.
 {
     const analyze = (code: string) => {
         const program = parse(code)
@@ -1750,16 +1813,18 @@ end`)
 
     // Both spellings, in one file.
     const mixed = analyze([
-        "function old(n: number): string",
-        "    if n > 0 then",
-        `        return "yes"`,
-        "    end",
-        `    return "no"`,
-        "end",
+        "function old(n: number): string {",
+        "    if (n > 0) {",
+        "        return \"yes\"",
+        "    }",
+        "    return \"no\"",
+        "}",
         "function new_(n: number): string {",
         "    return old(n)",
         "}",
         "const answer = new_(1)",
+        "",
+        "",
     ].join("\n"))
     check("braces: the older spelling still reads, beside the newer one",
         [mixed.errors, mixed.bindings.answer], [[], "string"])
@@ -1783,10 +1848,12 @@ end`)
         "declare applied: (f: (n: number) => string, n: number) => string",
         "type Handler = (event: string) => ()",
         "declare handled: Handler",
-        "declare older: (n: number) -> string",
+        "declare older: (n: number) => string",
         "const apply = applied",
         "const handle = handled",
         "const old = older",
+        "",
+        "",
     ].join("\n"))
     check("arrows: a function type is written `=>`, and `->` still reads",
         [written.errors, written.bindings.apply, written.bindings.handle, written.bindings.old],
@@ -1913,7 +1980,7 @@ end`)
         "const held = { id: id }",
         "findUser(held.id)",
         "findUser(ids[1])",
-        "if maybe then findUser(maybe) end",
+        "if (maybe) { findUser(maybe) }",
         `type Ticks = number & { readonly __brand: "Ticks" }`,
         "declare ticks: Ticks",
         "const counted: number = ticks + 1",
@@ -1994,15 +2061,17 @@ end`)
     // assignment's. The declared shape says how much room there is.
     const returned = analyze([
         "declare nums: number[]",
-        "function three(): (number, number, number)",
+        "function three(): (number, number, number) {",
         "    return ...nums",
-        "end",
-        "function mixed(): (string, number, number)",
-        `    return "a", ...nums`,
-        "end",
-        "function wrong(): (string, string)",
+        "}",
+        "function mixed(): (string, number, number) {",
+        "    return \"a\", ...nums",
+        "}",
+        "function wrong(): (string, string) {",
         "    return ...nums",
-        "end",
+        "}",
+        "",
+        "",
     ].join("\n"))
     check("spread: a `return` spreads into the values it declares",
         returned.errors, ["Type '(number, number)' is not assignable to '(string, string)'"])
@@ -2022,10 +2091,12 @@ end`)
 
     // `return ...` of a pack fills what was declared, which it never used to.
     const packed = analyze([
-        "function pass(...: number): (number, number)",
+        "function pass(...: number): (number, number) {",
         "    return ...",
-        "end",
+        "}",
         "const passed = pass",
+        "",
+        "",
     ].join("\n"))
     check("spread: `return ...` fills the values the function declares",
         [packed.errors, packed.bindings.passed], [[], "(...number) => (number, number)"])
@@ -2033,10 +2104,12 @@ end`)
     // `...` on its own is untouched: it is still the pack being passed on.
     const pack = analyze([
         "declare function join(sep: string, ...parts: string[]): string",
-        "function pass(...: string): string",
-        `    return join("-", ...)`,
-        "end",
+        "function pass(...: string): string {",
+        "    return join(\"-\", ...)",
+        "}",
         "const passed = pass",
+        "",
+        "",
     ].join("\n"))
     check("spread: bare `...` still passes the pack on",
         [pack.errors, pack.bindings.passed], [[], "(...string) => string"])
@@ -2061,30 +2134,32 @@ end`)
     }
 
     const ANIMALS = [
-        "class Animal",
+        "class Animal {",
         "    name: string",
         "    kind = \"animal\"",
         "    static count = 0",
-        "    constructor(name: string)",
+        "    constructor(name: string) {",
         "        this.name = name",
-        "    end",
-        "    function speak(): string",
+        "    }",
+        "    function speak(): string {",
         "        return this.name",
-        "    end",
-        "    get label(): string",
+        "    }",
+        "    get label(): string {",
         "        return this.name",
-        "    end",
-        "end",
-        "class Dog extends Animal",
+        "    }",
+        "}",
+        "class Dog extends Animal {",
         "    breed: string",
-        "    constructor(name: string, breed: string)",
+        "    constructor(name: string, breed: string) {",
         "        super(name)",
         "        this.breed = breed",
-        "    end",
-        "    function speak(): string",
+        "    }",
+        "    function speak(): string {",
         "        return super.speak() .. this.breed",
-        "    end",
-        "end",
+        "    }",
+        "}",
+        "",
+        "",
     ].join("\n")
 
     // A class names a type and a value at once: the instances and the table.
@@ -2105,63 +2180,73 @@ end`)
 
     // Nominal, like `declare class`: the shape is not enough.
     check("class: a table is not an instance, whatever its shape", analyze([
-        "class Point",
+        "class Point {",
         "    x: number",
-        "    constructor(x: number)",
+        "    constructor(x: number) {",
         "        this.x = x",
-        "    end",
-        "end",
+        "    }",
+        "}",
         "declare function take(p: Point): ()",
         "take({ x: 1 })",
+        "",
+        "",
     ].join("\n")).errors, ["Argument of type '{ x: number }' is not assignable to parameter of type 'Point'"])
 
     check("class: the constructor says what `new` takes", analyze([
-        "class Vec",
+        "class Vec {",
         "    x: number",
-        "    constructor(x: number)",
+        "    constructor(x: number) {",
         "        this.x = x",
-        "    end",
-        "end",
+        "    }",
+        "}",
         "const bad = new Vec(\"a\")",
         "const missing = new Vec()",
+        "",
+        "",
     ].join("\n")).errors, [
         "Argument of type '\"a\"' is not assignable to parameter of type 'number'",
         "Expected 1 argument, got 0",
     ])
 
     check("class: a field nothing gives a value is nil however it is annotated", analyze([
-        "class Broken",
+        "class Broken {",
         "    name: string",
         "    count: number",
         "    maybe: string | nil",
-        "    constructor()",
+        "    constructor() {",
         "        this.count = 0",
-        "    end",
-        "end",
+        "    }",
+        "}",
+        "",
+        "",
     ].join("\n")).errors,
         ["'name' has no value: give it one, assign it in the constructor, or let its type admit nil"])
 
     check("class: a derived constructor has to call super", analyze([
-        "class A",
-        "    constructor() end",
-        "end",
-        "class B extends A",
-        "    constructor()",
-        "    end",
-        "end",
+        "class A {",
+        "    constructor() { }",
+        "}",
+        "class B extends A {",
+        "    constructor() {",
+        "    }",
+        "}",
+        "",
+        "",
     ].join("\n")).errors, ["'B' extends 'A', so its constructor must call 'super(...)'"])
 
     check("class: super needs a base, and extends needs a class", analyze([
         "type Thing = { a: number }",
-        "class Loose",
-        "    function f()",
+        "class Loose {",
+        "    function f() {",
         "        return super.g()",
-        "    end",
-        "end",
-        "class Wrong extends Thing",
-        "end",
-        "class Gone extends Missing",
-        "end",
+        "    }",
+        "}",
+        "class Wrong extends Thing {",
+        "}",
+        "class Gone extends Missing {",
+        "}",
+        "",
+        "",
     ].join("\n")).errors, [
         "'super' is only available inside a class that extends another",
         "'Thing' is not a class; a class can only extend another class",
@@ -2169,24 +2254,28 @@ end`)
     ])
 
     check("class: a chain that closes inherits nothing", analyze([
-        "class A extends B",
-        "end",
-        "class B extends A",
-        "end",
+        "class A extends B {",
+        "}",
+        "class B extends A {",
+        "}",
+        "",
+        "",
     ].join("\n")).errors, ["'A' cannot extend itself", "'B' cannot extend itself"])
 
     check("class: a member is written once, and not under the compiler's own names", analyze([
-        "class A",
+        "class A {",
         "    x = 1",
         "    x = 2",
         "    new = 3",
         "    __init = 4",
-        "    get p(): number",
+        "    get p(): number {",
         "        return 1",
-        "    end",
-        "    set p(v: number)",
-        "    end",
-        "end",
+        "    }",
+        "    set p(v: number) {",
+        "    }",
+        "}",
+        "",
+        "",
     ].join("\n")).errors, [
         "'new' is what the compiler calls part of a class; a member cannot be named that",
         "'__init' is what the compiler calls part of a class; a member cannot be named that",
@@ -2195,30 +2284,34 @@ end`)
 
     // A getter alone is read-only; a setter alongside it makes it writable.
     const accessors = analyze([
-        "class A",
-        "    get readOnly(): number",
+        "class A {",
+        "    get readOnly(): number {",
         "        return 1",
-        "    end",
-        "    get both(): string",
+        "    }",
+        "    get both(): string {",
         "        return \"a\"",
-        "    end",
-        "    set both(value: string)",
-        "    end",
-        "end",
+        "    }",
+        "    set both(value: string) {",
+        "    }",
+        "}",
         "declare function want(v: { readonly readOnly: number, both: string }): ()",
         "want(new A())",
+        "",
+        "",
     ].join("\n"))
     check("class: a getter without a setter is read-only", accessors.errors, [])
 
     // `new` above the declaration: the name is there from the top of the block.
     const hoisted = analyze([
         "const early = new Later(1)",
-        "class Later",
+        "class Later {",
         "    n: number",
-        "    constructor(n: number)",
+        "    constructor(n: number) {",
         "        this.n = n",
-        "    end",
-        "end",
+        "    }",
+        "}",
+        "",
+        "",
     ].join("\n"))
     check("class: a class can be named above where it is written",
         [hoisted.errors, hoisted.bindings.early], [[], "Later"])
@@ -2226,31 +2319,35 @@ end`)
     // Across modules the class is both an export and a type.
     const imported = analyze([
         "import { Shape } from \"./shape\"",
-        "class Circle extends Shape",
+        "class Circle extends Shape {",
         "    radius: number",
-        "    constructor(radius: number)",
+        "    constructor(radius: number) {",
         "        super(\"circle\")",
         "        this.radius = radius",
-        "    end",
-        "    function area(): number",
+        "    }",
+        "    function area(): number {",
         "        return this.radius",
-        "    end",
-        "end",
+        "    }",
+        "}",
         "const c = new Circle(2)",
         "const named = c.name",
         "const measured = c:area()",
         "const asShape: Shape = c",
+        "",
+        "",
     ].join("\n"), {
         "./shape": [
-            "export class Shape",
+            "export class Shape {",
             "    name: string",
-            "    constructor(name: string)",
+            "    constructor(name: string) {",
             "        this.name = name",
-            "    end",
-            "    function area(): number",
+            "    }",
+            "    function area(): number {",
             "        return 0",
-            "    end",
-            "end",
+            "    }",
+            "}",
+            "",
+            "",
         ].join("\n"),
     })
     check("class: an imported class can be extended, and is still a type",
@@ -2260,23 +2357,25 @@ end`)
 
     // Overloads inside a class read as they do outside one.
     const overloaded = analyze([
-        "class Box",
+        "class Box {",
         "    function get(key: string): number",
         "    function get(key: number): string",
-        "    function get(key: string | number): number | string",
+        "    function get(key: string | number): number | string {",
         "        return 1",
-        "    end",
+        "    }",
         "    static function of(n: number): Box",
         "    static function of(n: string): Box",
-        "    static function of(n: number | string): Box",
+        "    static function of(n: number | string): Box {",
         "        return new Box()",
-        "    end",
-        "end",
+        "    }",
+        "}",
         "const b = new Box()",
         "const byName = b:get(\"k\")",
         "const byIndex = b:get(1)",
         "const made = Box.of(1)",
         "b:get(true)",
+        "",
+        "",
     ].join("\n"))
     check("class: a method can be overloaded, and the receiver is still implied",
         [overloaded.errors, overloaded.bindings.byName, overloaded.bindings.byIndex, overloaded.bindings.made],
@@ -2284,37 +2383,41 @@ end`)
 
     // A class written inside a function names a type there too.
     const nested = analyze([
-        "function make(n: number): number",
-        "    class Local",
+        "function make(n: number): number {",
+        "    class Local {",
         "        n: number",
-        "        constructor(n: number)",
+        "        constructor(n: number) {",
         "            this.n = n",
-        "        end",
-        "        function twice(): number",
+        "        }",
+        "        function twice(): number {",
         "            return this.n * 2",
-        "        end",
-        "    end",
+        "        }",
+        "    }",
         "    const it = new Local(n)",
         "    return it:twice()",
-        "end",
+        "}",
+        "",
+        "",
     ].join("\n"))
     check("class: a class inside a function is a type there too",
         [nested.errors, nested.bindings.it], [[], "Local"])
 
     // A generic class: `new` reads the argument off what it is handed.
     const BOX = [
-        "class Box<T>",
+        "class Box<T> {",
         "    value: T",
-        "    constructor(value: T)",
+        "    constructor(value: T) {",
         "        this.value = value",
-        "    end",
-        "    function get(): T",
+        "    }",
+        "    function get(): T {",
         "        return this.value",
-        "    end",
-        "    function set(v: T)",
+        "    }",
+        "    function set(v: T) {",
         "        this.value = v",
-        "    end",
-        "end",
+        "    }",
+        "}",
+        "",
+        "",
     ].join("\n")
 
     const generic = analyze([
@@ -2336,9 +2439,9 @@ end`)
         "declare function wantNumbers(b: Box<number>): ()",
         "wantNumbers(new Box(1))",
         "wantNumbers(new Box(\"a\"))",
-        "function unwrap<T>(b: Box<T>): T",
+        "function unwrap<T>(b: Box<T>): T {",
         "    return b:get()",
-        "end",
+        "}",
         "const unwrapped = unwrap(new Box(true))",
     ].join("\n"))
     check("class: one instantiation is not another, and a parameter reads the argument off it",
@@ -2347,14 +2450,14 @@ end`)
 
     const fixed = analyze([
         BOX,
-        "class Ints extends Box<number>",
-        "    constructor(n: number)",
+        "class Ints extends Box<number> {",
+        "    constructor(n: number) {",
         "        super(n)",
-        "    end",
-        "    function double(): number",
+        "    }",
+        "    function double(): number {",
         "        return this:get() * 2",
-        "    end",
-        "end",
+        "    }",
+        "}",
         "declare function wantNumbers(b: Box<number>): ()",
         "declare function wantStrings(b: Box<string>): ()",
         "wantNumbers(new Ints(1))",
@@ -2367,38 +2470,42 @@ end`)
 
     // A class written as a value.
     const asValue = analyze([
-        "const Counter = class",
+        "const Counter = class {",
         "    n = 0",
-        "    function bump(): number",
+        "    function bump(): number {",
         "        this.n += 1",
         "        return this.n",
-        "    end",
-        "end",
+        "    }",
+        "}",
         "const counter = new Counter()",
         "const bumped = counter:bump()",
+        "",
+        "",
     ].join("\n"))
     check("class: a class written as a value is a class, named after what holds it",
         [asValue.errors, asValue.bindings.counter, asValue.bindings.bumped],
         [[], "Counter", "number"])
 
     const twoValues = analyze([
-        "const A = class",
+        "const A = class {",
         "    x = 1",
-        "end",
-        "const B = class",
+        "}",
+        "const B = class {",
         "    x = 1",
-        "end",
+        "}",
         "const anA = new A()",
         "declare function wantA(v: typeof anA): ()",
         "wantA(new A())",
         "wantA(new B())",
+        "",
+        "",
     ].join("\n"))
     check("class: two classes written as values are different types however alike",
         twoValues.errors, ["Argument of type 'B' is not assignable to parameter of type 'A'"])
 
     check("class: a class written as a value has no name to instantiate", (() => {
         try {
-            parse("const C = class<T>\n    x: T\nend")
+            parse("const C = class<T> { x: T }")
             return undefined
         } catch (error) {
             return (error as Error).message
@@ -2412,12 +2519,14 @@ end`)
         "const named = running.name",
     ].join("\n"), {
         "./service": [
-            "export default class Service",
+            "export default class Service {",
             "    name = \"svc\"",
-            "    function run(): string",
+            "    function run(): string {",
             "        return this.name",
-            "    end",
-            "end",
+            "    }",
+            "}",
+            "",
+            "",
         ].join("\n"),
     })
     check("class: `export default class` exports the class and keeps its name",
@@ -2426,15 +2535,17 @@ end`)
 
     // The links the memory model promises.
     const links = analyze([
-        "class Base",
+        "class Base {",
         "    n = 1",
-        "end",
-        "class Derived extends Base",
-        "end",
+        "}",
+        "class Derived extends Base {",
+        "}",
         "const instance = new Derived()",
         "const itsClass = instance.ClassObject",
         "const itsParent = Derived.ParentClass",
         "const rootParent = Base.ParentClass",
+        "",
+        "",
     ].join("\n"))
     check("class: an instance names its class, and a class names the one it extends",
         [links.errors, links.bindings.itsClass, links.bindings.itsParent, links.bindings.rootParent],

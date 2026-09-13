@@ -155,7 +155,7 @@ export class Parser {
     private indentation: boolean
     /** Populated in recovery mode. */
     readonly errors: ParseError[] = []
-    /** Recovery found a block without its `end`. */
+    /** Recovery found a block without its `}`. */
     missingEnd = false
     /** The column of the first token on each line, for `indentation`. */
     private lineIndent?: Map<number, number>
@@ -525,8 +525,26 @@ export class Parser {
     private parseBraceBlock(): Block {
         const brace = this.advance() // '{'
         const body = this.parseBlock(brace)
-        this.expectCloser("}")
+        if (this.matchPunctuator("}")) return body
+        if (!this.recover) this.error(`Expected '}' to close the block opened on line ${brace.line.start}`)
+        this.softError(`Expected '}' to close the block opened on line ${brace.line.start}`)
+        // Without its `}` the block runs on to the end of the file. Where the
+        // file is indented, a second pass reads the indentation instead — see
+        // `parseWithRecovery`.
+        this.missingEnd = true
         return body
+    }
+
+    /** The `{ ... }` a construct's body is written in. Half-written — the
+     *  `{` not typed yet — it is empty and says so, rather than throwing the
+     *  whole construct away: what has been written is what an editor answers
+     *  from. */
+    private parseBracedBody(what: string): Block {
+        if (this.checkPunctuator("{")) return this.parseBraceBlock()
+        const at = this.current()
+        if (!this.recover) this.error(`Expected '{' to open the body of '${what}'`)
+        this.softError(`Expected '{' to open the body of '${what}'`)
+        return { type: "Block", statements: [], ...spanFrom(at, at) }
     }
 
     /** Does a `{` follow the parenthesized group starting here? That is what
@@ -552,14 +570,7 @@ export class Parser {
         }
     }
 
-    /** The body of a loop or a `do`: `{ ... }`, or `<word> ... end`. */
-    private parseLoopBody(opener: Token, word: "do"): Block {
-        if (this.checkPunctuator("{")) return this.parseBraceBlock()
-        this.expectKeywordSoft(word)
-        const body = this.parseBlock(opener)
-        this.expectEnd(opener)
-        return body
-    }
+
 
     /** `opener` is the token that began the block (`if`, `function`, ...), for
      *  indentation recovery. */
@@ -975,9 +986,7 @@ export class Parser {
     private parseIfStatement(): IfStatement {
         const start = this.current()
         this.expectKeyword("if")
-        // `if (ready) { ... }` closes each clause of its own; `if ready then
-        // ... end` closes the whole chain once, at the end.
-        return this.braceFollowsGroup() ? this.parseBracedIf(start) : this.parseThenIf(start)
+        return this.parseBracedIf(start)
     }
 
     private parseBracedIf(start: Token): IfStatement {
@@ -987,8 +996,7 @@ export class Parser {
             this.expectPunctuator("(")
             const condition = this.expressionOr(() => this.checkPunctuator(")"))
             this.expectCloser(")")
-            if (!this.checkPunctuator("{")) this.error("Expected '{' to open the body of 'if'")
-            const body = this.parseBraceBlock()
+            const body = this.parseBracedBody("if")
             clauses.push({ type: "IfClause", condition, body, ...spanFrom(clauseStart, this.previous()) })
         }
         clause()
@@ -1000,82 +1008,37 @@ export class Parser {
                 clause()
                 continue
             }
-            if (!this.checkPunctuator("{")) this.error("Expected '{' to open the body of 'else'")
-            alternate = this.parseBraceBlock()
+            alternate = this.parseBracedBody("else")
             break
         }
-        return { type: "IfStatement", clauses, alternate, ...spanFrom(start, this.previous()) }
-    }
-
-    private parseThenIf(start: Token): IfStatement {
-        const clauses: IfClause[] = []
-        const untilThen = (): boolean => this.checkKeyword("then")
-        const cond = this.expressionOr(untilThen)
-        this.expectKeywordSoft("then")
-        const body = this.parseBlock(start)
-        clauses.push({ type: "IfClause", condition: cond, body, ...spanFrom(cond, this.previous()) })
-
-        while (this.checkKeyword("elseif")) {
-            const clauseStart = this.current()
-            this.advance()
-            const c = this.expressionOr(untilThen)
-            this.expectKeywordSoft("then")
-            const b = this.parseBlock(start)
-            clauses.push({ type: "IfClause", condition: c, body: b, ...spanFrom(clauseStart, this.previous()) })
-        }
-
-        let alternate: Block | undefined
-        if (this.matchKeyword("else")) {
-            alternate = this.parseBlock(start)
-        }
-
-        this.expectEnd(start)
         return { type: "IfStatement", clauses, alternate, ...spanFrom(start, this.previous()) }
     }
 
     private parseWhileStatement(): WhileStatement {
         const start = this.current()
         this.expectKeyword("while")
-        if (this.braceFollowsGroup()) {
-            this.expectPunctuator("(")
-            const condition = this.expressionOr(() => this.checkPunctuator(")"))
-            this.expectCloser(")")
-            const body = this.parseBraceBlock()
-            return { type: "WhileStatement", condition, body, ...spanFrom(start, this.previous()) }
-        }
-        const condition = this.expressionOr(() => this.checkKeyword("do"))
-        const body = this.parseLoopBody(start, "do")
+        this.expectPunctuator("(")
+        const condition = this.expressionOr(() => this.checkPunctuator(")"))
+        this.expectCloser(")")
+        const body = this.parseBracedBody("while")
         return { type: "WhileStatement", condition, body, ...spanFrom(start, this.previous()) }
     }
 
     private parseRepeatStatement(): RepeatStatement {
         const start = this.current()
         this.expectKeyword("repeat")
-        if (this.checkPunctuator("{")) {
-            const body = this.parseBraceBlock()
-            this.expectKeyword("until")
-            this.expectPunctuator("(")
-            const condition = this.expressionOr(() => this.checkPunctuator(")"))
-            this.expectCloser(")")
-            return { type: "RepeatStatement", body, condition, ...spanFrom(start, this.previous()) }
-        }
-        const body = this.parseBlock(start)
-        let condition: Expression
-        if (this.checkKeyword("until") || !this.recover) {
-            this.expectKeyword("until")
-            condition = this.expressionOr(() => false)
-        } else {
-            this.softError(`Expected 'until' to close 'repeat' on line ${start.line.start}`)
-            this.missingEnd = true
-            condition = this.errorExpression(this.current(), this.cursor)
-        }
+        const body = this.parseBracedBody("repeat")
+        this.expectKeyword("until")
+        this.expectPunctuator("(")
+        const condition = this.expressionOr(() => this.checkPunctuator(")"))
+        this.expectCloser(")")
         return { type: "RepeatStatement", body, condition, ...spanFrom(start, this.previous()) }
     }
 
     private parseDoStatement(): DoStatement {
         const start = this.current()
         this.expectKeyword("do")
-        const body = this.parseStatementBody(start)
+        const body = this.parseBracedBody("do")
         return { type: "DoStatement", body, ...spanFrom(start, this.previous()) }
     }
 
@@ -1083,13 +1046,12 @@ export class Parser {
         const start = this.current()
         this.expectKeyword("for")
         // `for (i = 1, 10) { ... }` — the header is in parentheses, and what
-        // ends it is the `)` rather than a `do`.
-        const braced = this.braceFollowsGroup()
-        if (braced) this.expectPunctuator("(")
+        // ends it is the `)`.
+        this.expectPunctuator("(")
 
         const first = this.parseBindingTarget(true)
 
-        const untilDo = (): boolean => (braced ? this.checkPunctuator(")") : this.checkKeyword("do"))
+        const untilDo = (): boolean => this.checkPunctuator(")")
         if (first.type === "IdentifierPattern" && this.matchOperator("=")) {
             const from = this.expressionOr(() => untilDo() || this.checkPunctuator(","))
             this.expectPunctuator(",")
@@ -1098,7 +1060,7 @@ export class Parser {
             if (this.matchPunctuator(",")) {
                 step = this.expressionOr(untilDo)
             }
-            const body = this.parseForBody(start, braced)
+            const body = this.parseForBody()
             return {
                 type: "NumericForStatement",
                 variable: this.identifierPatternToTypedIdentifier(first),
@@ -1113,7 +1075,7 @@ export class Parser {
         }
         this.expectKeyword("in")
         const iterators = this.expressionListOr(untilDo)
-        const body = this.parseForBody(start, braced)
+        const body = this.parseForBody()
         return {
             type: "GenericForStatement",
             variables, iterators, body,
@@ -1121,11 +1083,9 @@ export class Parser {
         }
     }
 
-    private parseForBody(start: Token, braced: boolean): Block {
-        if (!braced) return this.parseLoopBody(start, "do")
+    private parseForBody(): Block {
         this.expectCloser(")")
-        if (!this.checkPunctuator("{")) this.error("Expected '{' to open the body of 'for'")
-        return this.parseBraceBlock()
+        return this.parseBracedBody("for")
     }
 
     /** `function name() end` declares `name`; `function a.b() end` and
@@ -1257,11 +1217,13 @@ export class Parser {
     }
 
     private parseClassBody(start: Token): ClassMember[] {
-        const braced = this.matchPunctuator("{")
+        void start
+        if (!this.checkPunctuator("{")) this.error("Expected '{' to open the class body")
+        this.advance()
         const members: ClassMember[] = []
         this.classDepth++
         try {
-            while (!(braced ? this.checkPunctuator("}") : this.checkKeyword("end")) && !this.isAtEnd()) {
+            while (!this.checkPunctuator("}") && !this.isAtEnd()) {
                 // A stray `,` or `;` between members is allowed and means
                 // nothing, as a `;` between statements does.
                 if (this.matchPunctuator(",") || this.matchPunctuator(";")) continue
@@ -1271,8 +1233,7 @@ export class Parser {
         } finally {
             this.classDepth--
         }
-        if (braced) this.expectCloser("}")
-        else this.expectEnd(start)
+        this.expectCloser("}")
         return members
     }
 
@@ -2569,12 +2530,10 @@ export class Parser {
         }
     }
 
-    /** A function's statements: `{ ... }`, or the older `... end`. */
+    /** A function's statements. */
     private parseStatementBody(opener: Token): Block {
-        if (this.checkPunctuator("{")) return this.parseBraceBlock()
-        const body = this.parseBlock(opener)
-        this.expectEnd(opener)
-        return body
+        void opener
+        return this.parseBracedBody("function")
     }
 
     private headToBody(head: ReturnType<Parser["parseFunctionHead"]>, opener: Token): FunctionBody {

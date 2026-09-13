@@ -329,43 +329,45 @@ function withoutSpans(key: string, value: unknown): unknown {
     return key === "line" || key === "column" ? undefined : value
 }
 
+if (process.argv[1]?.endsWith("to-braces.ts")) {
 const args = process.argv.slice(2)
-const check = args.includes("--check")
-const targets = args.filter(a => !a.startsWith("--"))
-if (!targets.length) {
-    console.error("usage: tsx scripts/to-braces.ts <file|dir>... [--check]")
-    process.exit(2)
-}
-
-let changed = 0
-let failed = 0
-for (const target of targets.flatMap(files)) {
-    const before = readFileSync(target, "utf8")
-    let after: string
-    try {
-        after = toBraces(before)
-    } catch (error) {
-        console.error(`${target}: ${(error as Error).message}`)
-        failed++
-        continue
+    const check = args.includes("--check")
+    const targets = args.filter(a => !a.startsWith("--"))
+    if (!targets.length) {
+        console.error("usage: tsx scripts/to-braces.ts <file|dir>... [--check]")
+        process.exit(2)
     }
-    if (after === before) continue
-    // The rewrite has to parse, and has to say the same thing: the tree it
-    // makes is compared with the tree the original made.
-    try {
-        if (JSON.stringify(parse(before), withoutSpans) !== JSON.stringify(parse(after), withoutSpans)) {
-            console.error(`${target}: the rewrite does not say the same thing`)
+    
+    let changed = 0
+    let failed = 0
+    for (const target of targets.flatMap(files)) {
+        const before = readFileSync(target, "utf8")
+        let after: string
+        try {
+            after = toBraces(before)
+        } catch (error) {
+            console.error(`${target}: ${(error as Error).message}`)
             failed++
             continue
         }
-    } catch (error) {
-        console.error(`${target}: the rewrite does not parse: ${(error as Error).message}`)
-        failed++
-        continue
+        if (after === before) continue
+        // The rewrite has to parse, and has to say the same thing: the tree it
+        // makes is compared with the tree the original made.
+        try {
+            if (JSON.stringify(parse(before), withoutSpans) !== JSON.stringify(parse(after), withoutSpans)) {
+                console.error(`${target}: the rewrite does not say the same thing`)
+                failed++
+                continue
+            }
+        } catch (error) {
+            console.error(`${target}: the rewrite does not parse: ${(error as Error).message}`)
+            failed++
+            continue
+        }
+        changed++
+        if (!check) writeFileSync(target, after)
+        console.log(`${check ? "would rewrite" : "rewrote"} ${target}`)
     }
-    changed++
-    if (!check) writeFileSync(target, after)
-    console.log(`${check ? "would rewrite" : "rewrote"} ${target}`)
+    console.log(`${changed} file${changed === 1 ? "" : "s"}${failed ? `, ${failed} left alone` : ""}`)
+    process.exit(failed ? 1 : 0)
 }
-console.log(`${changed} file${changed === 1 ? "" : "s"}${failed ? `, ${failed} left alone` : ""}`)
-process.exit(failed ? 1 : 0)
