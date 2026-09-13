@@ -1539,6 +1539,27 @@ end`)
     ], ["Node", "Node | nil", "Node", "Node"])
 }
 
+// `[...]` is the varargs as an array — Lua's `{...}`, written the way luaut
+// writes an array. `[...xs]` still spreads what follows the dots.
+{
+    const program = parse([
+        "function join(...: string)",
+        "    const all = [...]",
+        "    const withOne = [1, ...]",
+        "    const spread: string[] = [\"a\"]",
+        "    const both = [...spread, \"b\"]",
+        "    return all, withOne, both",
+        "end",
+    ].join("\n"))
+    const scopes = analyzeScopes(program)
+    const types = analyzeTypes(program, scopes, {})
+    const bindings: Record<string, string> = {}
+    for (const [id, type] of types.bindingType) bindings[scopes.bindings.get(id)!.name] = formatType(type)
+    check("arrays: `[...]` collects the varargs, and `[...xs]` still spreads",
+        [types.diagnostics.map(d => d.message), bindings.all, bindings.withOne, bindings.both],
+        [[], "string[]", "(number | string)[]", "string[]"])
+}
+
 // --- classes -----------------------------------------------------------
 {
     const analyze = (code: string, modules: Record<string, string> = {}) => {
@@ -1797,6 +1818,145 @@ end`)
     ].join("\n"))
     check("class: a class inside a function is a type there too",
         [nested.errors, nested.bindings.it], [[], "Local"])
+
+    // A generic class: `new` reads the argument off what it is handed.
+    const BOX = [
+        "class Box<T>",
+        "    value: T",
+        "    constructor(value: T)",
+        "        this.value = value",
+        "    end",
+        "    function get(): T",
+        "        return this.value",
+        "    end",
+        "    function set(v: T)",
+        "        this.value = v",
+        "    end",
+        "end",
+    ].join("\n")
+
+    const generic = analyze([
+        BOX,
+        "const ofNumber = new Box(1)",
+        "const ofString = new Box<string>(\"a\")",
+        "const gotNumber = ofNumber:get()",
+        "const gotString = ofString:get()",
+        "ofNumber:set(\"wrong\")",
+    ].join("\n"))
+    check("class: a generic class takes its argument from the constructor, or from what is written",
+        [generic.errors, generic.bindings.ofNumber, generic.bindings.ofString,
+            generic.bindings.gotNumber, generic.bindings.gotString],
+        [["Argument of type '\"wrong\"' is not assignable to parameter of type 'number'"],
+            "Box<number>", "Box<string>", "number", "string"])
+
+    const instantiations = analyze([
+        BOX,
+        "declare function wantNumbers(b: Box<number>): ()",
+        "wantNumbers(new Box(1))",
+        "wantNumbers(new Box(\"a\"))",
+        "function unwrap<T>(b: Box<T>): T",
+        "    return b:get()",
+        "end",
+        "const unwrapped = unwrap(new Box(true))",
+    ].join("\n"))
+    check("class: one instantiation is not another, and a parameter reads the argument off it",
+        [instantiations.errors, instantiations.bindings.unwrapped],
+        [["Argument of type 'Box<string>' is not assignable to parameter of type 'Box<number>'"], "boolean"])
+
+    const fixed = analyze([
+        BOX,
+        "class Ints extends Box<number>",
+        "    constructor(n: number)",
+        "        super(n)",
+        "    end",
+        "    function double(): number",
+        "        return this:get() * 2",
+        "    end",
+        "end",
+        "declare function wantNumbers(b: Box<number>): ()",
+        "declare function wantStrings(b: Box<string>): ()",
+        "wantNumbers(new Ints(1))",
+        "wantStrings(new Ints(1))",
+        "const doubled = new Ints(21):double()",
+    ].join("\n"))
+    check("class: extending a generic class fixes its argument",
+        [fixed.errors, fixed.bindings.doubled],
+        [["Argument of type 'Ints' is not assignable to parameter of type 'Box<string>'"], "number"])
+
+    // A class written as a value.
+    const asValue = analyze([
+        "const Counter = class",
+        "    n = 0",
+        "    function bump(): number",
+        "        this.n += 1",
+        "        return this.n",
+        "    end",
+        "end",
+        "const counter = new Counter()",
+        "const bumped = counter:bump()",
+    ].join("\n"))
+    check("class: a class written as a value is a class, named after what holds it",
+        [asValue.errors, asValue.bindings.counter, asValue.bindings.bumped],
+        [[], "Counter", "number"])
+
+    const twoValues = analyze([
+        "const A = class",
+        "    x = 1",
+        "end",
+        "const B = class",
+        "    x = 1",
+        "end",
+        "const anA = new A()",
+        "declare function wantA(v: typeof anA): ()",
+        "wantA(new A())",
+        "wantA(new B())",
+    ].join("\n"))
+    check("class: two classes written as values are different types however alike",
+        twoValues.errors, ["Argument of type 'B' is not assignable to parameter of type 'A'"])
+
+    check("class: a class written as a value has no name to instantiate", (() => {
+        try {
+            parse("const C = class<T>\n    x: T\nend")
+            return undefined
+        } catch (error) {
+            return (error as Error).message
+        }
+    })(), "A class written as a value takes no type parameters: nothing could write the arguments, got '<' (1:16)")
+
+    // `export default class` declares the name here as well as exporting it.
+    const defaulted = analyze([
+        "import Service from \"./service\"",
+        "const running = new Service()",
+        "const named = running.name",
+    ].join("\n"), {
+        "./service": [
+            "export default class Service",
+            "    name = \"svc\"",
+            "    function run(): string",
+            "        return this.name",
+            "    end",
+            "end",
+        ].join("\n"),
+    })
+    check("class: `export default class` exports the class and keeps its name",
+        [defaulted.errors, defaulted.bindings.running, defaulted.bindings.named],
+        [[], "Service", "string"])
+
+    // The links the memory model promises.
+    const links = analyze([
+        "class Base",
+        "    n = 1",
+        "end",
+        "class Derived extends Base",
+        "end",
+        "const instance = new Derived()",
+        "const itsClass = instance.ClassObject",
+        "const itsParent = Derived.ParentClass",
+        "const rootParent = Base.ParentClass",
+    ].join("\n"))
+    check("class: an instance names its class, and a class names the one it extends",
+        [links.errors, links.bindings.itsClass, links.bindings.itsParent, links.bindings.rootParent],
+        [[], "typeof Derived", "typeof Base", "nil"])
 
     // `new` needs a class.
     check("class: 'new' says so when what follows is not one", analyze([

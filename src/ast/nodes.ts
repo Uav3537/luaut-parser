@@ -61,7 +61,9 @@ export interface ExportStatement extends BaseNode {
  *  right-hand side is any expression, not necessarily a declaration. */
 export interface ExportDefaultStatement extends BaseNode {
     type: "ExportDefaultStatement"
-    declaration: Expression
+    /** `export default class Name ... end` keeps its name: it declares the
+     *  class here as well as exporting it, the way TypeScript's does. */
+    declaration: Expression | ClassDeclaration
 }
 
 export interface ExportSpecifier extends BaseNode {
@@ -281,12 +283,34 @@ export interface FunctionName extends BaseNode {
 export interface ClassDeclaration extends BaseNode {
     type: "ClassDeclaration"
     name: Identifier
-    /** `extends Base` — another class declared in this file or imported. */
+    /** `class Box<T>` — the instance type is then generic, and `Box<number>`
+     *  instantiates it. */
+    typeParams: GenericTypeParameter[]
+    /** `extends Base` / `extends Box<number>` — another class declared in
+     *  this file or imported, with its own arguments filled in. */
     superclass?: Identifier
+    /** The arguments `extends Box<number>` was written with. */
+    superArguments?: TypeNode[]
+    members: ClassMember[]
+}
+
+/** `class ... end` written where a value goes: `const Counter = class ... end`,
+ *  `export default class ... end`. The name is optional and, when written, is
+ *  visible only inside the class — as in JavaScript. An expression has no name
+ *  to instantiate, so it takes no type parameters. */
+export interface ClassExpression extends BaseNode {
+    type: "ClassExpression"
+    name?: Identifier
+    superclass?: Identifier
+    superArguments?: TypeNode[]
     members: ClassMember[]
 }
 
 export type ClassMember = ClassField | ClassMethod | ClassAccessor | ClassConstructor
+
+/** The two ways a class is written. Everything after parsing treats them
+ *  alike: only the name and the type parameters differ. */
+export type ClassLike = ClassDeclaration | ClassExpression
 
 /** `x: number` / `x = 1` / `static count = 0`. An instance field is assigned
  *  when the instance is built, before the constructor body runs; a `static`
@@ -468,6 +492,7 @@ export type Expression =
     | MethodCallExpression
     | NewExpression
     | SuperExpression
+    | ClassExpression
     | ParenthesizedExpression
     | TypeAssertionExpression
     | SatisfiesExpression

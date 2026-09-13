@@ -89,10 +89,31 @@ export interface ClassInfo {
     superclass?: string
     /** The class itself, then each class it extends, nearest first. */
     ancestors: readonly string[]
+    /** For a generic class, the arguments each level of the chain was made
+     *  with, by class name — its own and every class it extends. `Box<number>`
+     *  holds `{ Box: [number] }`, and a `class Ints extends Box<number>` holds
+     *  the same entry under `Box`, which is what tells it apart from a
+     *  `Box<string>`. A class with no type parameters anywhere carries
+     *  nothing, and costs nothing. */
+    typeArguments?: ReadonlyMap<string, readonly Type[]>
 }
 
 export function isClassType(t: Type): t is ObjectType & { class: ClassInfo } {
     return t.kind === "object" && t.class !== undefined
+}
+
+/** Is a class instance one of `want`? It has to *be* that class or extend it,
+ *  and where `want` was made with type arguments they have to fit: a
+ *  `Box<string>` is not a `Box<number>`, and neither is a class extending
+ *  `Box<string>`. A class the caller left uninstantiated says nothing, and is
+ *  let through. */
+function isClassAssignable(got: ClassInfo | undefined, want: ClassInfo): boolean {
+    if (!got || !got.ancestors.includes(want.name)) return false
+    const wanted = want.typeArguments?.get(want.name)
+    if (!wanted?.length) return true
+    const given = got.typeArguments?.get(want.name)
+    if (!given) return true
+    return wanted.every((w, i) => given[i] !== undefined && isAssignable(given[i], w))
 }
 
 export interface FunctionParam { name?: string; type: Type; optional?: boolean }
@@ -303,11 +324,23 @@ export function substitute(t: Type, subst: Map<string, Type>): Type {
         case "object": {
             const entries: [string, ObjectProperty][] = []
             for (const [k, v] of t.properties) entries.push([k, { ...v, type: substitute(v.type, subst) }])
-            return objectType(
+            const out = objectType(
                 entries,
                 t.indexer && { key: substitute(t.indexer.key, subst), value: substitute(t.indexer.value, subst) },
                 t.frozen,
             )
+            // An instantiated class is still that class: `Box<number>` and
+            // `Box<string>` are both `Box`, and only their arguments differ.
+            if (t.name) out.name = t.name
+            if (t.class) {
+                out.class = {
+                    ...t.class,
+                    typeArguments: t.class.typeArguments && new Map(
+                        [...t.class.typeArguments].map(([name, args]) =>
+                            [name, args.map(a => substitute(a, subst))])),
+                }
+            }
+            return out
         }
         case "function": {
             // Don't substitute a function's own generic params (they shadow).
@@ -389,6 +422,15 @@ export function substitute(t: Type, subst: Map<string, Type>): Type {
 
 /** Infer generic bindings by structurally matching a (possibly generic)
  *  `param` type against a concrete `arg` type. Accumulates into `out`. */
+/** The arguments `t` was made with for the class `name` — read off the
+ *  reference it was written as, or off the class it stands for. `Box<number>`
+ *  answers `[number]` either way, and so does a class extending it. */
+function classArguments(t: Type, name: string): readonly Type[] | undefined {
+    if (t.kind === "genericRef") return t.name === name ? t.typeArguments : undefined
+    if (t.kind === "object") return t.class?.typeArguments?.get(name)
+    return undefined
+}
+
 export function unify(param: Type, arg: Type, vars: Set<string>, out: Map<string, Type>): void {
     if (param.kind === "typeParam" && param.constraint && !vars.has(param.name)) {
         unify(param.constraint, arg, vars, out)
@@ -416,10 +458,16 @@ export function unify(param: Type, arg: Type, vars: Set<string>, out: Map<string
             }
             return
         case "object":
-            // A class binds nothing: it is never generic, and a class argument
-            // does not match a table shape. Its members also refer back to
-            // the class itself, so walking them would never end.
-            if (param.class) return
+            // A class binds only through its type arguments — `f(box)` against
+            // `Box<T>` reads `T` off the argument's own `Box` entry. Its
+            // members refer back to the class itself, so walking those would
+            // never end, and a class argument does not match a table shape.
+            if (param.class) {
+                const wanted = param.class.typeArguments?.get(param.class.name)
+                const given = classArguments(arg, param.class.name)
+                if (wanted && given) wanted.forEach((w, i) => given[i] && unify(w, given[i], vars, out))
+                return
+            }
             if (arg.kind === "object" && !arg.class) {
                 for (const [k, pv] of param.properties) {
                     const av = arg.properties.get(k)
@@ -428,6 +476,14 @@ export function unify(param: Type, arg: Type, vars: Set<string>, out: Map<string
                 if (param.indexer && arg.indexer) unify(param.indexer.value, arg.indexer.value, vars, out)
             }
             return
+        case "genericRef": {
+            // `f(b: Box<T>)` given a `Box<number>`: the argument says what `T`
+            // is, whether it arrives as the reference it was written as or as
+            // the class it stands for.
+            const given = classArguments(arg, param.name)
+            if (given) param.typeArguments.forEach((p, i) => given[i] && unify(p, given[i], vars, out))
+            return
+        }
         case "union":
             // Best effort: match against the first member that carries a var.
             for (const m of param.types) unify(m, arg, vars, out)
@@ -723,7 +779,7 @@ function isAssignableInner(a: Type, b: Type): boolean {
     }
     if (a.kind === "object") {
         if (b.kind !== "object") return false
-        if (b.class) return a.class !== undefined && a.class.ancestors.includes(b.class.name)
+        if (b.class) return isClassAssignable(a.class, b.class)
         // A class does satisfy a *shape* — `{ Name: string }` names members it
         // has, as Luau allows — but it is not a table: never a `{ [K]: V }`,
         // and not the empty `{}` either.
@@ -939,8 +995,13 @@ function containsFreeTypeParam(t: Type, seen: Set<Type>, bound: Set<string>): bo
         case "union":
         case "intersection": return t.types.some(m => containsTypeParam(m, seen, bound))
         case "object":
-            // A class is never generic.
-            if (t.class) return false
+            // A class's members refer back to the class, so walking them would
+            // never end. Its type arguments say everything about whether it is
+            // waiting on a parameter: every `T` in a member came from one.
+            if (t.class) {
+                return [...(t.class.typeArguments?.values() ?? [])]
+                    .some(args => args.some(a => containsTypeParam(a, seen, bound)))
+            }
             return [...t.properties.values()].some(v => containsTypeParam(v.type, seen, bound)) ||
                 (!!t.indexer && (containsTypeParam(t.indexer.key, seen, bound) ||
                     containsTypeParam(t.indexer.value, seen, bound)))
@@ -1142,7 +1203,11 @@ function formatTypeUncached(t: Type): string {
             return t.isPack ? `(${inner})` : `[${inner}]`
         }
         case "object": {
-            if (t.name) return t.name
+            if (t.name) {
+                // An instantiated generic class says which one it is.
+                const args = t.class?.typeArguments?.get(t.class.name)
+                return args?.length ? `${t.name}<${args.map(formatType).join(", ")}>` : t.name
+            }
             const props = [...t.properties.entries()]
                 .sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0))
                 .map(([k, v]) => `${v.readonly ? "readonly " : ""}${formatKey(k)}${v.optional ? "?" : ""}: ${formatType(v.type)}`)

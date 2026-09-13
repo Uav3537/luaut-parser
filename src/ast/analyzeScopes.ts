@@ -18,7 +18,7 @@ import type { TypeNode, TypePackNode, TypeofTypeNode } from "./nodes"
 
 import type {
     Program, Block, Statement, Expression, Identifier, TypedIdentifier,
-    FunctionParameter, FunctionBody, TableField,
+    FunctionParameter, FunctionBody, TableField, ClassMember, GenericTypeParameter,
     BindingTarget, ObjectPattern, ArrayPattern, IdentifierPattern,
 } from "./nodes"
 
@@ -517,27 +517,7 @@ class Analyzer {
 
             case "ClassDeclaration": {
                 if (!this.hoisted.has(stmt.name)) this.declare(scope, stmt.name.name, "local", stmt.name, true, "class")
-                if (stmt.superclass) this.reference(scope, stmt.superclass)
-                // Every member is written in the scope around the class, so a
-                // method body sees the same names the class declaration does —
-                // itself included. `this` is not one of them: the parser makes
-                // it a real first parameter, so it is declared with the rest.
-                for (const member of stmt.members) {
-                    switch (member.type) {
-                        case "ClassField":
-                            this.visitType(member.typeAnnotation, scope)
-                            if (member.init) this.visitExpression(member.init, scope)
-                            break
-                        case "ClassMethod":
-                            for (const signature of member.signatures ?? []) this.visitSignature(signature, scope)
-                            this.visitFunctionBody(member.func, scope, member.func.isMethod)
-                            break
-                        case "ClassAccessor":
-                        case "ClassConstructor":
-                            this.visitFunctionBody(member.func, scope, member.func.isMethod)
-                            break
-                    }
-                }
+                this.visitClassBody(stmt, scope)
                 return
             }
 
@@ -695,7 +675,9 @@ class Analyzer {
                 return
 
             case "ExportDefaultStatement":
-                this.visitExpression(stmt.declaration, scope)
+                // `export default class Name ... end` declares `Name` here too.
+                if (stmt.declaration.type === "ClassDeclaration") this.visitStatement(stmt.declaration, scope)
+                else this.visitExpression(stmt.declaration, scope)
                 return
 
             case "ExportNamedStatement":
@@ -769,6 +751,42 @@ class Analyzer {
 
     /** `<K extends typeof config>` — a constraint is a type like any other,
      *  and the `typeof` in it reads a value. */
+    /** A class body. Its type parameters live in a scope of their own, and
+     *  every member is written inside it — so a method's annotations see `T`,
+     *  and everything else sees what the class declaration sees, itself
+     *  included. `this` is not declared here: the parser makes it a real first
+     *  parameter, so it arrives with the rest of them. */
+    private visitClassBody(
+        node: {
+            typeParams?: readonly GenericTypeParameter[]
+            superclass?: Identifier
+            superArguments?: readonly TypeNode[]
+            members: readonly ClassMember[]
+        },
+        outer: Scope,
+    ): void {
+        const scope = node.typeParams?.length ? childScope(outer) : outer
+        this.visitGenerics(node.typeParams, scope)
+        if (node.superclass) this.reference(outer, node.superclass)
+        for (const argument of node.superArguments ?? []) this.visitType(argument, scope)
+        for (const member of node.members) {
+            switch (member.type) {
+                case "ClassField":
+                    this.visitType(member.typeAnnotation, scope)
+                    if (member.init) this.visitExpression(member.init, scope)
+                    break
+                case "ClassMethod":
+                    for (const signature of member.signatures ?? []) this.visitSignature(signature, scope)
+                    this.visitFunctionBody(member.func, scope, member.func.isMethod)
+                    break
+                case "ClassAccessor":
+                case "ClassConstructor":
+                    this.visitFunctionBody(member.func, scope, member.func.isMethod)
+                    break
+            }
+        }
+    }
+
     private visitGenerics(
         generics: readonly { constraint?: TypeNode; default?: TypeNode | TypePackNode }[] | undefined,
         scope: Scope,
@@ -879,6 +897,15 @@ class Analyzer {
 
             case "SuperExpression":
                 return
+
+            case "ClassExpression": {
+                // A named class expression can name itself inside its own body
+                // and nowhere else, as in JavaScript.
+                const inner = childScope(scope)
+                if (expr.name) this.declare(inner, expr.name.name, "local", expr.name, true, "class")
+                this.visitClassBody(expr, inner)
+                return
+            }
 
             case "MethodCallExpression":
                 // `.method` is a method name, not a variable ref.

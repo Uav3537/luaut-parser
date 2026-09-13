@@ -693,6 +693,13 @@ function applyDirectives(directives, diagnostics, lineOf) {
 var UNUSED_EXPECT_ERROR = "Unused '@luaut-expect-error' directive";
 
 // src/ast/builders.ts
+function bindThis(func, at) {
+  bindThisParam(func.params, at);
+  func.isMethod = true;
+}
+function bindThisParam(params, at) {
+  params.unshift({ type: "FunctionParameter", name: "this", ...spanFrom(at, at) });
+}
 var ParseError = class extends Error {
   constructor(message, line, column) {
     super(`${message} (${line}:${column})`);
@@ -1388,7 +1395,7 @@ var Parser = class {
     this.advance();
     if (this.checkIdentifierValue("default")) {
       this.advance();
-      const declaration = this.parseExpression(0);
+      const declaration = this.checkIdentifierValue("class") && this.peek(1).type === "Identifier" && !this.punctuatorAt(2, ":") && !this.operatorAt(2, "=") && !this.punctuatorAt(2, "(") ? this.parseClassDeclaration() : this.parseExpression(0);
       return { type: "ExportDefaultStatement", declaration, ...spanFrom(start, this.previous()) };
     }
     if (this.checkIdentifierValue("type") && this.peek(1).type === "Identifier") {
@@ -1630,29 +1637,79 @@ var Parser = class {
     const start = this.current();
     this.advance();
     const name = this.parseIdentifier();
+    const typeParams = this.checkOperator("<") ? this.parseGenericTypeParameterList() : [];
+    const { superclass, superArguments } = this.parseExtends();
+    const members = this.parseClassBody(start);
+    return {
+      type: "ClassDeclaration",
+      name,
+      typeParams,
+      superclass,
+      superArguments,
+      members,
+      ...spanFrom(start, this.previous())
+    };
+  }
+  /** `class ... end` as a value. It may be named — the name is for the class
+   *  itself, not for the scope around it — and takes no type parameters,
+   *  since nothing could write the arguments. */
+  parseClassExpression() {
+    const start = this.current();
+    this.advance();
+    const name = this.checkType("Identifier") && !this.checkIdentifierValue("extends") && !this.punctuatorAt(1, ":") && !this.operatorAt(1, "=") && !this.punctuatorAt(1, "(") ? this.parseIdentifier() : void 0;
     if (this.checkOperator("<")) {
-      this.error("A class cannot take type parameters yet; write a generic method instead");
+      this.error("A class written as a value takes no type parameters: nothing could write the arguments");
     }
-    let superclass;
-    if (this.checkIdentifierValue("extends")) {
-      this.advance();
-      superclass = this.parseIdentifier();
+    const { superclass, superArguments } = this.parseExtends();
+    const members = this.parseClassBody(start);
+    return { type: "ClassExpression", name, superclass, superArguments, members, ...spanFrom(start, this.previous()) };
+  }
+  /** `extends Base` / `extends Box<number>`. */
+  parseExtends() {
+    if (!this.checkIdentifierValue("extends")) return {};
+    this.advance();
+    const superclass = this.parseIdentifier();
+    let superArguments;
+    if (this.checkOperator("<")) {
+      const written = this.tryTypeArguments();
+      if (written) superArguments = written;
     }
+    return { superclass, superArguments };
+  }
+  parseClassBody(start) {
     const members = [];
     this.classDepth++;
     try {
       while (!this.checkKeyword("end") && !this.isAtEnd()) {
         if (this.matchPunctuator(",") || this.matchPunctuator(";")) continue;
-        const member = this.parseClassMember(name);
+        const member = this.parseClassMember();
         if (member) members.push(member);
       }
     } finally {
       this.classDepth--;
     }
     this.expectEnd(start);
-    return { type: "ClassDeclaration", name, superclass, members, ...spanFrom(start, this.previous()) };
+    return members;
   }
-  parseClassMember(className) {
+  /** `<A, B>` in a type position that is not a call: the arguments a class
+   *  extends its base with. */
+  tryTypeArguments() {
+    const saved = this.cursor;
+    try {
+      this.expectOperator("<");
+      const args = [this.parseType()];
+      while (this.matchPunctuator(",")) args.push(this.parseType());
+      this.expectOperator(">");
+      return args;
+    } catch (error) {
+      if (error instanceof ParseError || error instanceof ParseRecover) {
+        this.cursor = saved;
+        return void 0;
+      }
+      throw error;
+    }
+  }
+  parseClassMember() {
     const start = this.current();
     const isStatic = this.checkIdentifierValue("static") && !this.punctuatorAt(1, ":") && !this.operatorAt(1, "=");
     if (isStatic) this.advance();
@@ -1664,7 +1721,7 @@ var Parser = class {
       while (true) {
         const head = this.parseFunctionHead();
         if (this.isClassOverloadContinuation(memberName.name, isStatic)) {
-          if (!isStatic) this.bindThisParam(head.params, className);
+          if (!isStatic) bindThisParam(head.params, start);
           signatures.push({ ...this.headToSignature(head), name: written });
           if (isStatic) this.advance();
           this.expectKeyword("function");
@@ -1672,7 +1729,7 @@ var Parser = class {
           continue;
         }
         const func = this.headToBody(head, start);
-        if (!isStatic) this.bindThis(func, className);
+        if (!isStatic) bindThis(func, start);
         return {
           type: "ClassMethod",
           name: memberName,
@@ -1688,7 +1745,7 @@ var Parser = class {
       const head = this.parseFunctionHead();
       if (head.returnType) this.problem("A constructor has no return type; it always builds the instance");
       const func = this.headToBody(head, start);
-      this.bindThis(func, className);
+      bindThis(func, start);
       return { type: "ClassConstructor", func, ...spanFrom(start, this.previous()) };
     }
     if ((this.checkIdentifierValue("get") || this.checkIdentifierValue("set")) && this.peek(1).type === "Identifier" && this.punctuatorAt(2, "(")) {
@@ -1696,7 +1753,7 @@ var Parser = class {
       const memberName = this.parseIdentifier();
       const head = this.parseFunctionHead();
       const func = this.headToBody(head, start);
-      if (!isStatic) this.bindThis(func, className);
+      if (!isStatic) bindThis(func, start);
       const written = func.params.length - (isStatic ? 0 : 1);
       if (kind === "get" && written > 0) {
         this.problem("A getter takes no parameters");
@@ -1730,18 +1787,6 @@ var Parser = class {
    *  `function T:m()` gets a real `self`. Every later pass — scopes, types,
    *  arity, lowering — then sees an ordinary parameter and needs to know
    *  nothing about classes. */
-  bindThis(func, className) {
-    this.bindThisParam(func.params, className);
-    func.isMethod = true;
-  }
-  bindThisParam(params, className) {
-    params.unshift({
-      type: "FunctionParameter",
-      name: "this",
-      typeAnnotation: { type: "TypeReference", base: className.name, typeArguments: [], ...spanFrom(className, className) },
-      ...spanFrom(className, className)
-    });
-  }
   /** After a bodyless head inside a class body, does another declaration of
    *  the same member follow? Then the head was an overload signature. */
   isClassOverloadContinuation(name, isStatic) {
@@ -2036,6 +2081,9 @@ var Parser = class {
     }
     if (t.type === "Keyword" && t.value === "if") {
       return this.parseIfElseExpression();
+    }
+    if (t.type === "Identifier" && t.value === "class") {
+      return this.parseClassExpression();
     }
     if (t.type === "Punctuator" && t.value === "{") {
       return this.parseTableExpression();
@@ -2391,8 +2439,12 @@ var Parser = class {
     while (!this.checkPunctuator("]")) {
       if (this.checkOperator("...")) {
         const dots = this.advance();
-        const argument = this.expressionOr(stop);
-        elements.push({ type: "SpreadElement", argument, ...spanFrom(dots, argument) });
+        if (this.checkPunctuator("]") || this.checkPunctuator(",")) {
+          elements.push({ type: "VarargExpression", ...spanFrom(dots, dots) });
+        } else {
+          const argument = this.expressionOr(stop);
+          elements.push({ type: "SpreadElement", argument, ...spanFrom(dots, argument) });
+        }
       } else {
         elements.push(this.expressionOr(stop));
       }
@@ -3597,23 +3649,7 @@ var Analyzer = class {
       }
       case "ClassDeclaration": {
         if (!this.hoisted.has(stmt.name)) this.declare(scope, stmt.name.name, "local", stmt.name, true, "class");
-        if (stmt.superclass) this.reference(scope, stmt.superclass);
-        for (const member of stmt.members) {
-          switch (member.type) {
-            case "ClassField":
-              this.visitType(member.typeAnnotation, scope);
-              if (member.init) this.visitExpression(member.init, scope);
-              break;
-            case "ClassMethod":
-              for (const signature of member.signatures ?? []) this.visitSignature(signature, scope);
-              this.visitFunctionBody(member.func, scope, member.func.isMethod);
-              break;
-            case "ClassAccessor":
-            case "ClassConstructor":
-              this.visitFunctionBody(member.func, scope, member.func.isMethod);
-              break;
-          }
-        }
+        this.visitClassBody(stmt, scope);
         return;
       }
       case "FunctionDeclarationStatement": {
@@ -3735,7 +3771,8 @@ var Analyzer = class {
         this.visitStatement(stmt.declaration, scope);
         return;
       case "ExportDefaultStatement":
-        this.visitExpression(stmt.declaration, scope);
+        if (stmt.declaration.type === "ClassDeclaration") this.visitStatement(stmt.declaration, scope);
+        else this.visitExpression(stmt.declaration, scope);
         return;
       case "ExportNamedStatement":
         if (!stmt.source) {
@@ -3783,6 +3820,33 @@ var Analyzer = class {
   }
   /** `<K extends typeof config>` — a constraint is a type like any other,
    *  and the `typeof` in it reads a value. */
+  /** A class body. Its type parameters live in a scope of their own, and
+   *  every member is written inside it — so a method's annotations see `T`,
+   *  and everything else sees what the class declaration sees, itself
+   *  included. `this` is not declared here: the parser makes it a real first
+   *  parameter, so it arrives with the rest of them. */
+  visitClassBody(node, outer) {
+    const scope = node.typeParams?.length ? childScope(outer) : outer;
+    this.visitGenerics(node.typeParams, scope);
+    if (node.superclass) this.reference(outer, node.superclass);
+    for (const argument of node.superArguments ?? []) this.visitType(argument, scope);
+    for (const member of node.members) {
+      switch (member.type) {
+        case "ClassField":
+          this.visitType(member.typeAnnotation, scope);
+          if (member.init) this.visitExpression(member.init, scope);
+          break;
+        case "ClassMethod":
+          for (const signature of member.signatures ?? []) this.visitSignature(signature, scope);
+          this.visitFunctionBody(member.func, scope, member.func.isMethod);
+          break;
+        case "ClassAccessor":
+        case "ClassConstructor":
+          this.visitFunctionBody(member.func, scope, member.func.isMethod);
+          break;
+      }
+    }
+  }
   visitGenerics(generics, scope) {
     for (const generic of generics ?? []) {
       this.visitType(generic.constraint, scope);
@@ -3872,6 +3936,12 @@ var Analyzer = class {
         return;
       case "SuperExpression":
         return;
+      case "ClassExpression": {
+        const inner = childScope(scope);
+        if (expr.name) this.declare(inner, expr.name.name, "local", expr.name, true, "class");
+        this.visitClassBody(expr, inner);
+        return;
+      }
       case "MethodCallExpression":
         this.visitExpression(expr.object, scope);
         for (const arg of expr.arguments) this.visitExpression(arg, scope);
@@ -3953,6 +4023,14 @@ function preludeProgram() {
 function isClassType(t) {
   return t.kind === "object" && t.class !== void 0;
 }
+function isClassAssignable(got, want) {
+  if (!got || !got.ancestors.includes(want.name)) return false;
+  const wanted = want.typeArguments?.get(want.name);
+  if (!wanted?.length) return true;
+  const given = got.typeArguments?.get(want.name);
+  if (!given) return true;
+  return wanted.every((w, i) => given[i] !== void 0 && isAssignable(given[i], w));
+}
 function typeParam(name, constraint, isConst) {
   return { kind: "typeParam", name, constraint, isConst };
 }
@@ -4004,11 +4082,21 @@ function substitute(t, subst) {
     case "object": {
       const entries = [];
       for (const [k, v] of t.properties) entries.push([k, { ...v, type: substitute(v.type, subst) }]);
-      return objectType(
+      const out = objectType(
         entries,
         t.indexer && { key: substitute(t.indexer.key, subst), value: substitute(t.indexer.value, subst) },
         t.frozen
       );
+      if (t.name) out.name = t.name;
+      if (t.class) {
+        out.class = {
+          ...t.class,
+          typeArguments: t.class.typeArguments && new Map(
+            [...t.class.typeArguments].map(([name, args]) => [name, args.map((a) => substitute(a, subst))])
+          )
+        };
+      }
+      return out;
     }
     case "function": {
       const inner = t.typeParams ? new Map([...subst].filter(([k]) => !t.typeParams.includes(k))) : subst;
@@ -4075,6 +4163,11 @@ function substitute(t, subst) {
       return t;
   }
 }
+function classArguments(t, name) {
+  if (t.kind === "genericRef") return t.name === name ? t.typeArguments : void 0;
+  if (t.kind === "object") return t.class?.typeArguments?.get(name);
+  return void 0;
+}
 function unify(param, arg, vars, out) {
   if (param.kind === "typeParam" && param.constraint && !vars.has(param.name)) {
     unify(param.constraint, arg, vars, out);
@@ -4102,7 +4195,12 @@ function unify(param, arg, vars, out) {
       }
       return;
     case "object":
-      if (param.class) return;
+      if (param.class) {
+        const wanted = param.class.typeArguments?.get(param.class.name);
+        const given = classArguments(arg, param.class.name);
+        if (wanted && given) wanted.forEach((w, i) => given[i] && unify(w, given[i], vars, out));
+        return;
+      }
       if (arg.kind === "object" && !arg.class) {
         for (const [k, pv] of param.properties) {
           const av = arg.properties.get(k);
@@ -4111,6 +4209,11 @@ function unify(param, arg, vars, out) {
         if (param.indexer && arg.indexer) unify(param.indexer.value, arg.indexer.value, vars, out);
       }
       return;
+    case "genericRef": {
+      const given = classArguments(arg, param.name);
+      if (given) param.typeArguments.forEach((p, i) => given[i] && unify(p, given[i], vars, out));
+      return;
+    }
     case "union":
       for (const m of param.types) unify(m, arg, vars, out);
       return;
@@ -4294,7 +4397,7 @@ function isAssignableInner(a, b) {
   }
   if (a.kind === "object") {
     if (b.kind !== "object") return false;
-    if (b.class) return a.class !== void 0 && a.class.ancestors.includes(b.class.name);
+    if (b.class) return isClassAssignable(a.class, b.class);
     if (a.class && (b.indexer || b.properties.size === 0)) return false;
     for (const [name, bp] of b.properties) {
       const ap = a.properties.get(name);
@@ -4443,7 +4546,9 @@ function containsFreeTypeParam(t, seen, bound) {
     case "intersection":
       return t.types.some((m) => containsTypeParam(m, seen, bound));
     case "object":
-      if (t.class) return false;
+      if (t.class) {
+        return [...t.class.typeArguments?.values() ?? []].some((args) => args.some((a) => containsTypeParam(a, seen, bound)));
+      }
       return [...t.properties.values()].some((v) => containsTypeParam(v.type, seen, bound)) || !!t.indexer && (containsTypeParam(t.indexer.key, seen, bound) || containsTypeParam(t.indexer.value, seen, bound));
     case "function": {
       const inner = t.typeParams?.length ? /* @__PURE__ */ new Set([...bound, ...t.typeParams]) : bound;
@@ -4613,7 +4718,10 @@ function formatTypeUncached(t) {
       return t.isPack ? `(${inner})` : `[${inner}]`;
     }
     case "object": {
-      if (t.name) return t.name;
+      if (t.name) {
+        const args = t.class?.typeArguments?.get(t.class.name);
+        return args?.length ? `${t.name}<${args.map(formatType).join(", ")}>` : t.name;
+      }
       const props = [...t.properties.entries()].sort(([a], [b]) => a < b ? -1 : a > b ? 1 : 0).map(([k, v]) => `${v.readonly ? "readonly " : ""}${formatKey(k)}${v.optional ? "?" : ""}: ${formatType(v.type)}`);
       if (t.indexer) props.push(`[${formatType(t.indexer.key)}]: ${formatType(t.indexer.value)}`);
       return props.length ? `{ ${props.join(", ")} }` : "{}";
@@ -4783,14 +4891,30 @@ function moduleExports(program, scopes, types, resolveModule) {
       else if (declaration.type === "ClassDeclaration") {
         exportName(declaration.name, declaration.name.name);
         const instance = types.aliases.get(declaration.name.name);
-        if (instance) exportedTypes.set(declaration.name.name, { type: instance, params: [] });
+        if (instance) {
+          exportedTypes.set(declaration.name.name, {
+            type: instance,
+            params: declaration.typeParams.map((g) => g.name)
+          });
+        }
       } else for (const target of declaration.names) exportPattern(target);
     } else if (stmt.type === "ExportTypeAliasStatement") {
       const name = stmt.alias.name.name;
       const type = types.aliases.get(name);
       if (type) exportedTypes.set(name, { type, params: stmt.alias.generics.map((g) => g.name) });
     } else if (stmt.type === "ExportDefaultStatement") {
-      defaultType = types.typeOf.get(stmt.declaration) ?? anyType;
+      if (stmt.declaration.type === "ClassDeclaration") {
+        const id = byDeclaration.get(stmt.declaration.name);
+        defaultType = (id !== void 0 ? types.bindingType.get(id) : void 0) ?? anyType;
+        const instance = types.aliases.get(stmt.declaration.name.name);
+        if (instance) {
+          const exported = { type: instance, params: stmt.declaration.typeParams.map((g) => g.name) };
+          exportedTypes.set(stmt.declaration.name.name, exported);
+          exportedTypes.set("default", exported);
+        }
+      } else {
+        defaultType = types.typeOf.get(stmt.declaration) ?? anyType;
+      }
     } else if (stmt.type === "ExportNamedStatement") {
       if (stmt.source) {
         const from = resolveModule?.(stmt.source.value);
@@ -4918,7 +5042,18 @@ function keepsLiterals(paramType) {
   const members = paramType.constraint.kind === "union" ? paramType.constraint.types : [paramType.constraint];
   return members.some((m) => m.kind === "literal");
 }
-var CLASS_RESERVED = /* @__PURE__ */ new Set(["new", "__init", "__index", "__newindex", "__getters", "__setters", "__dynamic"]);
+var CLASS_LINKS = /* @__PURE__ */ new Set(["new", "ClassObject", "ParentClass"]);
+var CLASS_RESERVED = /* @__PURE__ */ new Set([
+  "new",
+  "ClassObject",
+  "ParentClass",
+  "__init",
+  "__index",
+  "__newindex",
+  "__getters",
+  "__setters",
+  "__dynamic"
+]);
 function callsSuper(block) {
   let found = false;
   walkNodes(block, (node) => {
@@ -5188,6 +5323,11 @@ var TypeAnalyzer = class {
           this.aliases.set(qualified, exported.type);
         }
       }
+      const asDefault = stmt.defaultImport && exports2.types.get("default");
+      if (stmt.defaultImport && asDefault) {
+        this.importedTypes.set(stmt.defaultImport.name, asDefault);
+        this.aliases.set(stmt.defaultImport.name, asDefault.type);
+      }
       for (const s of stmt.specifiers) {
         const exported = exports2.types.get(s.imported.name);
         if (exported) {
@@ -5222,19 +5362,8 @@ var TypeAnalyzer = class {
       if (stmt.type === "DeclareClassStatement") {
         this.aliasDefs.set(stmt.name.name, { params: [], node: stmt.body, class: stmt });
       }
-      const declaration = stmt.type === "ExportStatement" ? stmt.declaration : stmt;
-      if (declaration.type === "ClassDeclaration") {
-        this.aliasDefs.set(declaration.name.name, {
-          params: [],
-          node: {
-            type: "TableTypeNode",
-            properties: [],
-            line: declaration.line,
-            column: declaration.column
-          },
-          runtimeClass: declaration
-        });
-      }
+      const declaration = stmt.type === "ExportStatement" || stmt.type === "ExportDefaultStatement" ? stmt.declaration : stmt;
+      if (declaration.type === "ClassDeclaration") this.registerClass(declaration);
     }
   }
   /** A class written inside a function or a block names a type too — its
@@ -5244,19 +5373,24 @@ var TypeAnalyzer = class {
   registerNestedClasses() {
     walkNodes(this.program.body, (node) => {
       const record = node;
-      if (record.type !== "ClassDeclaration" || !record.name) return;
-      if (this.aliasDefs.has(record.name.name)) return;
+      if (record.type !== "ClassDeclaration") return;
       const declaration = node;
-      this.aliasDefs.set(declaration.name.name, {
-        params: [],
-        node: {
-          type: "TableTypeNode",
-          properties: [],
-          line: declaration.line,
-          column: declaration.column
-        },
-        runtimeClass: declaration
-      });
+      if (this.aliasDefs.has(declaration.name.name)) return;
+      this.registerClass(declaration);
+    });
+  }
+  /** A class's name as a type. `node` is a placeholder: `resolveDef` and
+   *  `instantiateAlias` both go to the declaration itself. */
+  registerClass(declaration) {
+    this.aliasDefs.set(declaration.name.name, {
+      params: declaration.typeParams,
+      node: {
+        type: "TableTypeNode",
+        properties: [],
+        line: declaration.line,
+        column: declaration.column
+      },
+      runtimeClass: declaration
     });
   }
   /** A non-generic definition's type. */
@@ -5322,17 +5456,26 @@ var TypeAnalyzer = class {
   // ============================================================
   // `class ... end` — the runtime kind
   // ------------------------------------------------------------
-  // A declaration says two things at once. Its *name as a type* is the
-  // type of its instances, nominal the way `declare class` is: only the
-  // class and the classes extending it produce one. Its *name as a value*
-  // is the class table — the statics, plus the `new` that builds an
-  // instance, which is an ordinary function and can be called as one.
+  // A declaration says two things at once. Its *name as a type* is
+  // the type of its instances, nominal the way `declare class` is:
+  // only the class and the classes extending it produce one. Its
+  // *name as a value* is the class table — the statics, the class
+  // it extends (`ParentClass`), and the `new` that builds an
+  // instance, which is an ordinary function and can be called as
+  // one. An instance reaches its own class back through
+  // `ClassObject`.
   //
-  // Members are resolved into one shape, filled in two passes: the fields
-  // first, then the functions. That order is what lets a method body read
-  // `this.x` while the class it belongs to is still being worked out.
+  // Members are resolved into one shape, filled in two passes: the
+  // fields first, then the functions. That order is what lets a
+  // method body read `this.x` while the class it belongs to is
+  // still being worked out.
   // ============================================================
   classShapes = /* @__PURE__ */ new WeakMap();
+  classValues = /* @__PURE__ */ new WeakMap();
+  /** Identity for a class written as a value, which has no name to be known
+   *  by: two of them are different types however alike they look. */
+  classIdentities = /* @__PURE__ */ new WeakMap();
+  classIdentityCount = 0;
   /** The class whose members are being read, so `super` knows its base. */
   currentClass;
   withClass(stmt, fn2) {
@@ -5344,6 +5487,37 @@ var TypeAnalyzer = class {
       this.currentClass = previous;
     }
   }
+  /** What the class is known by. A declaration is known by its name, the way
+   *  a `declare class` is — that is what makes it the same class across
+   *  modules. A class written as a value is known by where it is written. */
+  classIdentity(stmt) {
+    if (stmt.type === "ClassDeclaration") return stmt.name.name;
+    let identity = this.classIdentities.get(stmt);
+    if (!identity) {
+      identity = `${stmt.name?.name ?? "class"}@${++this.classIdentityCount}`;
+      this.classIdentities.set(stmt, identity);
+    }
+    return identity;
+  }
+  /** What it is *shown* as. A class written as a value has no name of its
+   *  own, so it borrows the one it is being bound to — `const Counter =
+   *  class ... end` reads as `Counter` everywhere. */
+  className(stmt) {
+    return stmt.name?.name ?? this.classDisplayNames.get(stmt) ?? "(class)";
+  }
+  classDisplayNames = /* @__PURE__ */ new WeakMap();
+  /** `const Name = class ... end` — the name the class will be known by. */
+  nameClassExpressions(stmt) {
+    stmt.names.forEach((target, i) => {
+      const value = stmt.init[i];
+      if (target.type === "IdentifierPattern" && value?.type === "ClassExpression" && !value.name) {
+        this.classDisplayNames.set(value, target.name);
+      }
+    });
+  }
+  classTypeParams(stmt) {
+    return stmt.type === "ClassDeclaration" ? stmt.typeParams : [];
+  }
   /** The class a declaration extends, when it is one written in this file.
    *  An imported class is reached through its type and its value instead. */
   superDecl(stmt) {
@@ -5351,8 +5525,8 @@ var TypeAnalyzer = class {
     const base = this.aliasDefs.get(stmt.superclass.name)?.runtimeClass;
     return base && base !== stmt && !this.extendsThrough(base, stmt) ? base : void 0;
   }
-  /** Does `from` reach `target` by `extends`? Guards against a cycle
-   *  turning resolution into a loop. */
+  /** Does `from` reach `target` by `extends`? Guards against a cycle turning
+   *  resolution into a loop. */
   extendsThrough(from, target) {
     const seen = /* @__PURE__ */ new Set();
     for (let cls = from; cls && !seen.has(cls); ) {
@@ -5362,70 +5536,125 @@ var TypeAnalyzer = class {
     }
     return false;
   }
-  /** The instance type of what `stmt` extends — a class in this file, or
-   *  any class type a name in scope stands for (an imported one). */
+  /** The instance type of what `stmt` extends, with the arguments it was
+   *  extended with filled in — a class in this file, or any class type a
+   *  name in scope stands for (an imported one). */
   baseInstance(stmt) {
     if (!stmt.superclass) return void 0;
+    const written = (stmt.superArguments ?? []).map((argument) => this.resolveType(argument));
     if (this.aliasDefs.get(stmt.superclass.name)?.runtimeClass) {
       const local = this.superDecl(stmt);
-      return local ? this.instanceType(local) : void 0;
+      if (!local) return void 0;
+      const base = this.instanceType(local);
+      const params = this.classTypeParams(local);
+      if (!params.length) return base;
+      const applied = substitute(base, this.bindTypeArguments(params, written));
+      return applied.kind === "object" ? applied : void 0;
     }
-    const named = this.aliases.get(stmt.superclass.name) ?? this.importedTypes.get(stmt.superclass.name)?.type;
+    const imported = this.importedTypes.get(stmt.superclass.name);
+    const named = imported ? this.importedType(imported, stmt.superArguments ?? []) : this.aliases.get(stmt.superclass.name);
     return named && isClassType(named) ? named : void 0;
   }
-  /** One instance type per declaration, so every mention of the class is
-   *  the same object — the `this` of its own methods included. Members are
-   *  read lazily for the reason `declare class` reads them lazily: a class
-   *  can name itself, and two classes can name each other. */
+  /** One instance type per declaration, so every mention of the class is the
+   *  same object — the `this` of its own methods included. Members are read
+   *  lazily for the reason `declare class` reads them lazily: a class can
+   *  name itself, and two classes can name each other. */
   instanceType(stmt) {
     const cached = this.instanceTypes.get(stmt);
     if (cached) return cached;
-    const name = stmt.name.name;
+    const name = this.className(stmt);
+    const identity = this.classIdentity(stmt);
+    const params = this.classTypeParams(stmt);
     const type = { kind: "object", name };
     this.instanceTypes.set(stmt, type);
-    const ancestors = () => [name, ...this.baseInstance(stmt)?.class?.ancestors ?? []];
+    const own = params.map((p) => typeParam(p.name, p.constraint ? this.resolveType(p.constraint) : void 0));
+    const info = () => {
+      const base = this.baseInstance(stmt)?.class;
+      const typeArguments = new Map(base?.typeArguments ?? []);
+      if (own.length) typeArguments.set(identity, own);
+      return {
+        name: identity,
+        superclass: base?.name,
+        ancestors: [identity, ...base?.ancestors ?? []],
+        typeArguments: typeArguments.size ? typeArguments : void 0
+      };
+    };
     Object.defineProperties(type, {
       properties: {
         enumerable: true,
         get: () => {
           const shape = this.shapeOf(stmt);
           const base = this.baseInstance(stmt)?.properties;
-          if (!base?.size) return shape.instance;
-          return new Map([...base, ...shape.instance]);
+          const members = base?.size ? new Map([...base, ...shape.instance]) : new Map(shape.instance);
+          members.set("ClassObject", { type: this.classValueType(stmt), optional: false, readonly: true });
+          return members;
         }
       },
-      class: {
-        enumerable: true,
-        get: () => ({ name, superclass: stmt.superclass?.name, ancestors: ancestors() })
-      }
+      class: { enumerable: true, get: info }
     });
     return type;
   }
+  /** `Box<T>` as its own methods see it — a reference, not the object, so
+   *  substituting the arguments in does not have to walk the class. */
+  selfTypeOf(stmt) {
+    const params = this.classTypeParams(stmt);
+    if (!params.length || stmt.type !== "ClassDeclaration") return this.instanceType(stmt);
+    return {
+      kind: "genericRef",
+      name: stmt.name.name,
+      typeArguments: params.map((p) => typeParam(p.name, p.constraint ? this.resolveType(p.constraint) : void 0))
+    };
+  }
   /** The class table: the statics, what it inherits from the class it
-   *  extends, and `new`. */
+   *  extends, `ParentClass`, `ClassObject`, and `new`. */
   classValueType(stmt) {
+    const cached = this.classValues.get(stmt);
+    if (cached) return cached;
+    const type = objectType([]);
+    this.classValues.set(stmt, type);
+    type.name = `typeof ${this.className(stmt)}`;
     const shape = this.shapeOf(stmt);
     const local = this.superDecl(stmt);
-    const inherited = local ? this.classValueType(local).properties : stmt.superclass ? this.classStaticsByName(stmt.superclass.name) : void 0;
-    const entries = new Map([...inherited ?? [], ...shape.statics]);
-    const ctor = this.constructorType(stmt);
-    entries.set("new", {
-      type: fn(ctor?.params.filter((p) => p.name !== "this") ?? [], this.instanceType(stmt), ctor?.varargs),
+    const parent = local ? this.classValueType(local) : stmt.superclass ? this.classStaticsByNameType(stmt.superclass.name) : void 0;
+    if (parent?.kind === "object") {
+      for (const [key, property] of parent.properties) {
+        if (!CLASS_LINKS.has(key)) type.properties.set(key, property);
+      }
+    }
+    for (const [key, property] of shape.statics) type.properties.set(key, property);
+    const constructor = this.constructorType(stmt);
+    const params = this.classTypeParams(stmt);
+    type.properties.set("new", {
+      type: fn(
+        constructor?.params.filter((p) => p.name !== "this") ?? [],
+        this.selfTypeOf(stmt),
+        constructor?.varargs,
+        params.map((p) => p.name)
+      ),
       optional: false,
       readonly: true
     });
-    const type = objectType(entries);
-    type.name = `typeof ${stmt.name.name}`;
+    type.properties.set("ParentClass", { type: parent ?? nilType, optional: false, readonly: true });
     return type;
   }
-  /** The statics of a class named by a binding rather than by a declaration
-   *  in this file — an imported one. */
-  classStaticsByName(name) {
-    const id = this.scopes.globalsByName.get(name);
+  /** The value side of a class named by a binding rather than by a
+   *  declaration in this file — an imported one. */
+  classStaticsByNameType(name) {
+    const id = this.classBindingByName(name);
     const declared = id !== void 0 ? this.bindingType.get(id) : void 0;
-    const value = declared ?? this.aliases.get(`typeof ${name}`);
-    if (!value || value.kind !== "object") return void 0;
-    return new Map([...value.properties].filter(([key]) => key !== "new"));
+    return declared?.kind === "object" ? declared : void 0;
+  }
+  /** The binding a class name stands for, wherever it was declared. */
+  classBindingByName(name) {
+    for (const [id, binding] of this.scopes.bindings) {
+      if (binding.name === name && binding.declaredBy === "class") return id;
+    }
+    return this.scopes.globalsByName.get(name);
+  }
+  /** What `super(...)` takes: the constructor of the class `stmt` extends,
+   *  its own skipped. */
+  baseConstructorType(stmt) {
+    return this.constructorType(stmt, /* @__PURE__ */ new Set([stmt]));
   }
   /** A class's constructor signature — its own, or the one it inherits. */
   constructorType(stmt, seen = /* @__PURE__ */ new Set()) {
@@ -5434,7 +5663,10 @@ var TypeAnalyzer = class {
     const own = this.shapeOf(stmt).ctor;
     if (own) return own;
     const local = this.superDecl(stmt);
-    return local ? this.constructorType(local, seen) : void 0;
+    if (local) return this.constructorType(local, seen);
+    const parent = stmt.superclass ? this.classStaticsByNameType(stmt.superclass.name) : void 0;
+    const inherited = parent && this.overloadsOf(this.propertyType(parent, "new"))[0];
+    return inherited;
   }
   /** `super` as a value: the base class's instance members with the `this`
    *  slot already filled, because `super.m(a)` passes this instance. */
@@ -5444,7 +5676,10 @@ var TypeAnalyzer = class {
     const entries = [];
     for (const [name, property] of base.properties) {
       const bound = this.overloadsOf(property.type);
-      entries.push([name, bound.length ? { ...property, type: intersection(bound.map((f) => this.takesSelf(f) ? fn(f.params.slice(1), f.returns, f.varargs, f.typeParams) : f)) } : property]);
+      entries.push([name, bound.length ? {
+        ...property,
+        type: intersection(bound.map((f) => this.takesSelf(f) ? fn(f.params.slice(1), f.returns, f.varargs, f.typeParams) : f))
+      } : property]);
     }
     return objectType(entries);
   }
@@ -5456,7 +5691,9 @@ var TypeAnalyzer = class {
     const wasEmitting = this.emitDiagnostics;
     this.emitDiagnostics = false;
     try {
-      this.withClass(stmt, () => this.fillShape(stmt, shape));
+      this.withClass(stmt, () => this.withTypeParams(this.classTypeParams(stmt), () => {
+        this.withSelfType(this.selfTypeOf(stmt), () => this.fillShape(stmt, shape));
+      }));
     } finally {
       this.emitDiagnostics = wasEmitting;
       shape.filling = false;
@@ -5510,17 +5747,49 @@ var TypeAnalyzer = class {
       }
     }
   }
-  /** What a class declaration gets wrong, reported where it is written. */
+  /** Bind the class's value, and check what its members say. Shared by the
+   *  declaration and the expression forms. */
+  visitClass(stmt, env) {
+    this.checkClassDeclaration(stmt);
+    const value = this.classValueType(stmt);
+    this.withClass(stmt, () => this.withTypeParams(this.classTypeParams(stmt), () => {
+      this.withSelfType(this.selfTypeOf(stmt), () => {
+        for (const member of stmt.members) {
+          if (member.type === "ClassField") {
+            if (!member.init) continue;
+            const declared = member.typeAnnotation ? this.resolveType(member.typeAnnotation) : void 0;
+            if (declared) this.applyContext(member.init, declared);
+            const actual = this.infer(member.init, env);
+            if (declared && this.emitDiagnostics && !isAssignable(actual, declared)) {
+              this.diagnostics.push({
+                node: member.init,
+                message: `Type '${formatType(actual)}' is not assignable to type '${formatType(declared)}'`
+              });
+            }
+            continue;
+          }
+          this.checkParamOrder(member.func.params, member);
+          for (const signature of member.signatures ?? []) {
+            this.checkParamOrder(signature.params, member);
+          }
+          this.visitFunctionBody(member.func, env);
+        }
+      });
+    }));
+    return value;
+  }
+  /** What a class gets wrong, reported where it is written. */
   checkClassDeclaration(stmt) {
     if (!this.emitDiagnostics) return;
     const report = (node, message) => {
       this.diagnostics.push({ node, message });
     };
+    const name = this.className(stmt);
     if (stmt.superclass) {
       const local = this.aliasDefs.get(stmt.superclass.name)?.runtimeClass;
       if (local && this.extendsThrough(local, stmt)) {
-        report(stmt.superclass, `'${stmt.name.name}' cannot extend itself`);
-      } else if (!local && !this.baseInstance(stmt)) {
+        report(stmt.superclass, `'${name}' cannot extend itself`);
+      } else if (!this.baseInstance(stmt)) {
         const known = this.aliases.has(stmt.superclass.name) || this.importedTypes.has(stmt.superclass.name);
         report(stmt.superclass, known ? `'${stmt.superclass.name}' is not a class; a class can only extend another class` : `Cannot find class '${stmt.superclass.name}'`);
       }
@@ -5542,19 +5811,19 @@ var TypeAnalyzer = class {
       const before = seen.get(key);
       const pair = member.type === "ClassAccessor" && before === "ClassAccessor";
       if (before !== void 0 && !pair) {
-        report(member.name, `'${member.name.name}' is declared twice in class '${stmt.name.name}'`);
+        report(member.name, `'${member.name.name}' is declared twice in class '${name}'`);
       }
       seen.set(key, member.type);
     }
     const constructor = stmt.members.find((m) => m.type === "ClassConstructor");
     if (stmt.superclass && this.baseInstance(stmt) && constructor && !callsSuper(constructor.func.body)) {
-      report(constructor, `'${stmt.name.name}' extends '${stmt.superclass.name}', so its constructor must call 'super(...)'`);
+      report(constructor, `'${name}' extends '${stmt.superclass.name}', so its constructor must call 'super(...)'`);
     }
     const assigned = constructor ? assignedFields(constructor.func.body) : /* @__PURE__ */ new Set();
     for (const member of stmt.members) {
       if (member.type !== "ClassField" || member.isStatic || member.init) continue;
       if (assigned.has(member.name.name)) continue;
-      const type = member.typeAnnotation ? this.resolveType(member.typeAnnotation) : anyType;
+      const type = member.typeAnnotation ? this.withTypeParams(this.classTypeParams(stmt), () => this.resolveType(member.typeAnnotation)) : anyType;
       if (isAssignable(nilType, type)) continue;
       report(member.name, `'${member.name.name}' has no value: give it one, assign it in the constructor, or let its type admit nil`);
     }
@@ -5815,6 +6084,7 @@ var TypeAnalyzer = class {
   instantiateAlias(def, args) {
     if (this.instantiationDepth > 20) return unknownType;
     const subst = this.bindTypeArguments(def.params, args);
+    if (def.runtimeClass) return substitute(this.instanceType(def.runtimeClass), subst);
     this.instantiationDepth++;
     try {
       const body = this.withTypeParams(def.params, () => this.resolveType(def.node));
@@ -6317,6 +6587,7 @@ var TypeAnalyzer = class {
   visitStatement(stmt, env) {
     switch (stmt.type) {
       case "VariableDeclaration": {
+        this.nameClassExpressions(stmt);
         stmt.names.forEach((target, i) => {
           if (target.type === "IdentifierPattern" && target.typeAnnotation && stmt.init[i]) {
             this.applyContext(stmt.init[i], this.resolveType(target.typeAnnotation));
@@ -6348,35 +6619,12 @@ var TypeAnalyzer = class {
         return;
       }
       case "ClassDeclaration": {
-        this.checkClassDeclaration(stmt);
         const id = this.bindingIdByName(stmt.name.name, stmt.name);
-        const value = this.classValueType(stmt);
+        const value = this.visitClass(stmt, env);
         if (id !== void 0) {
           this.bindingType.set(id, value);
           this.setBinding(env, id, value);
         }
-        this.withClass(stmt, () => {
-          for (const member of stmt.members) {
-            if (member.type === "ClassField") {
-              if (!member.init) continue;
-              const declared = member.typeAnnotation ? this.resolveType(member.typeAnnotation) : void 0;
-              if (declared) this.applyContext(member.init, declared);
-              const actual = this.infer(member.init, env);
-              if (declared && this.emitDiagnostics && !isAssignable(actual, declared)) {
-                this.diagnostics.push({
-                  node: member.init,
-                  message: `Type '${formatType(actual)}' is not assignable to type '${formatType(declared)}'`
-                });
-              }
-              continue;
-            }
-            this.checkParamOrder(member.func.params, member);
-            for (const signature of member.signatures ?? []) {
-              this.checkParamOrder(signature.params, member);
-            }
-            this.visitFunctionBody(member.func, env);
-          }
-        });
         return;
       }
       case "FunctionDeclaration": {
@@ -6553,7 +6801,8 @@ var TypeAnalyzer = class {
         this.visitStatement(stmt.declaration, env);
         return;
       case "ExportDefaultStatement":
-        this.infer(stmt.declaration, env);
+        if (stmt.declaration.type === "ClassDeclaration") this.visitStatement(stmt.declaration, env);
+        else this.infer(stmt.declaration, env);
         return;
       case "ExportNamedStatement": {
         if (stmt.source) {
@@ -6726,7 +6975,8 @@ var TypeAnalyzer = class {
   /** A parameter's type: annotation, else a shape synthesized from a
    *  destructuring pattern, else inferred from its default, else `any`. */
   paramType(p, env) {
-    if (!p.typeAnnotation && !p.pattern && !p.default && p.name === "self" && this.selfType) {
+    const receiver = p.name === "self" || p.name === "this";
+    if (!p.typeAnnotation && !p.pattern && !p.default && receiver && this.selfType) {
       return this.selfType;
     }
     if (p.typeAnnotation) {
@@ -7621,7 +7871,21 @@ var TypeAnalyzer = class {
   expand(t) {
     if (t.kind !== "genericRef") return t;
     const def = this.aliasDefs.get(t.name);
-    if (!def || this.resolvingAliases.has(t.name)) return t;
+    if (!def) {
+      const imported = this.importedTypes.get(t.name);
+      if (!imported) return t;
+      if (!imported.params.length) return imported.type;
+      const subst = /* @__PURE__ */ new Map();
+      imported.params.forEach((name, i) => subst.set(name, t.typeArguments[i] ?? unknownType));
+      const key2 = `import ${formatType(t)}`;
+      const cached2 = this.expandCache.get(key2);
+      if (cached2) return cached2;
+      this.expandCache.set(key2, t);
+      const applied = substitute(imported.type, subst);
+      this.expandCache.set(key2, applied);
+      return applied;
+    }
+    if (this.resolvingAliases.has(t.name)) return t;
     const key = t.typeArguments.length ? formatType(t) : t.name;
     const cached = this.expandCache.get(key);
     if (cached) return cached;
@@ -7981,6 +8245,8 @@ var TypeAnalyzer = class {
       }
       case "NewExpression":
         return this.inferNew(expr, env);
+      case "ClassExpression":
+        return this.visitClass(expr, env);
       case "SuperExpression": {
         const stmt = this.currentClass;
         if (!stmt?.superclass) {
@@ -8031,11 +8297,7 @@ var TypeAnalyzer = class {
   /** `super(...)` — the base constructor, run on the instance being built. */
   inferSuperCall(expr, env) {
     const stmt = this.currentClass;
-    const base = stmt ? this.superDecl(stmt) : void 0;
-    const constructor = base ? this.constructorType(base) : stmt?.superclass ? this.overloadsOf(this.propertyType(
-      this.classStaticsByNameType(stmt.superclass.name),
-      "new"
-    ))[0] : void 0;
+    const constructor = stmt ? this.baseConstructorType(stmt) : void 0;
     if (!stmt?.superclass) {
       if (this.emitDiagnostics) {
         this.diagnostics.push({
@@ -8053,12 +8315,6 @@ var TypeAnalyzer = class {
     const callable = fn(constructor.params.filter((p) => p.name !== "this"), nilType, constructor.varargs);
     this.inferCall(expr, callable, env);
     return nilType;
-  }
-  /** The value side of a class named by a binding — an imported one. */
-  classStaticsByNameType(name) {
-    const id = this.scopes.globalsByName.get(name);
-    const fromBinding = id !== void 0 ? this.bindingType.get(id) : void 0;
-    return fromBinding ?? anyType;
   }
   inferCall(expr, callee, env) {
     this.checkAmbiguousCall(expr);

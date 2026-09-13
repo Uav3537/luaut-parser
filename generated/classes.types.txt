@@ -1,17 +1,31 @@
 Animal: typeof Animal
+Box: typeof Box
+Counter: typeof Counter
 Dog: typeof Dog
+Ints: typeof Ints
 Puppy: typeof Puppy
+animalsParent: nil
 asAnimal: Animal
 breed: string
 build: (make: (name: string, breed: string) -> Dog) -> Dog
 built: Dog
+bumped: number
+counter: Counter
+dogsParent: typeof Animal
+f: (value: T) -> R
 fetched: string
+held: number
 item: string
+itsClass: typeof Counter
 legs: number
 made: number
 make: (name: string, breed: string) -> Dog
+n: number
+n: number
 name: string
 name: string
+ofNumber: Box<number>
+ofString: Box<string>
 pip: Puppy
 rex: Dog
 said: string
@@ -20,9 +34,16 @@ this: Animal
 this: Animal
 this: Animal
 this: Animal
+this: Box<T>
+this: Box<T>
+this: Box<T>
+this: Counter
 this: Dog
 this: Dog
 this: Dog
+this: Ints
+this: Ints
 this: Puppy
 total: number
+value: T
 value: string

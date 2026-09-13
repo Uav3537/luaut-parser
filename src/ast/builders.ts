@@ -19,7 +19,7 @@ import type {
     TableExpression, TableField, ArrayExpression,
     BinaryExpression, UnaryExpression, MemberExpression, IndexExpression,
     CallExpression, MethodCallExpression, ParenthesizedExpression,
-    ClassDeclaration, ClassMember, NewExpression, SuperExpression,
+    ClassDeclaration, ClassExpression, ClassMember, NewExpression, SuperExpression,
     TypeAssertionExpression, AsConstExpression, IfElseExpression, ErrorExpression,
     TypeReference, TypeLiteralString, TypeLiteralBoolean, TypeLiteralNumber, TableTypeNode,
     ArrayTypeNode, TupleTypeNode,
@@ -27,6 +27,20 @@ import type {
     UnionTypeNode, IntersectionTypeNode, SatisfiesExpression,
     ParenthesizedTypeNode, TypeofTypeNode, VariadicTypeNode, TypePackNode,
 } from "@ast/nodes"
+
+/** Give a class method its receiver: a real first parameter named `this`,
+ *  the way `function T:m()` gets a real `self`. It carries no annotation —
+ *  the analyzer knows the class it belongs to, which is the only thing that
+ *  works for a generic class (`Box<T>`) and for one written as a value. Every
+ *  later pass then sees an ordinary parameter. */
+function bindThis(func: FunctionBody, at: Span): void {
+    bindThisParam(func.params, at)
+    func.isMethod = true
+}
+
+function bindThisParam(params: FunctionParameter[], at: Span): void {
+    params.unshift({ type: "FunctionParameter", name: "this", ...spanFrom(at, at) })
+}
 
 export class ParseError extends Error {
     constructor(message: string, public line: number, public column: number) {
@@ -808,7 +822,12 @@ export class Parser {
 
         if (this.checkIdentifierValue("default")) {
             this.advance()
-            const declaration = this.parseExpression(0)
+            // `export default class Name ... end` declares `Name` here too,
+            // as TypeScript's does; anonymous, it is an ordinary expression.
+            const declaration = this.checkIdentifierValue("class") && this.peek(1).type === "Identifier" &&
+                !this.punctuatorAt(2, ":") && !this.operatorAt(2, "=") && !this.punctuatorAt(2, "(")
+                ? this.parseClassDeclaration()
+                : this.parseExpression(0)
             return { type: "ExportDefaultStatement", declaration, ...spanFrom(start, this.previous()) }
         }
 
@@ -1085,15 +1104,47 @@ export class Parser {
         const start = this.current()
         this.advance() // 'class'
         const name = this.parseIdentifier()
-        if (this.checkOperator("<")) {
-            this.error("A class cannot take type parameters yet; write a generic method instead")
+        const typeParams = this.checkOperator("<") ? this.parseGenericTypeParameterList() : []
+        const { superclass, superArguments } = this.parseExtends()
+        const members = this.parseClassBody(start)
+        return {
+            type: "ClassDeclaration", name, typeParams, superclass, superArguments, members,
+            ...spanFrom(start, this.previous()),
         }
-        let superclass: Identifier | undefined
-        if (this.checkIdentifierValue("extends")) {
-            this.advance()
-            superclass = this.parseIdentifier()
-        }
+    }
 
+    /** `class ... end` as a value. It may be named — the name is for the class
+     *  itself, not for the scope around it — and takes no type parameters,
+     *  since nothing could write the arguments. */
+    private parseClassExpression(): ClassExpression {
+        const start = this.current()
+        this.advance() // 'class'
+        const name = this.checkType("Identifier") && !this.checkIdentifierValue("extends") &&
+            !this.punctuatorAt(1, ":") && !this.operatorAt(1, "=") && !this.punctuatorAt(1, "(")
+            ? this.parseIdentifier()
+            : undefined
+        if (this.checkOperator("<")) {
+            this.error("A class written as a value takes no type parameters: nothing could write the arguments")
+        }
+        const { superclass, superArguments } = this.parseExtends()
+        const members = this.parseClassBody(start)
+        return { type: "ClassExpression", name, superclass, superArguments, members, ...spanFrom(start, this.previous()) }
+    }
+
+    /** `extends Base` / `extends Box<number>`. */
+    private parseExtends(): { superclass?: Identifier; superArguments?: TypeNode[] } {
+        if (!this.checkIdentifierValue("extends")) return {}
+        this.advance()
+        const superclass = this.parseIdentifier()
+        let superArguments: TypeNode[] | undefined
+        if (this.checkOperator("<")) {
+            const written = this.tryTypeArguments()
+            if (written) superArguments = written
+        }
+        return { superclass, superArguments }
+    }
+
+    private parseClassBody(start: Token): ClassMember[] {
         const members: ClassMember[] = []
         this.classDepth++
         try {
@@ -1101,17 +1152,36 @@ export class Parser {
                 // A stray `,` or `;` between members is allowed and means
                 // nothing, as a `;` between statements does.
                 if (this.matchPunctuator(",") || this.matchPunctuator(";")) continue
-                const member = this.parseClassMember(name)
+                const member = this.parseClassMember()
                 if (member) members.push(member)
             }
         } finally {
             this.classDepth--
         }
         this.expectEnd(start)
-        return { type: "ClassDeclaration", name, superclass, members, ...spanFrom(start, this.previous()) }
+        return members
     }
 
-    private parseClassMember(className: Identifier): ClassMember | undefined {
+    /** `<A, B>` in a type position that is not a call: the arguments a class
+     *  extends its base with. */
+    private tryTypeArguments(): TypeNode[] | undefined {
+        const saved = this.cursor
+        try {
+            this.expectOperator("<")
+            const args: TypeNode[] = [this.parseType()]
+            while (this.matchPunctuator(",")) args.push(this.parseType())
+            this.expectOperator(">")
+            return args
+        } catch (error) {
+            if (error instanceof ParseError || error instanceof ParseRecover) {
+                this.cursor = saved
+                return undefined
+            }
+            throw error
+        }
+    }
+
+    private parseClassMember(): ClassMember | undefined {
         const start = this.current()
         // `static` is a soft keyword — `static: number` is still a field.
         const isStatic = this.checkIdentifierValue("static") && !this.punctuatorAt(1, ":") && !this.operatorAt(1, "=")
@@ -1127,7 +1197,7 @@ export class Parser {
             while (true) {
                 const head = this.parseFunctionHead()
                 if (this.isClassOverloadContinuation(memberName.name, isStatic)) {
-                    if (!isStatic) this.bindThisParam(head.params, className)
+                    if (!isStatic) bindThisParam(head.params, start)
                     signatures.push({ ...this.headToSignature(head), name: written })
                     if (isStatic) this.advance() // 'static'
                     this.expectKeyword("function")
@@ -1135,7 +1205,7 @@ export class Parser {
                     continue
                 }
                 const func = this.headToBody(head, start)
-                if (!isStatic) this.bindThis(func, className)
+                if (!isStatic) bindThis(func, start)
                 return {
                     type: "ClassMethod", name: memberName, isStatic, func,
                     signatures: signatures.length ? signatures : undefined,
@@ -1150,7 +1220,7 @@ export class Parser {
             const head = this.parseFunctionHead()
             if (head.returnType) this.problem("A constructor has no return type; it always builds the instance")
             const func = this.headToBody(head, start)
-            this.bindThis(func, className)
+            bindThis(func, start)
             return { type: "ClassConstructor", func, ...spanFrom(start, this.previous()) }
         }
 
@@ -1161,7 +1231,7 @@ export class Parser {
             const memberName = this.parseIdentifier()
             const head = this.parseFunctionHead()
             const func = this.headToBody(head, start)
-            if (!isStatic) this.bindThis(func, className)
+            if (!isStatic) bindThis(func, start)
             const written = func.params.length - (isStatic ? 0 : 1)
             if (kind === "get" && written > 0) {
                 this.problem("A getter takes no parameters")
@@ -1199,19 +1269,7 @@ export class Parser {
      *  `function T:m()` gets a real `self`. Every later pass — scopes, types,
      *  arity, lowering — then sees an ordinary parameter and needs to know
      *  nothing about classes. */
-    private bindThis(func: FunctionBody, className: Identifier): void {
-        this.bindThisParam(func.params, className)
-        func.isMethod = true
-    }
 
-    private bindThisParam(params: FunctionParameter[], className: Identifier): void {
-        params.unshift({
-            type: "FunctionParameter",
-            name: "this",
-            typeAnnotation: { type: "TypeReference", base: className.name, typeArguments: [], ...spanFrom(className, className) },
-            ...spanFrom(className, className),
-        })
-    }
 
     /** After a bodyless head inside a class body, does another declaration of
      *  the same member follow? Then the head was an overload signature. */
@@ -1557,6 +1615,13 @@ export class Parser {
 
         if (t.type === "Keyword" && (t as any).value === "if") {
             return this.parseIfElseExpression()
+        }
+
+        // `class` where a value goes is always a class — as in TypeScript. It
+        // is a soft keyword everywhere a name is written (`const class = 1`,
+        // `t.class`), just not here.
+        if (t.type === "Identifier" && (t as any).value === "class") {
+            return this.parseClassExpression()
         }
 
         if (t.type === "Punctuator" && (t as any).value === "{") {
@@ -1943,8 +2008,14 @@ export class Parser {
         while (!this.checkPunctuator("]")) {
             if (this.checkOperator("...")) {
                 const dots = this.advance()
-                const argument = this.expressionOr(stop)
-                elements.push({ type: "SpreadElement", argument, ...spanFrom(dots, argument) })
+                // `[...]` is the varargs themselves, as Lua's `{...}` is —
+                // nothing follows the dots to spread. `[...xs]` spreads `xs`.
+                if (this.checkPunctuator("]") || this.checkPunctuator(",")) {
+                    elements.push({ type: "VarargExpression", ...spanFrom(dots, dots) })
+                } else {
+                    const argument = this.expressionOr(stop)
+                    elements.push({ type: "SpreadElement", argument, ...spanFrom(dots, argument) })
+                }
             } else {
                 elements.push(this.expressionOr(stop))
             }

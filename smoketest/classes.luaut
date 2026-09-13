@@ -76,3 +76,55 @@ function build(make: (name: string, breed: string) -> Dog): Dog
 end
 
 const built: Dog = build(Dog.new)
+
+-- A generic class. The instance type is generic too: `Box<number>` and
+-- `Box<string>` are both `Box`, and neither is the other.
+export class Box<T>
+    value: T
+
+    constructor(value: T)
+        this.value = value
+    end
+
+    function get(): T
+        return this.value
+    end
+
+    function map<R>(f: (value: T) -> R): Box<R>
+        return new Box(f(this.value))
+    end
+end
+
+const ofNumber: Box<number> = new Box(1)
+const ofString: Box<string> = ofNumber:map(function(n) return tostring(n) end)
+const held: number = ofNumber:get()
+
+-- Extending a generic class fixes its argument.
+export class Ints extends Box<number>
+    constructor(n: number)
+        super(n)
+    end
+
+    function double(): number
+        return this:get() * 2
+    end
+end
+
+-- A class written where a value goes. It is known by the name it is bound to.
+const Counter = class
+    n = 0
+
+    function bump(): number
+        this.n += 1
+        return this.n
+    end
+end
+
+const counter = new Counter()
+const bumped: number = counter:bump()
+
+-- The links the memory model promises: an instance names its class, a class
+-- names the one it extends.
+const itsClass = counter.ClassObject
+const dogsParent = Dog.ParentClass
+const animalsParent = Animal.ParentClass

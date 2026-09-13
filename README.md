@@ -316,14 +316,66 @@ members is not one, and only `Dog` and what extends it are assignable to it.
 As a **value**, `Dog` is the class table — its statics, and the `new` that
 builds an instance. `export class` exports both.
 
+Two links are always there, and they are what the memory model promises:
+
+```luau
+rex.ClassObject == Dog          -- an instance names its class
+Dog.ParentClass == Animal       -- a class names the one it extends
+Animal.ParentClass == nil       -- and a root class extends nothing
+```
+
+Both live on the class table, so an instance carries neither.
+
+**Generic classes** — `class Box<T> ... end`. The name is then a generic type,
+and `Box<number>` and `Box<string>` are both `Box` but neither is the other:
+
+```luau
+class Box<T>
+    value: T
+    constructor(value: T)
+        this.value = value
+    end
+    function get(): T
+        return this.value
+    end
+    function map<R>(f: (value: T) -> R): Box<R>
+        return new Box(f(this.value))
+    end
+end
+
+const n = new Box(1)               -- Box<number>, read off the argument
+const s = new Box<string>("a")     -- or written out
+const held: number = n:get()
+
+class Ints extends Box<number>     -- extending one fixes its argument
+    constructor(n: number) super(n) end
+end
+```
+
+A function takes the argument off what it is handed: `function unwrap<T>(b:
+Box<T>): T` given a `Box<boolean>` returns `boolean`.
+
+**A class as a value** — `const Counter = class ... end`, and `export default
+class ... end`. It may be named, and then the name is visible only inside its
+own body, as in JavaScript; an anonymous one is known by whatever holds it.
+Two of them are different types however alike they look. A class written as a
+value takes no type parameters — nothing could write the arguments.
+
+`export default class Name ... end` declares `Name` here as well as exporting
+it, as TypeScript's does, and importing it brings in the type too:
+
+```luau
+import Box from "./box"            -- `Box` is the class *and* the type
+const held: Box<number> = new Box(1)
+```
+
 Reported: a field with a type that nothing gives a value (`name: string` that
 the constructor never assigns), a derived constructor that does not call
 `super(...)`, `extends` naming something that is not a class, a chain that
 closes on itself, a member written twice, and a member named one of the words
-the compiler builds the class table out of (`new`, `__init`, `__index`,
-`__newindex`, `__getters`, `__setters`, `__dynamic`).
-
-A class takes no type parameters yet; a method may.
+the compiler builds the class table out of (`new`, `ClassObject`,
+`ParentClass`, `__init`, `__index`, `__newindex`, `__getters`, `__setters`,
+`__dynamic`).
 
 **Callbacks** — a function written where a function type is expected takes
 its parameter types from it: in `signal:Connect(function(player) ... end)`,

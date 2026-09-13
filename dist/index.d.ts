@@ -188,7 +188,9 @@ interface ExportStatement extends BaseNode {
  *  right-hand side is any expression, not necessarily a declaration. */
 interface ExportDefaultStatement extends BaseNode {
     type: "ExportDefaultStatement";
-    declaration: Expression;
+    /** `export default class Name ... end` keeps its name: it declares the
+     *  class here as well as exporting it, the way TypeScript's does. */
+    declaration: Expression | ClassDeclaration;
 }
 interface ExportSpecifier extends BaseNode {
     type: "ExportSpecifier";
@@ -350,11 +352,31 @@ interface FunctionName extends BaseNode {
 interface ClassDeclaration extends BaseNode {
     type: "ClassDeclaration";
     name: Identifier;
-    /** `extends Base` — another class declared in this file or imported. */
+    /** `class Box<T>` — the instance type is then generic, and `Box<number>`
+     *  instantiates it. */
+    typeParams: GenericTypeParameter[];
+    /** `extends Base` / `extends Box<number>` — another class declared in
+     *  this file or imported, with its own arguments filled in. */
     superclass?: Identifier;
+    /** The arguments `extends Box<number>` was written with. */
+    superArguments?: TypeNode[];
+    members: ClassMember[];
+}
+/** `class ... end` written where a value goes: `const Counter = class ... end`,
+ *  `export default class ... end`. The name is optional and, when written, is
+ *  visible only inside the class — as in JavaScript. An expression has no name
+ *  to instantiate, so it takes no type parameters. */
+interface ClassExpression extends BaseNode {
+    type: "ClassExpression";
+    name?: Identifier;
+    superclass?: Identifier;
+    superArguments?: TypeNode[];
     members: ClassMember[];
 }
 type ClassMember = ClassField | ClassMethod | ClassAccessor | ClassConstructor;
+/** The two ways a class is written. Everything after parsing treats them
+ *  alike: only the name and the type parameters differ. */
+type ClassLike = ClassDeclaration | ClassExpression;
 /** `x: number` / `x = 1` / `static count = 0`. An instance field is assigned
  *  when the instance is built, before the constructor body runs; a `static`
  *  one is assigned on the class table, once. */
@@ -490,7 +512,7 @@ interface GenericTypeParameter extends BaseNode {
     constraint?: TypeNode;
     default?: TypeNode | TypePackNode;
 }
-type Expression = Identifier | NilLiteral | BooleanLiteral | NumberLiteral | StringLiteral | InterpolatedStringExpression | VarargExpression | FunctionExpression | TableExpression | ArrayExpression | BinaryExpression | UnaryExpression | MemberExpression | IndexExpression | CallExpression | MethodCallExpression | NewExpression | SuperExpression | ParenthesizedExpression | TypeAssertionExpression | SatisfiesExpression | AsConstExpression | IfElseExpression | ErrorExpression;
+type Expression = Identifier | NilLiteral | BooleanLiteral | NumberLiteral | StringLiteral | InterpolatedStringExpression | VarargExpression | FunctionExpression | TableExpression | ArrayExpression | BinaryExpression | UnaryExpression | MemberExpression | IndexExpression | CallExpression | MethodCallExpression | NewExpression | SuperExpression | ClassExpression | ParenthesizedExpression | TypeAssertionExpression | SatisfiesExpression | AsConstExpression | IfElseExpression | ErrorExpression;
 /** An expression that could not be parsed. Only produced in recovery mode
  *  (`parseWithRecovery`), where a broken initializer, condition, field value or
  *  argument keeps its place in the tree; its span covers the skipped tokens
@@ -1087,6 +1109,13 @@ interface ClassInfo {
     superclass?: string;
     /** The class itself, then each class it extends, nearest first. */
     ancestors: readonly string[];
+    /** For a generic class, the arguments each level of the chain was made
+     *  with, by class name — its own and every class it extends. `Box<number>`
+     *  holds `{ Box: [number] }`, and a `class Ints extends Box<number>` holds
+     *  the same entry under `Box`, which is what tells it apart from a
+     *  `Box<string>`. A class with no type parameters anywhere carries
+     *  nothing, and costs nothing. */
+    typeArguments?: ReadonlyMap<string, readonly Type[]>;
 }
 declare function isClassType(t: Type): t is ObjectType & {
     class: ClassInfo;
@@ -1244,8 +1273,6 @@ declare function tuple(elements: Type[], isPack?: boolean): TupleType;
 declare function objectType(entries: Iterable<[string, ObjectProperty]>, indexer?: ObjectType["indexer"], frozen?: boolean): ObjectType;
 declare function fn(params: FunctionParam[], returns: Type, varargs?: Type, typeParams?: string[], predicate?: TypePredicate): FunctionType;
 declare function substitute(t: Type, subst: Map<string, Type>): Type;
-/** Infer generic bindings by structurally matching a (possibly generic)
- *  `param` type against a concrete `arg` type. Accumulates into `out`. */
 declare function unify(param: Type, arg: Type, vars: Set<string>, out: Map<string, Type>): void;
 declare function union(types: Type[]): Type;
 declare function intersection(types: Type[]): Type;
@@ -1588,4 +1615,4 @@ declare const luautparser: {
     readonly analyzeTypes: typeof analyzeTypes;
 };
 
-export { type AnalyzeTypesOptions, type AnyType, type ArrayExpression, type ArrayPattern, type ArrayPatternElement, type ArrayType, type ArrayTypeNode, type AsConstExpression, type AssignmentStatement, type BaseNode, type BaseToken, type BinaryExpression, BinaryOperators, type Binding, type BindingId, type BindingKind, type BindingTarget, type Block, type BooleanLiteral, type BreakStatement, CONFIG_FILE_NAMES, type CallExpression, type CallStatement, type ClassAccessor, type ClassConstructor, type ClassDeclaration, type ClassField, type ClassInfo, type ClassMember, type ClassMethod, type CompoundAssignmentStatement, type ConditionalType, type ConditionalTypeNode, type ConfigLookup, type ConfigProblem, type ContinueStatement, type DeclareClassStatement, type DeclareStatement, type DifferenceType, type DifferenceTypeNode, type Directive, type DirectiveKind, type DirectiveOutcome, type Directives, type DoStatement, type EOFToken, type ErrorExpression, type ErrorStatement, type ExportAllStatement, type ExportDefaultStatement, type ExportNamedStatement, type ExportSpecifier, type ExportStatement, type ExportTypeAliasStatement, type ExportedType, type Expression, type FunctionBody, type FunctionDeclaration, type FunctionDeclarationStatement, type FunctionExpression, type FunctionName, type FunctionParam, type FunctionParameter, type FunctionSignature, type FunctionType, type FunctionTypeNode, type FunctionTypeParameter, type GenericForStatement, type GenericRefType, type GenericTypeParameter, type Identifier, type IdentifierPattern, type IdentifierToken, type IfClause, type IfElseExpression, type IfStatement, type ImportSpecifier, type ImportStatement, type IndexExpression, type IndexedAccessType, type IndexedAccessTypeNode, type InferType, type InferTypeNode, type InterpolatedStringExpression, type InterpolatedStringPart, type InterpolatedStringPart_Expression, type InterpolatedStringPart_String, type InterpolatedStringToken, type IntersectionType, type IntersectionTypeNode, type KeyofType, type KeyofTypeNode, type KeywordToken, Keywords, LexError, type LiteralToken, type LiteralType, type LoweringModule, type LoweringPlugin, type LuautConfig, type MappedType, type MappedTypeNode, type MemberExpression, type MethodCall, type MethodCallExpression, type MethodLowering, type ModuleExports, type NeverType, type NewExpression, type NilLiteral, type Node, type NumberLiteral, type NumericForStatement, type ObjectPattern, type ObjectPatternProperty, type ObjectProperty, type ObjectType, type OperatorToken, Operators, PRELUDE_SOURCE, type ParenthesizedExpression, type ParenthesizedTypeNode, ParseError, type ParserOptions, type PrimitiveName, type PrimitiveType, type Program, type ProjectHost, type PunctuatorToken, Punctuators, type RecoverResult, type RepeatStatement, type ReturnStatement, type SatisfiesExpression, type ScopeAnalysis, type ScopeDiagnostic, type SourceComment, type SourceMapNode, type SourceMapOptions, type SourceMapTypes, type SpreadElement, type Statement, type StringLiteral, type SuperExpression, type TableExpression, type TableField, type TableTypeNode, type TableTypeProperty, type TemplateLiteralType, type TemplateLiteralTypeNode, type Token, type TokenizeOptions, type TupleType, type TupleTypeNode, type Type, type TypeAliasStatement, type TypeAnalysis, type TypeAssertionExpression, type TypeDiagnostic, type TypeLibraries, type TypeLiteralBoolean, type TypeLiteralNumber, type TypeLiteralString, type TypeNode, type TypePackNode, type TypeParamType, type TypePredicate, type TypePredicateNode, type TypeReference, type TypedIdentifier, type TypeofTypeNode, UNUSED_EXPECT_ERROR, type UnaryExpression, UnaryOperators, type UnionType, type UnionTypeNode, type UnknownType, type VarargExpression, type VariableDeclaration, type VariadicTypeNode, type WhileStatement, analyzeScopes, analyzeTypes, anyType, applyDirectives, arrayOf, booleanType, bufferType, containsTypeParam, luautparser as default, difference, directivesOf, equalTypes, falsyType, findConfig, fn, formatType, getBinding, intersection, isAssignable, isClassType, isGlobal, isPossiblyFalsy, isPossiblyTruthy, isUnassignedGlobal, literal, loadConfig, luautparser, matchInfer, moduleCandidates, moduleExports, narrowExclude, narrowFalsy, narrowTo, narrowTruthy, neverType, nilType, nodeHost, numberType, objectType, optional, overlaps, parse, parseExpressionFromSource, parseTokens, parseWithRecovery, primitive, readDirectives, resolveModulePath, resolveTypeLibraries, setAliasExpander, setDeferredBound, sourceMapTypes, stringType, stripJsonComments, substitute, templateMatches, threadType, tokenize, tuple, typeParam, unify, union, unknownType, widen };
+export { type AnalyzeTypesOptions, type AnyType, type ArrayExpression, type ArrayPattern, type ArrayPatternElement, type ArrayType, type ArrayTypeNode, type AsConstExpression, type AssignmentStatement, type BaseNode, type BaseToken, type BinaryExpression, BinaryOperators, type Binding, type BindingId, type BindingKind, type BindingTarget, type Block, type BooleanLiteral, type BreakStatement, CONFIG_FILE_NAMES, type CallExpression, type CallStatement, type ClassAccessor, type ClassConstructor, type ClassDeclaration, type ClassExpression, type ClassField, type ClassInfo, type ClassLike, type ClassMember, type ClassMethod, type CompoundAssignmentStatement, type ConditionalType, type ConditionalTypeNode, type ConfigLookup, type ConfigProblem, type ContinueStatement, type DeclareClassStatement, type DeclareStatement, type DifferenceType, type DifferenceTypeNode, type Directive, type DirectiveKind, type DirectiveOutcome, type Directives, type DoStatement, type EOFToken, type ErrorExpression, type ErrorStatement, type ExportAllStatement, type ExportDefaultStatement, type ExportNamedStatement, type ExportSpecifier, type ExportStatement, type ExportTypeAliasStatement, type ExportedType, type Expression, type FunctionBody, type FunctionDeclaration, type FunctionDeclarationStatement, type FunctionExpression, type FunctionName, type FunctionParam, type FunctionParameter, type FunctionSignature, type FunctionType, type FunctionTypeNode, type FunctionTypeParameter, type GenericForStatement, type GenericRefType, type GenericTypeParameter, type Identifier, type IdentifierPattern, type IdentifierToken, type IfClause, type IfElseExpression, type IfStatement, type ImportSpecifier, type ImportStatement, type IndexExpression, type IndexedAccessType, type IndexedAccessTypeNode, type InferType, type InferTypeNode, type InterpolatedStringExpression, type InterpolatedStringPart, type InterpolatedStringPart_Expression, type InterpolatedStringPart_String, type InterpolatedStringToken, type IntersectionType, type IntersectionTypeNode, type KeyofType, type KeyofTypeNode, type KeywordToken, Keywords, LexError, type LiteralToken, type LiteralType, type LoweringModule, type LoweringPlugin, type LuautConfig, type MappedType, type MappedTypeNode, type MemberExpression, type MethodCall, type MethodCallExpression, type MethodLowering, type ModuleExports, type NeverType, type NewExpression, type NilLiteral, type Node, type NumberLiteral, type NumericForStatement, type ObjectPattern, type ObjectPatternProperty, type ObjectProperty, type ObjectType, type OperatorToken, Operators, PRELUDE_SOURCE, type ParenthesizedExpression, type ParenthesizedTypeNode, ParseError, type ParserOptions, type PrimitiveName, type PrimitiveType, type Program, type ProjectHost, type PunctuatorToken, Punctuators, type RecoverResult, type RepeatStatement, type ReturnStatement, type SatisfiesExpression, type ScopeAnalysis, type ScopeDiagnostic, type SourceComment, type SourceMapNode, type SourceMapOptions, type SourceMapTypes, type SpreadElement, type Statement, type StringLiteral, type SuperExpression, type TableExpression, type TableField, type TableTypeNode, type TableTypeProperty, type TemplateLiteralType, type TemplateLiteralTypeNode, type Token, type TokenizeOptions, type TupleType, type TupleTypeNode, type Type, type TypeAliasStatement, type TypeAnalysis, type TypeAssertionExpression, type TypeDiagnostic, type TypeLibraries, type TypeLiteralBoolean, type TypeLiteralNumber, type TypeLiteralString, type TypeNode, type TypePackNode, type TypeParamType, type TypePredicate, type TypePredicateNode, type TypeReference, type TypedIdentifier, type TypeofTypeNode, UNUSED_EXPECT_ERROR, type UnaryExpression, UnaryOperators, type UnionType, type UnionTypeNode, type UnknownType, type VarargExpression, type VariableDeclaration, type VariadicTypeNode, type WhileStatement, analyzeScopes, analyzeTypes, anyType, applyDirectives, arrayOf, booleanType, bufferType, containsTypeParam, luautparser as default, difference, directivesOf, equalTypes, falsyType, findConfig, fn, formatType, getBinding, intersection, isAssignable, isClassType, isGlobal, isPossiblyFalsy, isPossiblyTruthy, isUnassignedGlobal, literal, loadConfig, luautparser, matchInfer, moduleCandidates, moduleExports, narrowExclude, narrowFalsy, narrowTo, narrowTruthy, neverType, nilType, nodeHost, numberType, objectType, optional, overlaps, parse, parseExpressionFromSource, parseTokens, parseWithRecovery, primitive, readDirectives, resolveModulePath, resolveTypeLibraries, setAliasExpander, setDeferredBound, sourceMapTypes, stringType, stripJsonComments, substitute, templateMatches, threadType, tokenize, tuple, typeParam, unify, union, unknownType, widen };
