@@ -1,7 +1,7 @@
-entry: [string, number]
+entry: Pair
 frozen: { readonly mode: "debug", readonly retries: 3 }
 frozenList: [10, 20, 30]
-grid: number[][]
+grid: Matrix
 litNum: 5
 maybe: number | nil
 obj: { a: number }

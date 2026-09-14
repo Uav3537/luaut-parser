@@ -32,24 +32,25 @@ export type Type =
     | DifferenceType
 
 /** `any` — opts out of checking. Assignable to and from everything. */
-export interface AnyType { kind: "any" }
+export interface AnyType { kind: "any"; alias?: string }
 /** `unknown` — top type. Everything is assignable to it; it is assignable to nothing but itself. */
-export interface UnknownType { kind: "unknown" }
+export interface UnknownType { kind: "unknown"; alias?: string }
 /** `never` — bottom type. Assignable to everything; nothing (but never) is assignable to it. */
-export interface NeverType { kind: "never" }
+export interface NeverType { kind: "never"; alias?: string }
 
 export type PrimitiveName = "nil" | "boolean" | "number" | "string" | "thread" | "buffer"
-export interface PrimitiveType { kind: "primitive"; name: PrimitiveName }
+export interface PrimitiveType { kind: "primitive"; name: PrimitiveName; alias?: string }
 
 /** `"foo"`, `42`, `true` — a single-valued type. `base` is the primitive it widens to. */
 export interface LiteralType {
     kind: "literal"
     base: "boolean" | "number" | "string"
     value: string | number | boolean
+    alias?: string
 }
 
 /** `T[]` */
-export interface ArrayType { kind: "array"; element: Type }
+export interface ArrayType { kind: "array"; element: Type; alias?: string }
 
 /** `[A, B, C]` — fixed length.
  *
@@ -58,7 +59,7 @@ export interface ArrayType { kind: "array"; element: Type }
  *  structurally identical but behave differently in an expression list — a
  *  pack spreads across several names, a tuple is one value — so they have to
  *  be told apart. */
-export interface TupleType { kind: "tuple"; elements: Type[]; isPack?: boolean }
+export interface TupleType { kind: "tuple"; elements: Type[]; isPack?: boolean; alias?: string }
 
 export interface ObjectProperty { type: Type; optional: boolean; readonly?: boolean }
 export interface ObjectType {
@@ -144,6 +145,7 @@ export interface FunctionType {
     typeParamDefaults?: Record<string, Type>
     /** Set when the function was declared with an `x is T` / `asserts x` return. */
     predicate?: TypePredicate
+    alias?: string
 }
 
 /** A bound generic parameter (`T` inside `function f<T>(...)` or
@@ -162,7 +164,7 @@ export function typeParam(name: string, constraint?: Type, isConst?: boolean): T
     return { kind: "typeParam", name, constraint, isConst }
 }
 
-export interface UnionType { kind: "union"; types: Type[] }
+export interface UnionType { kind: "union"; types: Type[]; alias?: string }
 export interface IntersectionType {
     kind: "intersection"
     types: Type[]
@@ -234,6 +236,61 @@ export interface TemplateLiteralType {
     kind: "templateLiteral"
     quasis: string[]
     types: Type[]
+    alias?: string
+}
+
+// ------------------------------------------------------------
+// The alias a type was written as
+// ------------------------------------------------------------
+// `type Id = number` resolves to `number`, and what is lost is the only thing
+// the reader was told: that this number is an `Id`. So the name travels with
+// the type — display only, the way `ObjectType.name` already did for
+// `type Row = { ... }`. Nothing about assignability changes: an `Id` *is* a
+// number, structurally and in both directions.
+//
+// Objects and intersections keep using their own `name` field, which predates
+// this and carries class information alongside; everything else uses `alias`.
+// `aliasNameOf` is the one place that knows which is which.
+
+/** Kinds that can carry an alias name. The type-level operators are left out:
+ *  each is gone as soon as its inputs are known, so a name on one would never
+ *  be read. */
+const ALIASABLE: ReadonlySet<Type["kind"]> = new Set<Type["kind"]>([
+    "any", "unknown", "never", "primitive", "literal",
+    "array", "tuple", "function", "union", "templateLiteral",
+])
+
+/** The alias `type` is printed as instead of its structure, if it has one. */
+export function aliasNameOf(type: Type): string | undefined {
+    if (isClassType(type)) return undefined
+    if (type.kind === "object" || type.kind === "intersection") return type.name
+    return ALIASABLE.has(type.kind) ? (type as { alias?: string }).alias : undefined
+}
+
+/** The same type, printed as what it is made of. */
+export function withoutAliasName(type: Type): Type {
+    if (aliasNameOf(type) === undefined) return type
+    if (type.kind === "object") {
+        const out = objectType(type.properties, type.indexer, type.frozen)
+        return type.class ? Object.assign(out, { class: type.class, name: type.name }) : out
+    }
+    if (type.kind === "intersection") return { ...type, name: undefined }
+    // `ALIASABLE` has already said this kind carries the field; the cast is
+    // only because a `Set` membership test narrows nothing for TypeScript.
+    return { ...(type as Type & { alias?: string }), alias: undefined } as Type
+}
+
+/** `type` remembered as the alias it was written as. A type that already
+ *  carries one keeps it: the name nearest what the reader wrote wins. */
+export function withAliasName(type: Type, alias: string): Type {
+    if (isClassType(type)) return type
+    if (type.kind === "object" || type.kind === "intersection") {
+        return type.name === undefined ? { ...type, name: alias } : type
+    }
+    if (!ALIASABLE.has(type.kind)) return type
+    return (type as { alias?: string }).alias === undefined
+        ? { ...(type as Type & { alias?: string }), alias } as Type
+        : type
 }
 
 /** `{ [K in C]: V }`. `optional` / `readonly`: `true` adds the modifier,
@@ -1193,6 +1250,11 @@ export function formatType(t: Type): string {
 }
 
 function formatTypeUncached(t: Type): string {
+    // An alias is printed as what the reader wrote, exactly as a named object
+    // already was. `withoutAliasName` is how a caller asks for the structure —
+    // which is what the hover opens a level at a time.
+    const alias = aliasNameOf(t)
+    if (alias !== undefined && t.kind !== "object" && t.kind !== "intersection") return alias
     switch (t.kind) {
         case "any": return "any"
         case "unknown": return "unknown"

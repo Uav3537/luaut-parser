@@ -613,6 +613,21 @@ var ParseError = class extends Error {
 };
 var ParseRecover = class extends Error {
 };
+var DECLARATION_STATEMENTS = /* @__PURE__ */ new Set([
+  "VariableDeclaration",
+  "FunctionDeclaration",
+  "FunctionDeclarationStatement",
+  "ClassDeclaration",
+  "TypeAliasStatement",
+  "ExportTypeAliasStatement",
+  "ImportStatement",
+  "ExportStatement",
+  "ExportDefaultStatement",
+  "ExportNamedStatement",
+  "ExportAllStatement",
+  "DeclareStatement",
+  "DeclareClassStatement"
+]);
 function spanFrom(start, end) {
   return {
     line: { start: start.line.start, end: end.line.end },
@@ -1040,13 +1055,43 @@ var Parser = class {
   /** The `{ ... }` a construct's body is written in. Half-written — the
    *  `{` not typed yet — it is empty and says so, rather than throwing the
    *  whole construct away: what has been written is what an editor answers
-   *  from. */
-  parseBracedBody(what) {
+   *  from.
+   *
+   *  `braceless` marks the constructs that may take one statement instead of
+   *  a block, as TypeScript writes `if (done) return`. A function body is not
+   *  one of them, and neither is `do`, which is a block and nothing else. */
+  parseBracedBody(what, braceless = false) {
     if (this.checkPunctuator("{")) return this.parseBraceBlock();
+    if (braceless && !this.isBlockEnd() && !this.checkPunctuator(";")) {
+      return this.parseBracelessBody(what);
+    }
     const at = this.current();
     if (!this.recover) this.error(`Expected '{' to open the body of '${what}'`);
     this.softError(`Expected '{' to open the body of '${what}'`);
     return { type: "Block", statements: [], ...spanFrom(at, at) };
+  }
+  /** `if (done) return` — the one statement a body may be written as, with
+   *  no braces around it. It is still a block: what it narrows, and what a
+   *  `break` or `continue` in it leaves, end with it, exactly as the braced
+   *  form does.
+   *
+   *  A declaration is not a statement a body may be, as in TypeScript: the
+   *  name it binds would be out of scope on the next line, so writing one
+   *  here is a mistake rather than a shorthand. */
+  parseBracelessBody(what) {
+    const start = this.current();
+    const statement = this.checkKeyword("return") ? this.parseReturnStatement(true) : this.parseStatement();
+    this.matchPunctuator(";");
+    if (DECLARATION_STATEMENTS.has(statement.type)) {
+      const error = new ParseError(
+        `A declaration cannot be the body of '${what}' on its own, since nothing could reach the name it binds; write the body in braces`,
+        start.line.start,
+        start.column.start
+      );
+      if (!this.recover) throw error;
+      this.record(error);
+    }
+    return { type: "Block", statements: [statement], ...spanFrom(start, this.previous()) };
   }
   /** Does a `{` follow the parenthesized group starting here? That is what
    *  tells `if (ready) { ... }` from `if (ready) then ... end`. */
@@ -1437,7 +1482,7 @@ var Parser = class {
       this.expectPunctuator("(");
       const condition = this.expressionOr(() => this.checkPunctuator(")"));
       this.expectCloser(")");
-      const body = this.parseBracedBody("if");
+      const body = this.parseBracedBody("if", true);
       clauses.push({ type: "IfClause", condition, body, ...spanFrom(clauseStart, this.previous()) });
     };
     clause();
@@ -1449,7 +1494,7 @@ var Parser = class {
         clause();
         continue;
       }
-      alternate = this.parseBracedBody("else");
+      alternate = this.parseBracedBody("else", true);
       break;
     }
     return { type: "IfStatement", clauses, alternate, ...spanFrom(start, this.previous()) };
@@ -1460,7 +1505,7 @@ var Parser = class {
     this.expectPunctuator("(");
     const condition = this.expressionOr(() => this.checkPunctuator(")"));
     this.expectCloser(")");
-    const body = this.parseBracedBody("while");
+    const body = this.parseBracedBody("while", true);
     return { type: "WhileStatement", condition, body, ...spanFrom(start, this.previous()) };
   }
   parseRepeatStatement() {
@@ -1521,7 +1566,7 @@ var Parser = class {
   }
   parseForBody() {
     this.expectCloser(")");
-    return this.parseBracedBody("for");
+    return this.parseBracedBody("for", true);
   }
   /** `function name() end` declares `name`; `function a.b() end` and
    *  `function T:m() end` define a member. */
@@ -1795,12 +1840,13 @@ var Parser = class {
     }
     return false;
   }
-  parseReturnStatement() {
+  parseReturnStatement(stopAtNewline = false) {
     const start = this.current();
     this.expectKeyword("return");
     let args = [];
-    if (this.isExpressionStart()) {
-      args = this.expressionListOr(() => false);
+    const pastLine = () => stopAtNewline && this.current().line.start > start.line.start;
+    if (!pastLine() && this.isExpressionStart()) {
+      args = this.expressionListOr(pastLine);
     }
     return { type: "ReturnStatement", arguments: args, ...spanFrom(start, this.previous()) };
   }
@@ -2901,6 +2947,10 @@ var Parser = class {
    *  (`C extends E ? A : B`). Write `T | nil` for a nilable type, and
    *  `name?: T` for an optional property or parameter. */
   parseSuffixType() {
+    if (this.checkIdentifierValue("readonly")) {
+      this.advance();
+      return this.parseSuffixType();
+    }
     let t = this.parsePrimaryType();
     while (true) {
       if (this.checkPunctuator("[")) {
@@ -4111,6 +4161,40 @@ function isClassAssignable(got, want) {
 function typeParam(name, constraint, isConst) {
   return { kind: "typeParam", name, constraint, isConst };
 }
+var ALIASABLE = /* @__PURE__ */ new Set([
+  "any",
+  "unknown",
+  "never",
+  "primitive",
+  "literal",
+  "array",
+  "tuple",
+  "function",
+  "union",
+  "templateLiteral"
+]);
+function aliasNameOf(type) {
+  if (isClassType(type)) return void 0;
+  if (type.kind === "object" || type.kind === "intersection") return type.name;
+  return ALIASABLE.has(type.kind) ? type.alias : void 0;
+}
+function withoutAliasName(type) {
+  if (aliasNameOf(type) === void 0) return type;
+  if (type.kind === "object") {
+    const out = objectType(type.properties, type.indexer, type.frozen);
+    return type.class ? Object.assign(out, { class: type.class, name: type.name }) : out;
+  }
+  if (type.kind === "intersection") return { ...type, name: void 0 };
+  return { ...type, alias: void 0 };
+}
+function withAliasName(type, alias) {
+  if (isClassType(type)) return type;
+  if (type.kind === "object" || type.kind === "intersection") {
+    return type.name === void 0 ? { ...type, name: alias } : type;
+  }
+  if (!ALIASABLE.has(type.kind)) return type;
+  return type.alias === void 0 ? { ...type, alias } : type;
+}
 var anyType = { kind: "any" };
 var unknownType = { kind: "unknown" };
 var neverType = { kind: "never" };
@@ -4777,6 +4861,8 @@ function formatType(t) {
   return out;
 }
 function formatTypeUncached(t) {
+  const alias = aliasNameOf(t);
+  if (alias !== void 0 && t.kind !== "object" && t.kind !== "intersection") return alias;
   switch (t.kind) {
     case "any":
       return "any";
@@ -5196,13 +5282,16 @@ var AliasMap = class extends Map {
     return super.size + (this.pending?.size ?? 0);
   }
   keys() {
-    return [...super.keys(), ...this.pending?.keys() ?? []][Symbol.iterator]();
+    return new Map([...super.keys(), ...this.pending?.keys() ?? []].map((k) => [k, void 0])).keys();
+  }
+  resolvedEntries() {
+    return [...this.keys()].map((name) => [name, this.get(name)]);
   }
   entries() {
-    return [...this.keys()].map((name) => [name, this.get(name)])[Symbol.iterator]();
+    return new Map(this.resolvedEntries()).entries();
   }
   values() {
-    return [...this.keys()].map((name) => this.get(name))[Symbol.iterator]();
+    return new Map(this.resolvedEntries()).values();
   }
   forEach(callback, thisArg) {
     for (const [name, type] of this.entries()) callback.call(thisArg, type, name, this);
@@ -7170,7 +7259,8 @@ var TypeAnalyzer = class {
   expectedMembers(expected) {
     const t = this.expand(expected);
     const members = t.kind === "union" ? t.types : [t];
-    return members.map((m) => this.expand(m)).filter((m) => !(m.kind === "primitive" && m.name === "nil"));
+    const flattened = members.map((m) => this.expand(m)).flatMap((m) => m.kind === "intersection" ? m.types.map((x) => this.expand(x)) : [m]);
+    return flattened.filter((m) => !(m.kind === "primitive" && m.name === "nil"));
   }
   /** The parameter type each written argument lands on, across `fns`. */
   expectedArguments(written, fns, selfOf) {
@@ -7178,7 +7268,8 @@ var TypeAnalyzer = class {
       const candidates = [];
       for (const f of fns) {
         const i = j + selfOf(f);
-        const param = i < f.params.length ? this.boundParams(f)[i] : f.varargs;
+        const declared = i < f.params.length ? f.params[i].type : f.varargs;
+        const param = declared && containsTypeParam(declared) ? declared : i < f.params.length ? this.boundParams(f)[i] : f.varargs;
         if (param) candidates.push(param);
       }
       return candidates.length ? union(candidates) : void 0;
@@ -7297,7 +7388,8 @@ var TypeAnalyzer = class {
       const arg = argTypes[i];
       if (arg === void 0) return;
       const param = p.type.kind === "typeParam" && p.type.constraint ? { ...p.type, constraint: this.reduceType(p.type.constraint) } : p.type;
-      unify(p.type, keepsLiterals(param) ? arg : widen(arg), vars, subst);
+      const preserve = keepsLiterals(param) || param.kind !== "typeParam" && containsTypeParam(param);
+      unify(p.type, preserve ? arg : widen(arg), vars, subst);
     });
     if (f.varargs) {
       const keeps = keepsLiterals(f.varargs);
@@ -8063,7 +8155,7 @@ var TypeAnalyzer = class {
     this.resolvingAliases.add(t.name);
     try {
       const r = def.params.length ? this.instantiateAlias(def, t.typeArguments) : this.resolveDef(def);
-      const named = def.params.length === 0 && (r.kind === "object" || r.kind === "intersection") && !r.name ? { ...r, name: t.name } : r;
+      const named = def.params.length === 0 ? withAliasName(r, t.name) : r;
       this.expandCache.set(key, named);
       return named;
     } finally {
@@ -8672,24 +8764,27 @@ var TypeAnalyzer = class {
   inferObject(expr, env, asConst) {
     const entries = [];
     let indexer;
+    const context = this.expectedTypeOf.get(expr);
+    const genericContext = !asConst && context !== void 0 && containsTypeParam(context);
     for (const field of expr.fields) {
       if (field.type === "TableFieldNamed") {
         const key = field.key.type === "Identifier" ? field.key.name : field.key.value;
-        const v = asConst ? this.inferAsConst(field.value, env) : this.widenUnlessAsked(this.infer(field.value, env), field.value);
+        const inferred = asConst || genericContext ? this.inferAsConst(field.value, env) : this.infer(field.value, env);
+        const v = asConst ? inferred : genericContext ? this.keepContextualLiterals(inferred, context) : this.widenUnlessAsked(inferred, field.value);
         entries.push([key, { type: v, optional: false, readonly: asConst }]);
       } else if (field.type === "TableFieldShorthand") {
-        const v = this.infer(field.name, env);
+        const inferred = asConst || genericContext ? this.inferAsConst(field.name, env) : this.infer(field.name, env);
         entries.push([field.name.name, {
-          type: asConst ? v : this.widenUnlessAsked(v, field.name),
+          type: asConst ? inferred : genericContext ? this.keepContextualLiterals(inferred, context) : this.widenUnlessAsked(inferred, field.name),
           optional: false,
           readonly: asConst
         }]);
       } else if (field.type === "TableFieldComputed") {
         const k = this.infer(field.key, env);
-        const v = this.infer(field.value, env);
+        const v = asConst || genericContext ? this.inferAsConst(field.value, env) : this.infer(field.value, env);
         if (k.kind === "literal" && typeof k.value === "string") {
           entries.push([k.value, {
-            type: asConst ? v : this.widenUnlessAsked(v, field.value),
+            type: asConst ? v : genericContext ? this.keepContextualLiterals(v, context) : this.widenUnlessAsked(v, field.value),
             optional: false,
             readonly: asConst
           }]);
@@ -8715,12 +8810,13 @@ var TypeAnalyzer = class {
     const ctx = context === void 0 ? void 0 : this.expand(context);
     switch (value.kind) {
       case "literal":
-        return ctx && this.admitsLiteral(ctx, value.base) ? value : widen(value);
+        return ctx && (containsTypeParam(ctx) || this.admitsLiteral(ctx, value.base)) ? value : widen(value);
       case "object": {
         if (value.class) return value;
+        const generic = ctx !== void 0 && containsTypeParam(ctx);
         const entries = [...value.properties].map(([name, property]) => [
           name,
-          { ...property, readonly: false, type: this.keepContextualLiterals(property.type, ctx && this.contextProperty(ctx, name)) }
+          { ...property, readonly: false, type: this.keepContextualLiterals(property.type, generic ? ctx : ctx && this.contextProperty(ctx, name)) }
         ]);
         const indexer = value.indexer && {
           key: widen(value.indexer.key),
@@ -9798,6 +9894,7 @@ export {
   Punctuators,
   UNUSED_EXPECT_ERROR,
   UnaryOperators,
+  aliasNameOf,
   analyzeScopes,
   analyzeTypes,
   anyType,
@@ -9861,5 +9958,7 @@ export {
   unify,
   union,
   unknownType,
-  widen
+  widen,
+  withAliasName,
+  withoutAliasName
 };

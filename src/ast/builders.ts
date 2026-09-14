@@ -52,6 +52,16 @@ export class ParseError extends Error {
  *  boundary. Internal — never escapes the parser. */
 class ParseRecover extends Error {}
 
+/** Statements that bind a name, and so cannot be a braceless body: the name
+ *  would be gone at the next line. TypeScript rejects the same set. */
+const DECLARATION_STATEMENTS: ReadonlySet<string> = new Set([
+    "VariableDeclaration", "FunctionDeclaration", "FunctionDeclarationStatement",
+    "ClassDeclaration", "TypeAliasStatement", "ExportTypeAliasStatement",
+    "ImportStatement", "ExportStatement", "ExportDefaultStatement",
+    "ExportNamedStatement", "ExportAllStatement",
+    "DeclareStatement", "DeclareClassStatement",
+])
+
 // ------------------------------------------------------------
 // Span helpers
 // ------------------------------------------------------------
@@ -538,13 +548,49 @@ export class Parser {
     /** The `{ ... }` a construct's body is written in. Half-written — the
      *  `{` not typed yet — it is empty and says so, rather than throwing the
      *  whole construct away: what has been written is what an editor answers
-     *  from. */
-    private parseBracedBody(what: string): Block {
+     *  from.
+     *
+     *  `braceless` marks the constructs that may take one statement instead of
+     *  a block, as TypeScript writes `if (done) return`. A function body is not
+     *  one of them, and neither is `do`, which is a block and nothing else. */
+    private parseBracedBody(what: string, braceless = false): Block {
         if (this.checkPunctuator("{")) return this.parseBraceBlock()
+        if (braceless && !this.isBlockEnd() && !this.checkPunctuator(";")) {
+            return this.parseBracelessBody(what)
+        }
         const at = this.current()
         if (!this.recover) this.error(`Expected '{' to open the body of '${what}'`)
         this.softError(`Expected '{' to open the body of '${what}'`)
         return { type: "Block", statements: [], ...spanFrom(at, at) }
+    }
+
+    /** `if (done) return` — the one statement a body may be written as, with
+     *  no braces around it. It is still a block: what it narrows, and what a
+     *  `break` or `continue` in it leaves, end with it, exactly as the braced
+     *  form does.
+     *
+     *  A declaration is not a statement a body may be, as in TypeScript: the
+     *  name it binds would be out of scope on the next line, so writing one
+     *  here is a mistake rather than a shorthand. */
+    private parseBracelessBody(what: string): Block {
+        const start = this.current()
+        // A braceless body ends at its line. In particular, without this
+        // boundary `if (done) return` would let `parseReturnStatement` take
+        // an `if` on the following line as an if-expression return value.
+        const statement = this.checkKeyword("return")
+            ? this.parseReturnStatement(true)
+            : this.parseStatement()
+        this.matchPunctuator(";")
+        if (DECLARATION_STATEMENTS.has(statement.type)) {
+            const error = new ParseError(
+                `A declaration cannot be the body of '${what}' on its own, since nothing `
+                + `could reach the name it binds; write the body in braces`,
+                start.line.start, start.column.start,
+            )
+            if (!this.recover) throw error
+            this.record(error)
+        }
+        return { type: "Block", statements: [statement], ...spanFrom(start, this.previous()) }
     }
 
     /** Does a `{` follow the parenthesized group starting here? That is what
@@ -996,7 +1042,7 @@ export class Parser {
             this.expectPunctuator("(")
             const condition = this.expressionOr(() => this.checkPunctuator(")"))
             this.expectCloser(")")
-            const body = this.parseBracedBody("if")
+            const body = this.parseBracedBody("if", true)
             clauses.push({ type: "IfClause", condition, body, ...spanFrom(clauseStart, this.previous()) })
         }
         clause()
@@ -1008,7 +1054,7 @@ export class Parser {
                 clause()
                 continue
             }
-            alternate = this.parseBracedBody("else")
+            alternate = this.parseBracedBody("else", true)
             break
         }
         return { type: "IfStatement", clauses, alternate, ...spanFrom(start, this.previous()) }
@@ -1020,7 +1066,7 @@ export class Parser {
         this.expectPunctuator("(")
         const condition = this.expressionOr(() => this.checkPunctuator(")"))
         this.expectCloser(")")
-        const body = this.parseBracedBody("while")
+        const body = this.parseBracedBody("while", true)
         return { type: "WhileStatement", condition, body, ...spanFrom(start, this.previous()) }
     }
 
@@ -1085,7 +1131,7 @@ export class Parser {
 
     private parseForBody(): Block {
         this.expectCloser(")")
-        return this.parseBracedBody("for")
+        return this.parseBracedBody("for", true)
     }
 
     /** `function name() end` declares `name`; `function a.b() end` and
@@ -1393,12 +1439,13 @@ export class Parser {
         return false
     }
 
-    private parseReturnStatement(): ReturnStatement {
+    private parseReturnStatement(stopAtNewline = false): ReturnStatement {
         const start = this.current()
         this.expectKeyword("return")
         let args: Expression[] = []
-        if (this.isExpressionStart()) {
-            args = this.expressionListOr(() => false)
+        const pastLine = (): boolean => stopAtNewline && this.current().line.start > start.line.start
+        if (!pastLine() && this.isExpressionStart()) {
+            args = this.expressionListOr(pastLine)
         }
         return { type: "ReturnStatement", arguments: args, ...spanFrom(start, this.previous()) }
     }
@@ -2621,10 +2668,13 @@ export class Parser {
      *  (`C extends E ? A : B`). Write `T | nil` for a nilable type, and
      *  `name?: T` for an optional property or parameter. */
     private parseSuffixType(): TypeNode {
+        if (this.checkIdentifierValue("readonly")) {
+            this.advance()
+            return this.parseSuffixType()
+        }
+
         let t = this.parsePrimaryType()
         while (true) {
-            // `T[]` array-type suffix (may repeat: `T[][]`), or `T[K]`
-            // indexed access — told apart by whether the brackets are empty.
             if (this.checkPunctuator("[")) {
                 if (this.peek(1).type === "Punctuator" && (this.peek(1) as any).value === "]") {
                     this.advance()

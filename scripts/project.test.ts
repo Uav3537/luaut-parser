@@ -1110,7 +1110,7 @@ const a: A = { p: 1 }`).errors.length,
     GTFrisk: function() {},
     XTFriskk: function() {},
 } as const satisfies { [Names]: () => () }`).errors,
-        ["Object literal may only specify known properties, and 'XTFriskk' does not exist in type '{ [\"GTFrisk\" | \"XTFrisk\"]: () => () }'"])
+        ["Object literal may only specify known properties, and 'XTFriskk' does not exist in type '{ [Names]: () => () }'"])
     check("finite indexer: the keys in the set are fine, and `[string]` takes anything", [
         analyze(`${names}const PerClass = {
     GTFrisk: function() {},
@@ -1858,7 +1858,8 @@ function g() {
     check("arrows: a function type is written `=>`, and `->` still reads",
         [written.errors, written.bindings.apply, written.bindings.handle, written.bindings.old],
         [[], "(f: (n: number) => string, n: number) => string",
-            "(event: string) => ()", "(n: number) => string"])
+            // `handled` was declared as `Handler`, and that is what it reads as.
+            "Handler", "(n: number) => string"])
 
     const values = analyze([
         "declare function tostring(v: unknown): string",
@@ -2556,6 +2557,19 @@ function g() {
         "const t = { new: 1 }",
         "const bad = new t()",
     ].join("\n")).errors, ["'t' is not a class; 'new' needs one"])
+    // A generic inferred through an object literal owns the literal information
+    // at its slot, even when that slot is several objects deep.
+    const nestedGeneric = analyze([
+        "function hold<T>(value: { nested: T }): T { return value.nested }",
+        "function box<T>(value: { nested: { tag: T } }): T { return value.nested.tag }",
+        "const object = hold({ nested: { kind: \"ready\" } })",
+        "const literal = box({ nested: { tag: \"ready\" } })",
+        "",
+        "",
+    ].join("\n"))
+    check("generic object arguments: nested literals infer without widening",
+        [nestedGeneric.errors, nestedGeneric.bindings.object, nestedGeneric.bindings.literal],
+        [[], "{ kind: \"ready\" }", "\"ready\""])
 }
 
 for (const failure of failures) console.log(`FAIL ${failure}`)

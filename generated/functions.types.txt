@@ -3,7 +3,7 @@ _: number
 a: number
 a: number
 a: number
-add: (total: number, value: number) => number
+add: Reducer
 addedUp: number
 alsoForward: (...string) => (string, string)
 applyN: (n: number, number[]) => number

@@ -1,14 +1,25 @@
 _: number
 _: number
+_: number
 absent: nil
+bareContinue: (items: (string | nil)[]) => number
+bareReturn: (v: string | nil) => string
+countTo: (n: number) => number
 firstNil: (items: (string | nil)[]) => number
+i: number
 item: string | nil
 item: string | nil
+item: string | nil
+items: (string | nil)[]
 items: (string | nil)[]
 items: (string | nil)[]
 lengths: (items: (string | nil)[]) => number
+n: number
+n: number
 onlyNil: (v: string | nil) => string
 orEmpty: (v: string | nil) => string
+present: string
+present: string
 present: string
 present: string
 present: string
@@ -17,8 +28,12 @@ seen: number
 settle: (v: string | nil) => string
 settled: string
 settled: string
+sign: (n: number) => string
+total: number
+total: number
 total: number
 untilSet: (v: string | nil) => string
+v: string | nil
 v: string | nil
 v: string | nil
 v: string | nil

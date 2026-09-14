@@ -1,7 +1,7 @@
 a: A
 b: B
 first: <T>(xs: T[]) => T
-head: number
+head: 10 | 20 | 30
 identity: <T>(x: T) => T
 intBox: { value: number }
 n: number

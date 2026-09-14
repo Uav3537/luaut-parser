@@ -1,35 +1,3 @@
-// ============================================================
-// Flow-sensitive type analysis
-// ------------------------------------------------------------
-// A second analysis pass (after `analyzeScopes`) over the luaut
-// AST. Like `analyzeScopes` it never mutates the tree — it
-// produces a side table (`TypeAnalysis`) mapping expression
-// nodes and bindings to `Type`s, with control-flow narrowing
-// applied.
-//
-// Narrowing follows TypeScript's model:
-//
-//   * References, not just variables. `x`, `x.a.b`, `x["k"]` and
-//     `t[1]` each get their own flow slot (`RefKey`), so a guard
-//     on a nested path narrows that path — and, walking back up,
-//     the union it hangs off. Assignment invalidates a path and
-//     everything under it.
-//   * Truthiness is the primitive. In Luau only `nil` and
-//     `false` are falsy (`0` and `""` are not), and that rule
-//     lives in `isPossiblyTruthy` / `narrowTruthy` in the type
-//     model rather than being restated per call site.
-//   * Guards are *declared*, not hard-coded. `type` / `typeof`
-//     are overload sets returning string-literal types, so
-//     `typeof(x) == "number"` narrows by keeping the parameter
-//     types of the overloads that can return `"number"`. User
-//     functions get the same treatment, plus TypeScript's
-//     `v is T` / `asserts v` return annotations.
-//
-// Uncovered corners (metatables/`setmetatable`, precise
-// multi-return, cross-module imports) still fall back to `any`
-// rather than erroring. Search for `TODO(types)`.
-// ============================================================
-
 import type {
     Program, Block, Statement, Expression, TypeNode, TypePackNode,
     Identifier, FunctionBody, FunctionSignature, BindingTarget, GenericTypeParameter,
@@ -48,7 +16,7 @@ import {
     widen, isAssignable, overlaps, narrowTo, narrowExclude, narrowTruthy, narrowFalsy,
     isClassType,
     isPossiblyFalsy,
-    formatType,
+    formatType, withAliasName,
 } from "./typeModel"
 
 // ============================================================
@@ -535,23 +503,27 @@ class AliasMap extends Map<string, Type> {
         return super.size + (this.pending?.size ?? 0)
     }
 
-    override keys(): IterableIterator<string> {
-        return [...super.keys(), ...(this.pending?.keys() ?? [])][Symbol.iterator]()
+    override keys(): ReturnType<Map<string, Type>["keys"]> {
+        return new Map([...super.keys(), ...(this.pending?.keys() ?? [])].map(k => [k, undefined as unknown as Type] as const)).keys()
     }
 
-    override entries(): IterableIterator<[string, Type]> {
-        return [...this.keys()].map((name): [string, Type] => [name, this.get(name)!])[Symbol.iterator]()
+    private resolvedEntries(): [string, Type][] {
+        return [...this.keys()].map((name): [string, Type] => [name, this.get(name)!])
     }
 
-    override values(): IterableIterator<Type> {
-        return [...this.keys()].map(name => this.get(name)!)[Symbol.iterator]()
+    override entries(): ReturnType<Map<string, Type>["entries"]> {
+        return new Map(this.resolvedEntries()).entries()
+    }
+
+    override values(): ReturnType<Map<string, Type>["values"]> {
+        return new Map(this.resolvedEntries()).values()
     }
 
     override forEach(callback: (value: Type, key: string, map: Map<string, Type>) => void, thisArg?: unknown): void {
         for (const [name, type] of this.entries()) callback.call(thisArg, type, name, this)
     }
 
-    override [Symbol.iterator](): IterableIterator<[string, Type]> {
+    override [Symbol.iterator](): ReturnType<Map<string, Type>[typeof Symbol.iterator]> {
         return this.entries()
     }
 }
@@ -2924,7 +2896,9 @@ class TypeAnalyzer {
     private expectedMembers(expected: Type): Type[] {
         const t = this.expand(expected)
         const members = t.kind === "union" ? t.types : [t]
-        return members.map(m => this.expand(m)).filter(m => !(m.kind === "primitive" && m.name === "nil"))
+        const flattened = members.map(m => this.expand(m)).flatMap(m =>
+            m.kind === "intersection" ? m.types.map(x => this.expand(x)) : [m])
+        return flattened.filter(m => !(m.kind === "primitive" && m.name === "nil"))
     }
 
     /** The parameter type each written argument lands on, across `fns`. */
@@ -2937,7 +2911,14 @@ class TypeAnalyzer {
             const candidates: Type[] = []
             for (const f of fns) {
                 const i = j + selfOf(f)
-                const param = i < f.params.length ? this.boundParams(f)[i] : f.varargs
+                const declared = i < f.params.length ? f.params[i].type : f.varargs
+                // Before inference, `boundParams` substitutes unconstrained T
+                // with any. Keep a structural parameter's real generic shape
+                // as literal context, otherwise `{ nested: T }` loses the
+                // nested literal before T has a chance to be inferred.
+                const param = declared && containsTypeParam(declared)
+                    ? declared
+                    : i < f.params.length ? this.boundParams(f)[i] : f.varargs
                 if (param) candidates.push(param)
             }
             return candidates.length ? union(candidates) : undefined
@@ -3090,7 +3071,13 @@ class TypeAnalyzer {
             const param = p.type.kind === "typeParam" && p.type.constraint
                 ? { ...p.type, constraint: this.reduceType(p.type.constraint) }
                 : p.type
-            unify(p.type, keepsLiterals(param) ? arg : widen(arg), vars, subst)
+            // A generic inside a structural parameter is inferred from the
+            // literal written at that slot. `wrap({ value: { kind: "ok" } })`,
+            // for `{ value: T }`, must retain that nested literal shape for T.
+            // A bare T retains its existing widening behaviour unless `<const T>`.
+            const preserve = keepsLiterals(param)
+                || (param.kind !== "typeParam" && containsTypeParam(param))
+            unify(p.type, preserve ? arg : widen(arg), vars, subst)
         })
         // The arguments `...` takes say what it holds, the way a parameter's
         // does: `firstOf(1, 2)` of a `(...items: T[])` reads `T` as `number`.
@@ -4031,10 +4018,7 @@ class TypeAnalyzer {
             // instantiation must keep its structure: `Pair` alone would not
             // say which `Pair`, and the point of `Partial<User>` is the
             // object it reduces to.
-            const named = def.params.length === 0 &&
-                (r.kind === "object" || r.kind === "intersection") && !r.name
-                ? { ...r, name: t.name }
-                : r
+            const named = def.params.length === 0 ? withAliasName(r, t.name) : r
             this.expandCache.set(key, named)
             return named
         } finally {
@@ -4746,24 +4730,41 @@ class TypeAnalyzer {
     private inferObject(expr: TableExpression, env: FlowEnv, asConst: boolean): Type {
         const entries: [string, ObjectProperty][] = []
         let indexer: { key: Type; value: Type } | undefined
+        // A contextual shape that contains T is a generic inference site.
+        // Infer it narrowly first; `keepContextualLiterals` strips readonly
+        // where this ordinary object literal would not have had it.
+        const context = this.expectedTypeOf.get(expr)
+        const genericContext = !asConst && context !== undefined && containsTypeParam(context)
         for (const field of expr.fields) {
             if (field.type === "TableFieldNamed") {
                 const key = field.key.type === "Identifier" ? field.key.name : field.key.value
-                const v = asConst ? this.inferAsConst(field.value, env)
-                    : this.widenUnlessAsked(this.infer(field.value, env), field.value)
+                const inferred = (asConst || genericContext)
+                    ? this.inferAsConst(field.value, env)
+                    : this.infer(field.value, env)
+                const v = asConst ? inferred
+                    : genericContext ? this.keepContextualLiterals(inferred, context)
+                    : this.widenUnlessAsked(inferred, field.value)
                 entries.push([key, { type: v, optional: false, readonly: asConst }])
             } else if (field.type === "TableFieldShorthand") {
-                const v = this.infer(field.name, env)
+                const inferred = (asConst || genericContext)
+                    ? this.inferAsConst(field.name, env)
+                    : this.infer(field.name, env)
                 entries.push([field.name.name, {
-                    type: asConst ? v : this.widenUnlessAsked(v, field.name),
+                    type: asConst ? inferred
+                        : genericContext ? this.keepContextualLiterals(inferred, context)
+                        : this.widenUnlessAsked(inferred, field.name),
                     optional: false, readonly: asConst,
                 }])
             } else if (field.type === "TableFieldComputed") {
                 const k = this.infer(field.key, env)
-                const v = this.infer(field.value, env)
+                const v = (asConst || genericContext)
+                    ? this.inferAsConst(field.value, env)
+                    : this.infer(field.value, env)
                 if (k.kind === "literal" && typeof k.value === "string") {
                     entries.push([k.value, {
-                        type: asConst ? v : this.widenUnlessAsked(v, field.value),
+                        type: asConst ? v
+                            : genericContext ? this.keepContextualLiterals(v, context)
+                            : this.widenUnlessAsked(v, field.value),
                         optional: false, readonly: asConst,
                     }])
                 } else {
@@ -4790,12 +4791,13 @@ class TypeAnalyzer {
         const ctx = context === undefined ? undefined : this.expand(context)
         switch (value.kind) {
             case "literal":
-                return ctx && this.admitsLiteral(ctx, value.base) ? value : widen(value)
+                return ctx && (containsTypeParam(ctx) || this.admitsLiteral(ctx, value.base)) ? value : widen(value)
             case "object": {
                 if (value.class) return value
+                const generic = ctx !== undefined && containsTypeParam(ctx)
                 const entries: [string, ObjectProperty][] = [...value.properties].map(([name, property]) => [
                     name,
-                    { ...property, readonly: false, type: this.keepContextualLiterals(property.type, ctx && this.contextProperty(ctx, name)) },
+                    { ...property, readonly: false, type: this.keepContextualLiterals(property.type, generic ? ctx : ctx && this.contextProperty(ctx, name)) },
                 ])
                 const indexer = value.indexer && {
                     key: widen(value.indexer.key),

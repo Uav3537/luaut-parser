@@ -148,6 +148,26 @@ without them `if ready { ... }` would be a call of `ready` followed by a block.
 
 There is no `end` in luaut, and `then` is not a word it knows.
 
+**One statement instead of a block** — an `if`, an `elseif`, an `else`, a
+`while` or a `for` may be written with the single statement it does, no braces,
+as TypeScript writes it:
+
+```luau
+if (done) return
+if (n < 0) return "negative"
+elseif (n == 0) return "zero"
+else return "positive"
+
+for (_, item in items) if (item) print(item)
+while (queued > 0) queued -= 1
+```
+
+It is a block all the same — what it narrows, and what a `break` or `continue`
+in it leaves, end with it — so the early-return form reads exactly as the
+braced one does. A declaration may not be written there, as in TypeScript:
+nothing could reach the name `if (x) const y = 1` binds, so it is an error
+rather than a shorthand. A function body and `do` always take braces.
+
 `and`, `or` and `not` stay words; `{}` is still an object literal everywhere a
 value is expected, and `[]` an array.
 

@@ -1,6 +1,6 @@
 a: string | number
 afterOr: string | number
-area: (shape: { kind: "circle", radius: number } | { h: number, kind: "rect", w: number }) => number
+area: (shape: Shape) => number
 bag: Bag
 branches: (a: string | number) => nil
 cond: boolean
@@ -11,5 +11,5 @@ inOr: string | number
 mergePaths: (cond: boolean) => boolean
 readBag: (bag: Bag) => string
 s: string | nil
-shape: { kind: "circle", radius: number } | { h: number, kind: "rect", w: number }
+shape: Shape
 verbose: boolean
